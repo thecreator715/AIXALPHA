@@ -188,26 +188,54 @@ export default {
 
 
 // Free FLUX.1 [schnell] images on Workers AI (shared free allowance); per-user daily cap, no credits charged.
+const IMG_MODELS = {
+  flux:  { cr: 1, label: 'FLUX.1 schnell' },
+  flux2: { cr: 3, label: 'FLUX.2' },
+  nano:  { cr: 3, label: 'Nano Banana' },
+};
+async function genImage(env, kind, prompt, steps) {
+  if (kind === 'nano') {
+    if (!env.GEMINI_API_KEY) throw Object.assign(new Error('Nano Banana is not set up on this server yet.'), { notConfigured: true });
+    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent', { method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((j.error && j.error.message) || 'Nano Banana request failed (' + r.status + ')');
+    const part = ((j.candidates || [])[0]?.content?.parts || []).find((p) => (p.inlineData || p.inline_data));
+    const d = part && (part.inlineData || part.inline_data);
+    if (!d || !d.data) throw new Error('Nano Banana returned no image (the prompt may have been declined).');
+    return 'data:' + (d.mimeType || d.mime_type || 'image/png') + ';base64,' + d.data;
+  }
+  if (kind === 'flux2') {
+    const form = new FormData(); form.append('prompt', prompt); form.append('width', '1024'); form.append('height', '1024');
+    const fr = new Response(form);
+    const out = await env.AI.run('@cf/black-forest-labs/flux-2-dev', { multipart: { body: fr.body, contentType: fr.headers.get('content-type') } });
+    if (!out || !out.image) throw new Error('no image returned');
+    return 'data:image/jpeg;base64,' + out.image;
+  }
+  const out = await env.AI.run('@cf/black-forest-labs/flux-1-schnell', { prompt, steps });
+  if (!out || !out.image) throw new Error('no image returned');
+  return 'data:image/jpeg;base64,' + out.image;
+}
 async function image(env, req) {
   const a = await authed(env, req);
-  if (!a) return json(env, req, { error: 'Sign in to generate images (1 credit each).' }, 401);
+  if (!a) return json(env, req, { error: 'Sign in to generate images.' }, 401);
   if (!env.AI) return json(env, req, { error: 'Image generation is not enabled on this server' }, 501);
   let b; try { b = await req.json(); } catch { return json(env, req, { error: 'bad request' }, 400); }
   const prompt = String(b.prompt || '').slice(0, 1000).trim();
   if (!prompt) return json(env, req, { error: 'Describe the image' }, 400);
+  const kind = IMG_MODELS[b.model] ? b.model : 'flux', cost = IMG_MODELS[kind].cr;
+  if (kind === 'nano' && !env.GEMINI_API_KEY) return json(env, req, { error: 'Nano Banana is not set up on this server yet.' }, 501);
   const owner = owners(env).includes(a.email);
   if (!owner) {
-    const up = await env.DB.prepare('UPDATE users SET credits=credits-1 WHERE email=? AND credits>=1').bind(a.email).run();
-    if (!(up.meta && up.meta.changes > 0)) return json(env, req, { error: 'Out of credits. An image costs 1 credit.' }, 402);
+    const up = await env.DB.prepare('UPDATE users SET credits=credits-? WHERE email=? AND credits>=?').bind(cost, a.email, cost).run();
+    if (!(up.meta && up.meta.changes > 0)) return json(env, req, { error: 'Out of credits. ' + IMG_MODELS[kind].label + ' costs ' + cost + ' credit' + (cost > 1 ? 's' : '') + '.' }, 402);
   }
   try {
-    const out = await env.AI.run('@cf/black-forest-labs/flux-1-schnell', { prompt, steps: Math.min(8, Math.max(1, +b.steps || 4)) });
-    if (!out || !out.image) throw new Error('no image returned');
-    if (!owner) await env.DB.prepare('INSERT INTO usage(email,at,input,output,credits) VALUES(?,?,0,0,1)').bind(a.email, new Date().toISOString()).run();
+    const image = await genImage(env, kind, prompt, Math.min(8, Math.max(1, +b.steps || 4)));
+    if (!owner) await env.DB.prepare('INSERT INTO usage(email,at,input,output,credits) VALUES(?,?,0,0,?)').bind(a.email, new Date().toISOString(), cost).run();
     const f = await getUser(env, a.email);
-    return json(env, req, { image: 'data:image/jpeg;base64,' + out.image, credits: +Number(f.credits).toFixed(2), spentCredits: owner ? 0 : 1 });
+    return json(env, req, { image, model: kind, credits: +Number(f.credits).toFixed(2), spentCredits: owner ? 0 : cost });
   } catch (e) {
-    if (!owner) await env.DB.prepare('UPDATE users SET credits=credits+1 WHERE email=?').bind(a.email).run();
+    if (!owner) await env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(cost, a.email).run();
     return json(env, req, { error: 'Image model error: ' + (e.message || e) }, 502);
   }
 }

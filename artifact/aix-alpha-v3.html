@@ -411,6 +411,7 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
         <b class="lp">↻ LOOP</b>
         <div class="seg" id="modes"><button data-m="auto" title="Reasoning mode: picks the best mode, depth and evaluator for each reply, ignoring credit cost">AUTO</button><button data-m="eco" class="on">ECO</button><button data-m="balanced">BALANCED</button><button data-m="thorough">THOROUGH</button></div>
         <button class="tg" id="evalb" title="One tiny reviewer call on DEEP answers"></button>
+        <select class="tg" id="imgm" title="Image model: FLUX.1 schnell 1 credit · FLUX.2 3 credits · Nano Banana 3 credits (free for admin)" style="height:auto;padding:4px 8px"><option value="flux">FLUX · 1 cr</option><option value="flux2">FLUX.2 · 3 cr</option><option value="nano">Nano Banana · 3 cr</option></select>
         <button class="tg" id="imgb" title="Image mode: every message you send becomes an image. 1 credit per image (free for admin). Sign in required."></button>
         <button class="tg" id="webb" title="Live web search: the model may search the internet for current info. About 7 credits per search (max 3 per reply). Needs 8+ credits."></button>
         <button class="tg" id="estb" title="Estimated credits per reply for each mode"></button><div class="meter"><div class="track"><div class="fill" id="fill"></div></div><span id="spent">0 / 178 cr</span></div>
@@ -424,7 +425,7 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
     <span class="sp"></span>
     <button class="tg on" data-col="files">Files</button><button class="tg on" data-col="editor">Editor</button><button class="tg on" data-col="prev">Preview</button><button class="tg on" data-col="chat">Chat</button>
   </div>
-  <div class="stbar mono"><select id="fw"><option value="tailwind">Tailwind</option><option value="vanilla">Vanilla</option><option value="canvas">Canvas</option><option value="threejs">Three.js</option><option value="model3d">3D model (STL)</option><option value="flux">Image (1 credit)</option><option value="clip">Animated clip (WebM)</option><option value="sprite">Sprite sheet (pixel art)</option><option value="image">Image / illustration (SVG)</option><option value="pdfdoc">PDF document</option><option value="textdoc">Text / Markdown</option></select><select id="stl" title="Visual style the AI should design in"><option value="auto">Style: Modern</option><option value="glass">Glass</option><option value="brutal">Brutalist</option><option value="minimal">Minimal</option><option value="neon">Neon / Cyber</option><option value="editorial">Editorial</option><option value="playful">Playful</option><option value="material">Material</option></select><input id="gen" placeholder="Describe an app to generate into index.html…"><button class="btn" id="gengo">⚡ Generate</button></div>
+  <div class="stbar mono"><select id="fw"><option value="tailwind">Tailwind</option><option value="vanilla">Vanilla</option><option value="canvas">Canvas</option><option value="threejs">Three.js</option><option value="model3d">3D model (STL)</option><option value="flux">Image (FLUX / FLUX.2 / Nano Banana)</option><option value="clip">Animated clip (WebM)</option><option value="sprite">Sprite sheet (pixel art)</option><option value="image">Image / illustration (SVG)</option><option value="pdfdoc">PDF document</option><option value="textdoc">Text / Markdown</option></select><select id="stl" title="Visual style the AI should design in"><option value="auto">Style: Modern</option><option value="glass">Glass</option><option value="brutal">Brutalist</option><option value="minimal">Minimal</option><option value="neon">Neon / Cyber</option><option value="editorial">Editorial</option><option value="playful">Playful</option><option value="material">Material</option></select><input id="gen" placeholder="Describe an app to generate into index.html…"><button class="btn" id="gengo">⚡ Generate</button></div>
   <div id="stgrid" class="stgrid">
     <div class="stc" id="c-files"><div class="sth mono"><b>FILES</b><span class="grow"></span><button class="btn2" id="fadd">＋</button></div><div id="flist"></div>
       <div class="sth mono" style="border-top:1px solid var(--b);border-bottom:0;flex-wrap:wrap"><button class="btn2" id="fren">Rename</button><button class="btn2" id="fdel">Delete</button><button class="btn2" id="fzip">⬇ ZIP</button><button class="btn2" id="fhtml">⬇ HTML</button><button class="btn2" id="fimp">⬆ Import</button><button class="btn2" id="fexp">⬇ Export…</button><button class="btn2" id="fanim">🎬 Animate image</button><input type="file" id="fimpi" multiple hidden accept=".html,.htm,.css,.js,.json,.txt,.md,.zip,.stl,.obj,.fbx,.pdf"></div></div>
@@ -483,7 +484,7 @@ const CR=0.0014; // 1 credit = 0.0014 of spend; the UI only ever shows credits
 const capCr=x=>Math.floor(x/CR+1e-9);
 const usd=n=>{const c=n/CR;return c===0?'0 cr':c<0.01?'<0.01 cr':(c<10?c.toFixed(2):c<100?c.toFixed(1):String(Math.round(c)))+' cr'};
 const BREV={MICRO:'Style: reply in at most 4 sentences.',STANDARD:'Style: be concise; use a list only to compare or sequence.',DEEP:'Style: complete but economical. No restating the question, no closing summary unless asked.'};
-const S={img:store.get('aix3_img',false),web:store.get('aix3_web',false),auto:store.get('aix3_auto',false),mode:store.get('aix3_mode','eco'),verify:store.get('aix3_verify','local'),caps:store.get('aix3_caps',{req:0.01,ses:0.25,day:2}),
+const S={imgm:store.get('aix3_imgm','flux'),img:store.get('aix3_img',false),web:store.get('aix3_web',false),auto:store.get('aix3_auto',false),mode:store.get('aix3_mode','eco'),verify:store.get('aix3_verify','local'),caps:store.get('aix3_caps',{req:0.01,ses:0.25,day:2}),
  chats:store.get('aix3_chats',[]),cur:null,pid:store.get('aix3_pid','aix-alpha-v3'),busy:false,cache:{},ledger:store.get('aix3_ledger',{})};
 const today=()=>new Date().toISOString().slice(0,10);
 const daySpend=()=>S.ledger[today()]||0;
@@ -775,7 +776,7 @@ function renderMsgs(){
   if(!c||!c.msgs.length){box.innerHTML=`<div class="empty"><h2>AIX Alpha v3.0</h2><div class="mono" style="font-size:12px">Loop engine · route → diet → cache → generate → verify → repair</div>
    <div class="tiles">${[['Single-file app','Build a single html pomodoro timer app with dark UI and session history'],['3D mesh (free)','Render a gold metallic torus knot 3d model'],['Fast answer','what is a mutex?'],['Constraint check','explain recursion in 20 words'],['Compare','Compare Postgres and SQLite for a 5k-user SaaS and give a recommendation']].map(([a,b])=>`<div class="tile" data-ex="${esc(b)}"><b>${a}</b>${esc(b)}</div>`).join('')}</div></div>`;updateMeter();return}
   box.innerHTML=c.msgs.map((m,i)=>m.role==='user'?`<div class="msg u">${mtools(i,'user')}<div class="who mono"><b>OPERATOR</b></div><div class="body">${md(m.content.replace(/\n*\[Attached file: ([^\]]+)\]\n```[\s\S]*?```/g,'\n📎 $1'))}</div></div>`:
-   `<div class="msg" data-m="${i}">${mtools(i,'assistant')}<div class="who mono"><b>${esc((personas().find(p=>p.id===m.pid)||PRESETS[0]).name)}</b><span class="chip">${m.aid||m.imgurl?'IMAGE · 1 CREDIT':m.t&&!m.t.calls?'LOCAL · 0 TOKENS':'AIX ENGINE'}</span></div>
+   `<div class="msg" data-m="${i}">${mtools(i,'assistant')}<div class="who mono"><b>${esc((personas().find(p=>p.id===m.pid)||PRESETS[0]).name)}</b><span class="chip">${m.aid||m.imgurl?'IMAGE':m.t&&!m.t.calls?'LOCAL · 0 TOKENS':'AIX ENGINE'}</span></div>
    ${m.t?`${actHtml(m.t.protocol,{dur:m.dur,open:!!m.t.app})}${chipsHtml(m.t)}${m.t.app?buildDetails(m):''}`:''}
    <div class="body">${m.err?`<span style="color:var(--r)">${esc(m.content)}</span>`:md(m.content)}</div>${m.mesh?`<div class="mv" data-mesh="${i}"></div>`:''}${(m.aid&&ASSET[m.aid])||m.imgurl?`<div class="gimg"><img src="${m.imgurl||ASSET[m.aid]}" alt="generated image" onerror="imgFail(this)" style="max-width:100%;border-radius:12px;display:block;margin:8px 0"><a class="btn2" download="aix-image.${(ASSET[m.aid]||'').startsWith('data:image/png')?'png':'jpg'}" href="${m.imgurl||ASSET[m.aid]}" target="_blank" rel="noopener">Save image</a></div>`:''}${m.ui==='connect'?'<div class="ccwrap">'+connectCardsHtml()+'</div>':''}${PVHTML(m,i)}</div>`).join('');
   box.querySelectorAll('[data-mesh]').forEach(el=>mountMesh(el,c.msgs[+el.dataset.mesh].mesh));
@@ -846,6 +847,7 @@ $('#hub').onclick=openHub;$('#set').onclick=openSettings;$('#about').onclick=ope
 $('#modes').onclick=e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.m==='auto'){S.auto=!S.auto;store.set('aix3_auto',S.auto);updateMeter();refreshEst(true);return}S.auto=false;store.set('aix3_auto',false);S.mode=b.dataset.m;store.set('aix3_mode',S.mode);updateMeter();refreshEst(true)};
 const SEARCH_CR=7.2;
 function setWeb(on){S.web=on;store.set('aix3_web',on);updateMeter();refreshEst(false);toast(on?'Live web ON · about 7 credits per search':'Live web off')}
+$('#imgm').value=S.imgm;$('#imgm').onchange=e=>{S.imgm=e.target.value;store.set('aix3_imgm',S.imgm);toast({flux:'FLUX.1 · 1 credit per image',flux2:'FLUX.2 · 3 credits per image',nano:'Nano Banana · 3 credits per image'}[S.imgm])};
 $('#imgb').onclick=()=>{S.img=!S.img;store.set('aix3_img',S.img);updateMeter();toast(S.img?'Image mode ON · every message becomes an image · 1 credit each':'Image mode off')};
 $('#webb').onclick=()=>{if(S.web)return setWeb(false);
   const bal=(BACKEND()&&BAL!=null&&!ISOWNER)?`<p style="font-size:12.5px;margin:8px 0 0">Your balance: <b>${(+BAL).toFixed(1)} credits</b>${BAL<8?' <span style="color:#f59e0b">(you need 8+ credits for a web search)</span>':''}</p>`:'';
@@ -1901,12 +1903,12 @@ setTimeout(function(){const b=$('#fanim');if(b)b.onclick=openAnimate},0);
 /* ===== Chat image generation: "create an image of a hummingbird" ===== */
 const IMGINTENT=/^\s*(please\s+)?(can you\s+|could you\s+)?(create|generate|make|draw|paint|render|design|show me)\s+(me\s+)?(an?\s+|the\s+|some\s+)?(\w+\s+)?(image|picture|photo|photograph|illustration|artwork|painting|portrait|wallpaper)s?\b/i;
 async function chatFlux(c,text){
-  const subj=text.replace(IMGINTENT,'').replace(/^\s*(of|for|showing|with|that shows)\s+/i,'').trim()||text;
+  const subj=text.replace(IMGINTENT,'').replace(/^\s*(of|for|showing|with|that shows)\s+/i,'').replace(/\s*\b(with|using|in)\s+(nano\s*banana|flux\s*\.?\s*2)\b/ig,'').trim()||text;
   const prompt=subj+(/\b(photo|realistic|painting|illustration|cartoon|anime|pixel|sketch|3d|render)\b/i.test(subj)?'':', highly detailed, beautiful lighting');
-  const t0=Date.now();
-  try{const j=await imgCall(prompt);
+  const t0=Date.now(),model=pickImgModel(text);
+  try{const j=await imgCall(prompt.replace(/\b(with|using|in)\s+(nano\s*banana|flux\s*\.?\s*2)\b/ig,'').trim(),model);
     const id='a'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);ASSET[id]=j.image;aput(id,j.image);
-    c.msgs.push({role:'assistant',content:`Here's your image: **${subj}**\n\n${j.spentCredits?'1 credit used':'Admin: 0 credits'}${j.credits!=null?' · balance '+j.credits+' cr':''} · stored on this device`,ts:Date.now(),dur:Date.now()-t0,aid:id})
+    c.msgs.push({role:'assistant',content:`Here's your image: **${subj}**\n\n${IMG_LBL[model]} · ${j.spentCredits?j.spentCredits+' credit'+(j.spentCredits>1?'s':'')+' used':'admin, 0 credits'}${j.credits!=null?' · balance '+j.credits+' cr':''} · stored on this device`,ts:Date.now(),dur:Date.now()-t0,aid:id})
   }catch(e){c.msgs.push({role:'assistant',content:e.message||String(e),err:1,ts:Date.now(),dur:Date.now()-t0})}}
 
 setTimeout(()=>{try{hydAll()}catch{}},400);
@@ -1976,24 +1978,26 @@ function artPrompt(kind,spec){
   return `You are an illustrator. Create the image as a hand-built SVG (viewBox 0 0 1024 1024, layered shapes, gradients, soft shadows, a coherent palette, no text unless the spec asks). Show it large, plus a style switcher if it helps (e.g. light and dark background). Buttons: "Download PNG" (rasterise the SVG to a 2048px canvas via an Image and call aixSave), "Copy SVG".\n${common}\n\nSpec: ${spec}`}
 addEventListener('message',e=>{if(e.data&&e.data.aixdl){dl(e.data.name||'download.'+e.data.aixdl,e.data.data);toast(e.data.aixdl.toUpperCase()+' downloaded')}});
 function clipPrompt(spec){return `Create a self-contained single-file HTML animated clip (no external assets). Draw a polished, looping animation on one <canvas> (1280x720, requestAnimationFrame, easing, parallax, particles or camera moves as suited). Add buttons: Play/Pause, and "Record WebM" which records exactly one loop (default 6 seconds, adjustable 3-15) using canvas.captureStream(30) and MediaRecorder (prefer video/webm;codecs=vp9, fall back to video/webm), shows a progress bar, then reads the blob with FileReader and calls parent.postMessage({aixdl:'webm',data:dataUrl,name:'clip.webm'},'*') (the sandbox blocks normal downloads). Dark page, centred canvas scaled to fit.\n\nSpec: ${spec}`}
-setTimeout(function(){const fw=$('#fw'),g=$('#gen');if(!fw||!g)return;const base=g.placeholder;const upd=()=>{const c=ART_CR[fw.value];g.placeholder=fw.value==='flux'?'Describe the image (1 credit)':c?base.replace(/\s*\(~.*$/,'')+' (~'+c+' credits)':base};fw.addEventListener('change',upd);upd()},50);
+setTimeout(function(){const fw=$('#fw'),g=$('#gen');if(!fw||!g)return;const base=g.placeholder;const upd=()=>{const c=ART_CR[fw.value];g.placeholder=fw.value==='flux'?'Describe the image (FLUX 1 · FLUX.2 / Nano Banana 3 credits)':c?base.replace(/\s*\(~.*$/,'')+' (~'+c+' credits)':base};fw.addEventListener('change',upd);upd()},50);
 
-async function imgCall(prompt){
+const IMG_LBL={flux:'FLUX',flux2:'FLUX.2',nano:'Nano Banana'};
+function pickImgModel(t){return /nano\s*banana/i.test(t)?'nano':/flux\s*\.?\s*2/i.test(t)?'flux2':(S.imgm||'flux')}
+async function imgCall(prompt,model){model=model||S.imgm||'flux';
   if(!BACKEND())throw new Error('Image generation needs the AIX server (use the GitHub site).');
-  const tok=store.get(TOKK,'');if(!tok){setTimeout(()=>{try{openAccount('Sign in to generate images. Each image costs 1 credit.')}catch{}},200);throw new Error('Sign in to generate images. Each image costs 1 credit.')}
-  const r=await fetch(BACKEND()+'/api/image',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+tok},body:JSON.stringify({prompt})});
+  const tok=store.get(TOKK,'');if(!tok){setTimeout(()=>{try{openAccount('Sign in to generate images. FLUX costs 1 credit; FLUX.2 and Nano Banana cost 3.')}catch{}},200);throw new Error('Sign in to generate images (1 credit FLUX, 3 credits FLUX.2 or Nano Banana).')}
+  const r=await fetch(BACKEND()+'/api/image',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+tok},body:JSON.stringify({prompt,model})});
   const j=await r.json().catch(()=>({}));
-  if(r.status===402){BAL=0;try{setStatus()}catch{}setTimeout(()=>{try{openCredits('An image costs 1 credit. Add credits to continue.')}catch{}},200);throw new Error(j.error||'Out of credits. An image costs 1 credit.')}
+  if(r.status===402){BAL=0;try{setStatus()}catch{}setTimeout(()=>{try{openCredits('Not enough credits for this image. Add credits to continue.')}catch{}},200);throw new Error(j.error||'Out of credits. An image costs 1 credit.')}
   if(r.status===401){setTimeout(()=>{try{openAccount('Your session expired. Sign in again.')}catch{}},200);throw new Error('Please sign in again.')}
   if(!r.ok||!j.image)throw new Error(j.error||('Image failed ('+r.status+')'));
   if(j.credits!=null){BAL=j.credits;try{setStatus()}catch{}}
   return j}
 async function fluxGenerate(spec){
   ensureProj();const L=startLog('Image: '+spec.slice(0,50));
-  try{L.step('Generating with FLUX on the AIX server · 1 credit (free for admin)');
-    const j=await imgCall(spec),nm=safeName('flux-'+Date.now().toString(36)+'.jpg');
-    const nf=await makeAsset(nm,j.image,{img:true});P.files.push(nf);P.active=nm;PAGE=nm;chatImage(nf.aid,'Image for: '+spec+' ('+(j.spentCredits?'1 credit':'admin, 0 credits')+', stored on this device)');
-    projSave();renderStudio();refreshPreview();L.step('Saved '+nm,'ok');L.finish('Image ready · '+(j.spentCredits?'1 credit used':'0 credits (admin)'),'ok');bump('studio.flux')
+  try{L.step('Generating with '+IMG_LBL[pickImgModel(spec)]+' on the AIX server (free for admin)');
+    const j=await imgCall(spec,pickImgModel(spec)),nm=safeName('flux-'+Date.now().toString(36)+'.jpg');
+    const nf=await makeAsset(nm,j.image,{img:true});P.files.push(nf);P.active=nm;PAGE=nm;chatImage(nf.aid,'Image for: '+spec+' ('+(j.spentCredits?j.spentCredits+' cr':'admin, 0 credits')+', stored on this device)');
+    projSave();renderStudio();refreshPreview();L.step('Saved '+nm,'ok');L.finish('Image ready · '+(j.spentCredits?j.spentCredits+' credits used':'0 credits (admin)'),'ok');bump('studio.flux')
   }catch(e){L.finish(e.message||String(e),'bad')}}
 
 /* ============ shared database: users & platform totals ============ */
