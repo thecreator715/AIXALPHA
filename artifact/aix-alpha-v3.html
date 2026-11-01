@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="aix-backend" content="https://aix-alpha.aixalpha.workers.dev"><meta name="aix-embedded-key" content="">
+<meta charset="utf-8"><meta name="aix-backend" content=""><meta name="aix-embedded-key" content="">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>AIX Alpha v3.0 AI Suite</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -338,6 +338,35 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
 .ar2.cur{color:var(--t);background:#ffffff08}.ar2.cur .sl::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ac);margin-right:8px;animation:curp 1s ease-in-out infinite;vertical-align:1px}
 @keyframes curp{0%,100%{opacity:.25}50%{opacity:1}}
 .ar2.a{color:#f59e0b}
+
+#stmore{display:none}#ckeys{display:none}
+@media(max-width:900px){
+ #vstudio.view{padding-bottom:0!important}
+ #vstudio .stwrap{display:flex;flex-direction:column;gap:6px;padding:6px 8px;box-sizing:border-box;height:calc(100dvh - var(--topH,56px) - var(--navH,56px) - env(safe-area-inset-bottom,0px));overflow:hidden}
+ #vstudio .stbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0;padding:0}
+ #pjnew,#pjren,#pjdel,#pjall,#stsess,#stbal,#vstudio .stbar .sp{display:none!important}
+ #stmore{display:inline-grid;place-items:center;width:38px;height:36px;padding:0;order:2}
+ #pj{order:1;flex:1 1 calc(100% - 50px);min-width:0;height:36px;font-size:13px!important;padding:0 10px}
+ #vstudio .stbar [data-col]{order:3;flex:1 1 20%;min-width:0;height:34px;padding:0 4px;text-align:center;font-size:12px;border-radius:10px}
+ #fw,#stl{flex:1 1 44%;min-width:0;height:32px;font-size:11.5px!important;padding:0 6px;border-radius:10px}
+ #gen{flex:1 1 calc(100% - 64px);min-width:0;height:38px;font-size:14px!important}
+ #gengo{flex:0 0 auto;height:38px;padding:0 14px;white-space:nowrap}#gengo .lbl{display:none}
+ #vstudio .stgrid{flex:1;min-height:0;display:block!important;grid-template-rows:none}
+ #vstudio .stc{height:100%!important;min-height:0!important;margin:0;display:flex;flex-direction:column}
+ #vstudio .stc .sth{padding:6px 8px;gap:4px;flex-wrap:nowrap}
+ #vstudio .stc .sth .btn2{height:32px;min-width:32px;padding:0 8px;display:inline-flex;align-items:center;justify-content:center;gap:4px;font-size:12px}
+ #vstudio .stc .sth .lbl{display:none}#vstudio .stc .sth .seg,#purl{display:none!important}
+ #c-editor .ed{flex:1;min-height:0}
+ #code,#gut{font-size:13px!important;line-height:1.55!important}
+ #diag{flex:none;max-height:64px;overflow:auto}
+ #ckeys.on{display:flex;gap:4px;overflow-x:auto;padding:5px 6px;border-top:1px solid var(--b);background:var(--p);flex:none;scrollbar-width:none}
+ #ckeys button{flex:0 0 auto;min-width:36px;height:34px;border:1px solid var(--b);background:#18181b;color:var(--t);border-radius:8px;font:600 14px ui-monospace,monospace;padding:0 10px}
+ #c-prev .pvw{flex:1;min-height:0}#c-prev iframe{width:100%;height:100%}
+ #c-files #flist{flex:1;min-height:0;overflow:auto}
+ #c-files .sth[style*="border-top"]{display:grid!important;grid-template-columns:repeat(3,1fr);gap:6px}
+ #stchat{flex:1;min-height:0;overflow:auto}
+ #pstat{display:none}
+}
 </style>
 </head>
 <body>
@@ -370,7 +399,7 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
     <div class="view" id="vana"><div class="pad" id="anabody"></div></div>
     <div class="view" id="vstudio"><div class="stwrap">
   <div class="stbar mono">
-    <select id="pj"></select><button class="btn2" id="pjnew">＋ New</button><button class="btn2" id="pjren">Rename</button><button class="btn2" id="pjdel">Delete</button><button class="btn2" id="pjall">All apps</button><span id="stsess" class="badge mono" style="margin-left:6px"></span><span id="stbal" class="badge mono" style="margin-left:6px"></span>
+    <select id="pj"></select><button class="btn2" id="stmore" aria-label="Project menu"></button><button class="btn2" id="pjnew">＋ New</button><button class="btn2" id="pjren">Rename</button><button class="btn2" id="pjdel">Delete</button><button class="btn2" id="pjall">All apps</button><span id="stsess" class="badge mono" style="margin-left:6px"></span><span id="stbal" class="badge mono" style="margin-left:6px"></span>
     <span class="sp"></span>
     <button class="tg on" data-col="files">Files</button><button class="tg on" data-col="editor">Editor</button><button class="tg on" data-col="prev">Preview</button><button class="tg on" data-col="chat">Chat</button>
   </div>
@@ -381,7 +410,7 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
     <div class="stc" id="c-editor"><div class="sth mono"><b id="fname">index.html</b><span class="grow"></span><button class="btn2" id="hist">🕘 History</button><button class="btn2" id="srun">▶ Run</button><button class="btn2" id="scopy">Copy</button></div>
       <div class="ed"><pre id="gut" class="mono"></pre><textarea id="code" spellcheck="false" class="mono"></textarea></div>
       <div id="selbar" class="sth mono" style="display:none"><span id="seltxt" style="color:var(--ac)"></span><input id="selp" placeholder="Edit selection with AI…"><button class="btn" id="selgo">Apply</button></div>
-      <div id="diag" class="mono"></div></div>
+      <div id="ckeys" class="mono"></div><div id="diag" class="mono"></div></div>
     <div class="stc" id="c-prev"><div class="sth mono"><button class="btn2" id="pback">←</button><button class="btn2" id="pfwd">→</button><button class="btn2" id="preload">⟳</button><input id="purl" readonly><div class="seg" id="dev"><button data-d="desktop" class="on">🖥</button><button data-d="tablet">▭</button><button data-d="mobile">📱</button></div><button class="btn2" id="pdbg">🩺 Debug</button><button class="btn2" id="paudit" title="Accessibility, SEO, performance and responsive audit">✔ Audit</button><button class="btn2" id="pedit">✎ Edit</button><button class="btn2" id="pcons">Console</button><span id="pstat" class="badge mono">—</span></div>
       <div class="pvw"><iframe id="sf" sandbox="allow-scripts"></iframe></div><div id="blog" class="mono" style="display:none!important"></div>
       <div id="epanel" class="mono" style="display:none"></div><div id="cons" class="mono" style="display:none"></div></div>
@@ -423,7 +452,7 @@ const PRESETS=[
 ];
 
 /* ============ engine config ============ */
-const ICP={menu:'M4 7h16M4 12h16M4 17h16',chat:'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z',studio:'M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14',tools:'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',more:'M5 12h.01M12 12h.01M19 12h.01',attach:'M21 11.5l-8.6 8.6a5 5 0 0 1-7-7l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7L10 17.8a1.7 1.7 0 0 1-2.4-2.4l7.7-7.7',mic:'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3',shield:'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',coins:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9 12h6M12 9v6',pulse:'M3 12h4l3-8 4 16 3-8h4',personas:'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.7 1.8L21.5 18.5l-1.8.7L19 21l-.7-1.8-1.8-.7 1.8-.7z',connect:'M9 3v5M15 3v5M7 8h10v3a5 5 0 0 1-10 0zM12 16v5',sites:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18',ana:'M5 20V11M12 20V4M19 20v-6',credits:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9.5 12h5M12 9.5v5',members:'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z',users:'M16 19v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1M9.5 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM21 19v-1a4 4 0 0 0-3-3.9M16 4.1a3 3 0 0 1 0 5.8',about:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v5M12 8h.01',key:'M15 7a4 4 0 1 1-3.5 6L4 20.5V18H2v-2h2v-2l2.5-2.5A4 4 0 0 1 15 7z',gift:'M4 11h16v9H4zM3 8h18v3H3zM12 8v12M12 8C9 8 8 5 10 4.5S12 7 12 8zM12 8c3 0 4-3 2-3.5S12 7 12 8z'};
+const ICP={menu:'M4 7h16M4 12h16M4 17h16',chat:'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z',studio:'M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14',tools:'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',more:'M5 12h.01M12 12h.01M19 12h.01',attach:'M21 11.5l-8.6 8.6a5 5 0 0 1-7-7l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7L10 17.8a1.7 1.7 0 0 1-2.4-2.4l7.7-7.7',mic:'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3',shield:'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',coins:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9 12h6M12 9v6',pulse:'M3 12h4l3-8 4 16 3-8h4',history:'M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 7v5l3 2',play:'M7 5l12 7-12 7z',copy:'M9 9h11v11H9zM5 15V5h10',pencil:'M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z',term:'M4 5h16v14H4zM8 10l3 2-3 2M13 15h3',back:'M15 5l-7 7 7 7',fwd:'M9 5l7 7-7 7',reload:'M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5',bug:'M9 9a3 3 0 0 1 6 0v6a3 3 0 0 1-6 0zM5 12h4M15 12h4M6 7l3 2M18 7l-3 2M6 18l3-2M18 18l-3-2',bolt:'M13 3L5 14h6l-1 7 8-11h-6z',personas:'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.7 1.8L21.5 18.5l-1.8.7L19 21l-.7-1.8-1.8-.7 1.8-.7z',connect:'M9 3v5M15 3v5M7 8h10v3a5 5 0 0 1-10 0zM12 16v5',sites:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18',ana:'M5 20V11M12 20V4M19 20v-6',credits:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9.5 12h5M12 9.5v5',members:'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z',users:'M16 19v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1M9.5 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM21 19v-1a4 4 0 0 0-3-3.9M16 4.1a3 3 0 0 1 0 5.8',about:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v5M12 8h.01',key:'M15 7a4 4 0 1 1-3.5 6L4 20.5V18H2v-2h2v-2l2.5-2.5A4 4 0 0 1 15 7z',gift:'M4 11h16v9H4zM3 8h18v3H3zM12 8v12M12 8C9 8 8 5 10 4.5S12 7 12 8zM12 8c3 0 4-3 2-3.5S12 7 12 8z'};
 const ico=n=>`<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICP[n]}"/></svg>`;
 const MODES={eco:{refines:1,hist:1},balanced:{refines:2,hist:1.5},thorough:{refines:3,hist:2}};
 const RATE={in:0.10,out:0.50};
@@ -1764,6 +1793,20 @@ $('#bnav').onclick=e=>{const b=e.target.closest('button');if(!b)return;if(b.id==
 $('#scrim').onclick=()=>{$('#side').classList.remove('open');$('#scrim').classList.remove('on')};
 $('#menu').onclick=()=>{$('#side').classList.toggle('open');$('#scrim').classList.toggle('on',$('#side').classList.contains('open'))};
 $('#hub').onclick=()=>setView('personas');$('#about').onclick=()=>setView('about');
+
+/* ===== Studio mobile: icon toolbar, code keys, project menu, fit-to-viewport ===== */
+(function(){
+  const set=(id,n,l)=>{const e=$('#'+id);if(e)e.innerHTML=ico(n)+(l?'<span class="lbl"> '+l+'</span>':'')};
+  set('stmore','more');set('hist','history','History');set('srun','play','Run');set('scopy','copy','Copy');
+  set('pback','back');set('pfwd','fwd');set('preload','reload');set('pdbg','bug','Debug');set('paudit','shield','Audit');set('pedit','pencil','Edit');set('gengo','bolt','Generate');
+  const ck=$('#ckeys');if(ck){ck.innerHTML=['Tab','{','}','(',')','[',']','<','>','/','"',"'",';','=',':','.','#','$','`','!'].map(k=>`<button type="button" data-k="${k==='Tab'?'\t':k}">${k}</button>`).join('');
+    const ta=$('#code');const ins=t=>{const a=ta.selectionStart,b=ta.selectionEnd;ta.setRangeText(t==='\t'?'  ':t,a,b,'end');ta.dispatchEvent(new Event('input',{bubbles:true}))};
+    ck.addEventListener('pointerdown',e=>{const b=e.target.closest('button');if(!b)return;e.preventDefault();ins(b.dataset.k)});
+    ta.addEventListener('focus',()=>ck.classList.add('on'));ta.addEventListener('blur',()=>setTimeout(()=>ck.classList.remove('on'),150))}
+  const fit=()=>{const r=document.documentElement.style;r.setProperty('--topH',(($('#top')||{}).offsetHeight||56)+'px');r.setProperty('--navH',(($('#bnav')||{}).offsetHeight||0)+'px')};
+  fit();addEventListener('resize',fit);setTimeout(fit,300);addEventListener('orientationchange',()=>setTimeout(fit,200));
+  const sm=$('#stmore');if(sm)sm.onclick=()=>{const d=dialog(`<h3 style="margin:0 0 10px">Project</h3><div class="mgrid" style="grid-template-columns:repeat(2,1fr)">${[['pjnew','＋','New app'],['pjren','','Rename'],['pjdel','','Delete'],['pjall','','All apps']].map(([id,,l])=>`<button class="mtile" data-pa="${id}" style="min-height:56px"><span class="mtl" style="font-size:13px">${l}</span></button>`).join('')}</div><div class="mono" style="font-size:11px;color:var(--m);margin-top:10px">${esc(($('#stsess')||{}).textContent||'')}<br>${esc(($('#stbal')||{}).textContent||'')}</div><div style="text-align:right;margin-top:10px"><button class="btn2" data-close>Close</button></div>`);d.onclick=e=>{const b=e.target.closest('[data-pa]');if(b){d.close();const t=$('#'+b.dataset.pa);if(t)t.click()}}};
+})();
 wireStudio();$('#hist').onclick=openHistory;$('#pdbg').onclick=openDebugDialog;$('#paudit').onclick=openAudit;wirePersonas();wireTools();wireConnect();wireSites();wireCredits();wireMembers();refreshEst(false);
 addEventListener('resize',()=>{if($('#vstudio').classList.contains('on'))renderStudio()});
 
