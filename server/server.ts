@@ -34,7 +34,7 @@ app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 // Transport: real Claude Haiku, or an explicit offline mock (AIX_MOCK=1)
 // ----------------------------------------------------
 const MOCK = process.env.AIX_MOCK === '1';
-const API_KEY = process.env.ANTHROPIC_API_KEY || '';
+const API_KEY = ((process.env.ANTHROPIC_API_KEY || '').match(/sk-ant-[A-Za-z0-9_-]+/) || [process.env.ANTHROPIC_API_KEY || ''])[0];
 const transport: Transport | null = MOCK ? createMockTransport() : API_KEY ? createAnthropicTransport(API_KEY) : null;
 
 // ----------------------------------------------------
@@ -70,7 +70,7 @@ app.post('/api/sample', rateLimit, async (req, res) => {
   const content: any[] = Array.isArray(req.body?.images) ? req.body.images.slice(0, 4).map((i: any) => ({ type: 'image', source: { type: 'base64', media_type: String(i.media_type || 'image/png'), data: String(i.data || '') } })) : [];
   content.push({ type: 'text', text: prompt });
   const up = await fetch(process.env.AIX_UPSTREAM_URL || 'https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': API_KEY, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: MODEL_ID, max_tokens: maxTok, stream, messages: [{ role: 'user', content }] }) });
-  if (!up.ok) { res.status(up.status === 429 ? 429 : 502).json({ error: 'Model request failed (' + up.status + ').' }); return; }
+  if (!up.ok) { const bad = up.status === 401 || up.status === 403; if (bad) console.error('>>> Anthropic rejected ANTHROPIC_API_KEY (' + up.status + '). Fix .env.local and restart.'); res.status(up.status === 429 ? 429 : 502).json({ error: bad ? 'The server API key was rejected by Anthropic. The owner must fix ANTHROPIC_API_KEY in .env.local.' : 'Model request failed (' + up.status + ').' }); return; }
   const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
   const bill = () => { charge(acct, costUsd(usage), usage.input + usage.output); return { credits: +acct.credits.toFixed(2), spentCredits: +usdToCredits(costUsd(usage)).toFixed(3) }; };
   if (!stream) {

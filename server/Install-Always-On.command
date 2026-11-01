@@ -1,17 +1,11 @@
 #!/usr/bin/env bash
-# Double-click on Mac: makes the AIX ALPHA master node start at login and restart if it ever stops.
+# Double-click on Mac: always-on AIX ALPHA master node (starts at login, restarts if it stops), then opens the app.
 cd "$(dirname "$0")" || exit 1
 DIR="$(pwd)"
-# First-time setup (asks for your API key once, installs packages)
-if [ ! -f .env.local ] || [ ! -d node_modules ]; then
-  echo "First-time setup..."
-  ( ./start-master.sh >/tmp/aix-setup.log 2>&1 & echo $! > /tmp/aix-setup.pid ) 
-  [ -f .env.local ] || { rm -f /tmp/aix-setup.pid; read -rp "Paste your Anthropic API key (sk-ant-...): " KEY
-    ADMIN=$(node -e "console.log(require('crypto').randomBytes(16).toString('hex'))")
-    printf 'ANTHROPIC_API_KEY="%s"\nAIX_ADMIN_TOKEN="%s"\nAIX_ALLOWED_ORIGINS="*"\nAIX_SIGNUP_CREDITS=0\nAIX_DATA_DIR="data"\nPORT=3000\n' "$KEY" "$ADMIN" > .env.local
-    echo "Admin token (keep it): $ADMIN"; }
-  [ -d node_modules ] || npm install --no-audit --no-fund
-fi
+command -v node >/dev/null || { echo "Node 20+ is required: https://nodejs.org"; exit 1; }
+./stop-master.sh >/dev/null 2>&1
+./setup-env.sh || exit 1
+[ -d node_modules ] || npm install --no-audit --no-fund
 PL="$HOME/Library/LaunchAgents/com.aix.alpha.plist"
 mkdir -p "$HOME/Library/LaunchAgents"
 cat > "$PL" <<PLIST
@@ -19,12 +13,14 @@ cat > "$PL" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>Label</key><string>com.aix.alpha</string>
-<key>ProgramArguments</key><array><string>/bin/bash</string><string>-lc</string><string>cd "$DIR" &amp;&amp; ./start-master.sh --public</string></array>
-<key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
+<key>ProgramArguments</key><array><string>/bin/bash</string><string>-lc</string><string>cd "$DIR" &amp;&amp; AIX_NO_OPEN=1 ./start-master.sh --public</string></array>
+<key>RunAtLoad</key><true/><key>KeepAlive</key><true/><key>ThrottleInterval</key><integer>10</integer>
 <key>StandardOutPath</key><string>$DIR/master.log</string><key>StandardErrorPath</key><string>$DIR/master.log</string>
 </dict></plist>
 PLIST
-launchctl unload "$PL" 2>/dev/null; launchctl load "$PL"
-echo ""; echo "AIX ALPHA master node is now always on (starts at login, restarts if it stops)."
-echo "Open: http://localhost:3000/alpha   ·   Public URL appears in: $DIR/master.log"
-echo "To stop it:  launchctl unload $PL"
+launchctl load "$PL"
+echo "Starting..."; for i in $(seq 1 40); do sleep 1; curl -fs http://localhost:3000/api/health >/dev/null 2>&1 && break; done
+open "http://localhost:3000/alpha"
+echo ""; echo "AIX ALPHA master node is always on. App opened in your browser."
+echo "Log (public tunnel address appears here): $DIR/master.log"
+echo "Stop everything: double-click Stop-Master.command"

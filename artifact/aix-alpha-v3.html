@@ -440,7 +440,7 @@ function directSample(){
     for(const im of(o.images||[])){try{const b=im.blob||im;const data=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(String(fr.result).split(',')[1]);fr.readAsDataURL(b)});content.push({type:'image',source:{type:'base64',media_type:b.type||'image/png',data}})}catch{}}
     content.push({type:'text',text:prompt});
     const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:o.signal,headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:MODELK,max_tokens:4096,stream:!!o.onText,messages:[{role:'user',content}]})});
-    if(!res.ok){let m='';try{m=(await res.json()).error.message}catch{}if(res.status===401){store.set(KEYK,'');sampleFn=null;setStatus()}throw new Error('API '+res.status+': '+(m||'request failed'))}
+    if(!res.ok){let m='';try{m=(await res.json()).error.message}catch{}if(res.status===401){store.set(KEYK,'');sampleFn=null;setStatus();throw new Error('Anthropic rejected this API key (401). Create a fresh key at console.anthropic.com > API Keys, make sure billing is active, and paste it again.')}throw new Error('API '+res.status+': '+(m||'request failed'))}
     if(!o.onText){const j=await res.json();return{text:(j.content||[]).map(c=>c.text||'').join(''),truncated:j.stop_reason==='max_tokens'}}
     const rd=res.body.getReader(),dec=new TextDecoder();let buf='',text='',trunc=false;
     for(;;){const{done,value}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});const lines=buf.split('\n');buf=lines.pop();
@@ -449,7 +449,7 @@ function directSample(){
   f.limits=async()=>({images:true});return f}
 function openKey(force){if(!force)return openAccount();
   const d=dialog(`<h3 style="margin:0 0 8px">Bring AIX online</h3><p style="font-size:12.5px;color:var(--m);margin:0 0 8px">This page runs outside claude.ai, so it connects straight to the model with your own Anthropic API key. The key is saved only in this browser and sent only to api.anthropic.com.</p><label>Anthropic API key</label><input id="akey" type="password" placeholder="sk-ant-..." value="${esc(store.get(KEYK,''))}"><div style="display:flex;gap:8px;justify-content:space-between"><button class="btn2" id="aclr">Remove key</button><span><button class="btn2" data-close>Cancel</button> <button class="btn" id="asave">Save and connect</button></span></div>`);
-  $('#asave').onclick=()=>{const k=$('#akey').value.trim();if(!k)return toast('Paste a key first');store.set(KEYK,k);sampleFn=directSample();setStatus();toast('AIX is online');d.close()};
+  $('#asave').onclick=()=>{const km=$('#akey').value.match(/sk-ant-[A-Za-z0-9_-]+/),k=km?km[0]:$('#akey').value.trim();if(k&&!/^sk-ant-/.test(k))return toast('That does not look like an Anthropic key (starts with sk-ant-)');if(!k)return toast('Paste a key first');store.set(KEYK,k);sampleFn=directSample();setStatus();toast('AIX is online');d.close()};
   $('#aclr').onclick=()=>{store.set(KEYK,'');if(sampleFn&&!window.claude)sampleFn=null;setStatus();d.close()};
 }
 async function ask(promptStr,onText,signal,images,tools){
