@@ -190,19 +190,24 @@ export default {
 // Free FLUX.1 [schnell] images on Workers AI (shared free allowance); per-user daily cap, no credits charged.
 async function image(env, req) {
   const a = await authed(env, req);
-  const ident = a ? a.email : 'ip:' + (req.headers.get('cf-connecting-ip') || 'unknown');
+  if (!a) return json(env, req, { error: 'Sign in to generate images (1 credit each).' }, 401);
   if (!env.AI) return json(env, req, { error: 'Image generation is not enabled on this server' }, 501);
   let b; try { b = await req.json(); } catch { return json(env, req, { error: 'bad request' }, 400); }
   const prompt = String(b.prompt || '').slice(0, 1000).trim();
   if (!prompt) return json(env, req, { error: 'Describe the image' }, 400);
-  const cap = a ? (owners(env).includes(a.email) ? 1000 : parseInt(env.IMAGE_DAILY || '10', 10)) : parseInt(env.IMAGE_GUEST_DAILY || '3', 10);
-  const day = new Date().toISOString().slice(0, 10), key = 'img:' + ident + ':' + day;
-  const row = await env.DB.prepare('SELECT v FROM settings WHERE k=?').bind(key).first();
-  const used = parseInt((row && row.v) || '0', 10);
-  if (used >= cap) return json(env, req, { error: 'Daily free image limit reached (' + cap + ')' + (a ? '' : '. Sign in for more') + '. Try again tomorrow.' }, 429);
+  const owner = owners(env).includes(a.email);
+  if (!owner) {
+    const up = await env.DB.prepare('UPDATE users SET credits=credits-1 WHERE email=? AND credits>=1').bind(a.email).run();
+    if (!(up.meta && up.meta.changes > 0)) return json(env, req, { error: 'Out of credits. An image costs 1 credit.' }, 402);
+  }
   try {
     const out = await env.AI.run('@cf/black-forest-labs/flux-1-schnell', { prompt, steps: Math.min(8, Math.max(1, +b.steps || 4)) });
-    await env.DB.prepare('INSERT INTO settings(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v').bind(key, String(used + 1)).run();
-    return json(env, req, { image: 'data:image/jpeg;base64,' + out.image, left: cap - used - 1 });
-  } catch (e) { return json(env, req, { error: 'Image model error: ' + (e.message || e) }, 502); }
+    if (!out || !out.image) throw new Error('no image returned');
+    if (!owner) await env.DB.prepare('INSERT INTO usage(email,at,input,output,credits) VALUES(?,?,0,0,1)').bind(a.email, new Date().toISOString()).run();
+    const f = await getUser(env, a.email);
+    return json(env, req, { image: 'data:image/jpeg;base64,' + out.image, credits: +Number(f.credits).toFixed(2), spentCredits: owner ? 0 : 1 });
+  } catch (e) {
+    if (!owner) await env.DB.prepare('UPDATE users SET credits=credits+1 WHERE email=?').bind(a.email).run();
+    return json(env, req, { error: 'Image model error: ' + (e.message || e) }, 502);
+  }
 }
