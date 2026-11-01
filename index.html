@@ -411,6 +411,7 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
         <b class="lp">↻ LOOP</b>
         <div class="seg" id="modes"><button data-m="auto" title="Reasoning mode: picks the best mode, depth and evaluator for each reply, ignoring credit cost">AUTO</button><button data-m="eco" class="on">ECO</button><button data-m="balanced">BALANCED</button><button data-m="thorough">THOROUGH</button></div>
         <button class="tg" id="evalb" title="One tiny reviewer call on DEEP answers"></button>
+        <button class="tg" id="imgb" title="Image mode: every message you send is turned into a free FLUX image (0 credits). Sign in to use the AIX server."></button>
         <button class="tg" id="webb" title="Live web search: the model may search the internet for current info. About 7 credits per search (max 3 per reply). Needs 8+ credits."></button>
         <button class="tg" id="estb" title="Estimated credits per reply for each mode"></button><div class="meter"><div class="track"><div class="fill" id="fill"></div></div><span id="spent">0 / 178 cr</span></div>
       </div><div id="estp"></div><div class="mono" id="estline"></div><div class="mono" id="sub" style="font-size:10px;color:#52525b;padding:3px 4px"></div></div>
@@ -472,7 +473,7 @@ const PRESETS=[
 ];
 
 /* ============ engine config ============ */
-const ICP={menu:'M4 7h16M4 12h16M4 17h16',chat:'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z',studio:'M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14',tools:'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',more:'M5 12h.01M12 12h.01M19 12h.01',attach:'M21 11.5l-8.6 8.6a5 5 0 0 1-7-7l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7L10 17.8a1.7 1.7 0 0 1-2.4-2.4l7.7-7.7',mic:'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3',shield:'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',coins:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9 12h6M12 9v6',pulse:'M3 12h4l3-8 4 16 3-8h4',history:'M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 7v5l3 2',play:'M7 5l12 7-12 7z',copy:'M9 9h11v11H9zM5 15V5h10',pencil:'M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z',term:'M4 5h16v14H4zM8 10l3 2-3 2M13 15h3',back:'M15 5l-7 7 7 7',fwd:'M9 5l7 7-7 7',reload:'M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5',bug:'M9 9a3 3 0 0 1 6 0v6a3 3 0 0 1-6 0zM5 12h4M15 12h4M6 7l3 2M18 7l-3 2M6 18l3-2M18 18l-3-2',bolt:'M13 3L5 14h6l-1 7 8-11h-6z',personas:'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.7 1.8L21.5 18.5l-1.8.7L19 21l-.7-1.8-1.8-.7 1.8-.7z',connect:'M9 3v5M15 3v5M7 8h10v3a5 5 0 0 1-10 0zM12 16v5',sites:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18',ana:'M5 20V11M12 20V4M19 20v-6',credits:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9.5 12h5M12 9.5v5',members:'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z',users:'M16 19v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1M9.5 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM21 19v-1a4 4 0 0 0-3-3.9M16 4.1a3 3 0 0 1 0 5.8',about:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v5M12 8h.01',key:'M15 7a4 4 0 1 1-3.5 6L4 20.5V18H2v-2h2v-2l2.5-2.5A4 4 0 0 1 15 7z',gift:'M4 11h16v9H4zM3 8h18v3H3zM12 8v12M12 8C9 8 8 5 10 4.5S12 7 12 8zM12 8c3 0 4-3 2-3.5S12 7 12 8z'};
+const ICP={menu:'M4 7h16M4 12h16M4 17h16',chat:'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z',studio:'M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14',tools:'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',more:'M5 12h.01M12 12h.01M19 12h.01',attach:'M21 11.5l-8.6 8.6a5 5 0 0 1-7-7l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7L10 17.8a1.7 1.7 0 0 1-2.4-2.4l7.7-7.7',mic:'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3',shield:'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',coins:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9 12h6M12 9v6',pulse:'M3 12h4l3-8 4 16 3-8h4',image:'M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M15 9h.01',history:'M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 7v5l3 2',play:'M7 5l12 7-12 7z',copy:'M9 9h11v11H9zM5 15V5h10',pencil:'M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z',term:'M4 5h16v14H4zM8 10l3 2-3 2M13 15h3',back:'M15 5l-7 7 7 7',fwd:'M9 5l7 7-7 7',reload:'M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5',bug:'M9 9a3 3 0 0 1 6 0v6a3 3 0 0 1-6 0zM5 12h4M15 12h4M6 7l3 2M18 7l-3 2M6 18l3-2M18 18l-3-2',bolt:'M13 3L5 14h6l-1 7 8-11h-6z',personas:'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.7 1.8L21.5 18.5l-1.8.7L19 21l-.7-1.8-1.8-.7 1.8-.7z',connect:'M9 3v5M15 3v5M7 8h10v3a5 5 0 0 1-10 0zM12 16v5',sites:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18',ana:'M5 20V11M12 20V4M19 20v-6',credits:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9.5 12h5M12 9.5v5',members:'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z',users:'M16 19v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1M9.5 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM21 19v-1a4 4 0 0 0-3-3.9M16 4.1a3 3 0 0 1 0 5.8',about:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v5M12 8h.01',key:'M15 7a4 4 0 1 1-3.5 6L4 20.5V18H2v-2h2v-2l2.5-2.5A4 4 0 0 1 15 7z',gift:'M4 11h16v9H4zM3 8h18v3H3zM12 8v12M12 8C9 8 8 5 10 4.5S12 7 12 8zM12 8c3 0 4-3 2-3.5S12 7 12 8z'};
 const ico=n=>`<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICP[n]}"/></svg>`;
 const MODES={eco:{refines:1,hist:1},balanced:{refines:2,hist:1.5},thorough:{refines:3,hist:2}};
 const RATE={in:0.10,out:0.50};
@@ -482,7 +483,7 @@ const CR=0.0014; // 1 credit = 0.0014 of spend; the UI only ever shows credits
 const capCr=x=>Math.floor(x/CR+1e-9);
 const usd=n=>{const c=n/CR;return c===0?'0 cr':c<0.01?'<0.01 cr':(c<10?c.toFixed(2):c<100?c.toFixed(1):String(Math.round(c)))+' cr'};
 const BREV={MICRO:'Style: reply in at most 4 sentences.',STANDARD:'Style: be concise; use a list only to compare or sequence.',DEEP:'Style: complete but economical. No restating the question, no closing summary unless asked.'};
-const S={web:store.get('aix3_web',false),auto:store.get('aix3_auto',false),mode:store.get('aix3_mode','eco'),verify:store.get('aix3_verify','local'),caps:store.get('aix3_caps',{req:0.01,ses:0.25,day:2}),
+const S={img:store.get('aix3_img',false),web:store.get('aix3_web',false),auto:store.get('aix3_auto',false),mode:store.get('aix3_mode','eco'),verify:store.get('aix3_verify','local'),caps:store.get('aix3_caps',{req:0.01,ses:0.25,day:2}),
  chats:store.get('aix3_chats',[]),cur:null,pid:store.get('aix3_pid','aix-alpha-v3'),busy:false,cache:{},ledger:store.get('aix3_ledger',{})};
 const today=()=>new Date().toISOString().slice(0,10);
 const daySpend=()=>S.ledger[today()]||0;
@@ -786,7 +787,7 @@ function updateMeter(){if($('#estline'))refreshEst(false);const c=curChat(),sp=c
   $('#sub').textContent=c&&c.calls?`${c.calls} model calls · ${free} replies at $0 · today ${usd(daySpend())} (estimates)`:'';
   $('#ps').textContent=(personas().find(p=>p.id===S.pid)||PRESETS[0]).name;
   document.querySelectorAll('#modes button').forEach(b=>b.classList.toggle('on',S.auto?b.dataset.m==='auto':b.dataset.m===S.mode));
-  $('#evalb').classList.toggle('on',S.verify==='llm');$('#webb').classList.toggle('on',!!S.web);$('#webb').innerHTML=ico('sites')+'<span class="lbl"> WEB '+(S.web?'ON':'OFF')+'</span>'+(S.web?'<span class="wc">+7</span>':'');$('#evalb').innerHTML=ico('shield')+'<span class="lbl"> EVAL '+(S.verify==='llm'?'ON':'OFF')+'</span>';
+  $('#evalb').classList.toggle('on',S.verify==='llm');$('#imgb').classList.toggle('on',!!S.img);$('#imgb').innerHTML=ico('image')+'<span class="lbl"> IMAGE '+(S.img?'ON':'OFF')+'</span>';$('#webb').classList.toggle('on',!!S.web);$('#webb').innerHTML=ico('sites')+'<span class="lbl"> WEB '+(S.web?'ON':'OFF')+'</span>'+(S.web?'<span class="wc">+7</span>':'');$('#evalb').innerHTML=ico('shield')+'<span class="lbl"> EVAL '+(S.verify==='llm'?'ON':'OFF')+'</span>';
 }
 
 /* ============ send ============ */
@@ -800,7 +801,7 @@ async function send(text,opts={}){
   for(const a of ATT){if(a.type==='text')full+=`\n\n[Attached file: ${a.name}]\n\`\`\`\n${a.text.slice(0,20000)}\n\`\`\``;else if(a.type==='image')imgs.push(a.blob)}
   S.curImages=imgs;ATT=[];renderAtt();text=full;
   c.msgs.push({role:'user',content:text,ts:Date.now()});S.busy=true;$('#send').disabled=true;renderThreads();renderMsgs();
-  if(IMGINTENT.test(text)&&!imgs.length){try{await chatFlux(c,text)}finally{S.busy=false;$('#send').disabled=false;save();renderThreads();renderMsgs()}return}
+  if((S.img||IMGINTENT.test(text))&&!imgs.length){try{await chatFlux(c,text)}finally{S.busy=false;$('#send').disabled=false;save();renderThreads();renderMsgs()}return}
   const live=document.createElement('div');live.className='msg';live.innerHTML='<div class="who mono"><b>AIX ALPHA</b><span class="typing"><i></i><i></i><i></i></span></div><div id="livelog"></div><div class="mono" id="livestat" style="font-size:11px;color:var(--m)"></div><div class="body" id="live"></div><div id="livepvw"></div>';$('#msgs').appendChild(live);$('#chat').scrollTop=1e9;
   try{
     abort=new AbortController();let lastPv=0;const stp=[];const t0=Date.now();let ttl='Planning the answer',openL=true;
@@ -845,6 +846,7 @@ $('#hub').onclick=openHub;$('#set').onclick=openSettings;$('#about').onclick=ope
 $('#modes').onclick=e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.m==='auto'){S.auto=!S.auto;store.set('aix3_auto',S.auto);updateMeter();refreshEst(true);return}S.auto=false;store.set('aix3_auto',false);S.mode=b.dataset.m;store.set('aix3_mode',S.mode);updateMeter();refreshEst(true)};
 const SEARCH_CR=7.2;
 function setWeb(on){S.web=on;store.set('aix3_web',on);updateMeter();refreshEst(false);toast(on?'Live web ON · about 7 credits per search':'Live web off')}
+$('#imgb').onclick=()=>{S.img=!S.img;store.set('aix3_img',S.img);updateMeter();toast(S.img?'Image mode ON · every message becomes a free FLUX image':'Image mode off')};
 $('#webb').onclick=()=>{if(S.web)return setWeb(false);
   const bal=(BACKEND()&&BAL!=null&&!ISOWNER)?`<p style="font-size:12.5px;margin:8px 0 0">Your balance: <b>${(+BAL).toFixed(1)} credits</b>${BAL<8?' <span style="color:#f59e0b">(you need 8+ credits for a web search)</span>':''}</p>`:'';
   const d=dialog(`<h3 style="margin:0 0 8px">${ico('sites')} Live web search costs more</h3>
@@ -1905,13 +1907,13 @@ async function chatFlux(c,text){
   try{
     if(BACKEND()&&store.get(TOKK,'')){try{const r=await fetch(BACKEND()+'/api/image',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+store.get(TOKK,'')},body:JSON.stringify({prompt})});const j=await r.json().catch(()=>({}));if(r.ok&&j.image){data=j.image;via='AIX server'}else if(r.status===429){c.msgs.push({role:'assistant',content:j.error||'Daily free image limit reached.',err:1,ts:Date.now(),dur:Date.now()-t0});return}}catch{}}
     if(!data){const u='https://image.pollinations.ai/prompt/'+encodeURIComponent(prompt)+'?model=flux&width=1024&height=1024&nologo=true&seed='+Math.floor(Math.random()*1e6);
-      try{const r=await fetch(u);if(!r.ok)throw new Error('HTTP '+r.status);data=await readDU(await r.blob());via='Pollinations'}catch{url=u;via='Pollinations (direct)'}}
+      try{const r=await fetch(u);if(!r.ok)throw new Error('HTTP '+r.status);data=await readDU(await r.blob());via='Pollinations'}catch{const ok=await new Promise(res=>{const im=new Image();const t=setTimeout(()=>res(false),25000);im.onload=()=>{clearTimeout(t);res(true)};im.onerror=()=>{clearTimeout(t);res(false)};im.src=u});if(!ok){c.msgs.push({role:'assistant',content:'The free public image service is busy or blocked right now. Sign in with a free account to generate images with the AIX server (FLUX, 0 credits, up to 10 a day).',err:1,ts:Date.now(),dur:Date.now()-t0});setTimeout(()=>{try{openAccount('Sign in to generate images with the AIX server')}catch{}},300);return}url=u;via='Pollinations (direct)'}}
     const msg={role:'assistant',content:`Here's your image: **${subj}**\n\nFLUX · free · 0 credits${via?' · '+via:''} · stored on this device`,ts:Date.now(),dur:Date.now()-t0};
     if(data){const id='a'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);ASSET[id]=data;aput(id,data);msg.aid=id}else msg.imgurl=url;
     c.msgs.push(msg);
   }catch(e){c.msgs.push({role:'assistant',content:'Image generation failed: '+(e.message||e),err:1,ts:Date.now()})}}
 setTimeout(()=>{try{hydAll()}catch{}},400);
-function imgFail(el){const d=document.createElement('div');d.className='mono';d.style.cssText='color:var(--a);padding:8px 0';d.textContent='The free public image service is busy or blocked right now. Sign in with a free account to use the AIX server FLUX instead.';el.replaceWith(d)}
+function imgFail(el){const d=document.createElement('div');d.className='mono';d.style.cssText='color:var(--a);padding:8px 0';d.textContent='The free public image service is busy or blocked right now. Sign in with a free account to use the AIX server FLUX instead.';const a=el.parentNode&&el.parentNode.querySelector('a');if(a)a.remove();el.replaceWith(d)}
 /* ===== Studio assets: 3D (STL/OBJ/FBX) viewer with stylized materials, PDF + text export ===== */
 const BINX=/\.(stl|obj|fbx|pdf|png|jpe?g|webp|gif|webm|mp4)$/i;
 const readDU=f=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(f)});
