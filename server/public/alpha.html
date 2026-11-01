@@ -374,7 +374,7 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
     <span class="sp"></span>
     <button class="tg on" data-col="files">Files</button><button class="tg on" data-col="editor">Editor</button><button class="tg on" data-col="prev">Preview</button><button class="tg on" data-col="chat">Chat</button>
   </div>
-  <div class="stbar mono"><select id="fw"><option value="tailwind">Tailwind</option><option value="vanilla">Vanilla</option><option value="canvas">Canvas</option><option value="threejs">Three.js</option></select><input id="gen" placeholder="Describe an app to generate into index.html…"><button class="btn" id="gengo">⚡ Generate</button></div>
+  <div class="stbar mono"><select id="fw"><option value="tailwind">Tailwind</option><option value="vanilla">Vanilla</option><option value="canvas">Canvas</option><option value="threejs">Three.js</option></select><select id="stl" title="Visual style the AI should design in"><option value="auto">Style: Modern</option><option value="glass">Glass</option><option value="brutal">Brutalist</option><option value="minimal">Minimal</option><option value="neon">Neon / Cyber</option><option value="editorial">Editorial</option><option value="playful">Playful</option><option value="material">Material</option></select><input id="gen" placeholder="Describe an app to generate into index.html…"><button class="btn" id="gengo">⚡ Generate</button></div>
   <div id="stgrid" class="stgrid">
     <div class="stc" id="c-files"><div class="sth mono"><b>FILES</b><span class="grow"></span><button class="btn2" id="fadd">＋</button></div><div id="flist"></div>
       <div class="sth mono" style="border-top:1px solid var(--b);border-bottom:0;flex-wrap:wrap"><button class="btn2" id="fren">Rename</button><button class="btn2" id="fdel">Delete</button><button class="btn2" id="fzip">⬇ ZIP</button><button class="btn2" id="fhtml">⬇ HTML</button><button class="btn2" id="fimp">⬆ Import</button><input type="file" id="fimpi" multiple hidden></div></div>
@@ -382,7 +382,7 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
       <div class="ed"><pre id="gut" class="mono"></pre><textarea id="code" spellcheck="false" class="mono"></textarea></div>
       <div id="selbar" class="sth mono" style="display:none"><span id="seltxt" style="color:var(--ac)"></span><input id="selp" placeholder="Edit selection with AI…"><button class="btn" id="selgo">Apply</button></div>
       <div id="diag" class="mono"></div></div>
-    <div class="stc" id="c-prev"><div class="sth mono"><button class="btn2" id="pback">←</button><button class="btn2" id="pfwd">→</button><button class="btn2" id="preload">⟳</button><input id="purl" readonly><div class="seg" id="dev"><button data-d="desktop" class="on">🖥</button><button data-d="tablet">▭</button><button data-d="mobile">📱</button></div><button class="btn2" id="pdbg">🩺 Debug</button><button class="btn2" id="pedit">✎ Edit</button><button class="btn2" id="pcons">Console</button><span id="pstat" class="badge mono">—</span></div>
+    <div class="stc" id="c-prev"><div class="sth mono"><button class="btn2" id="pback">←</button><button class="btn2" id="pfwd">→</button><button class="btn2" id="preload">⟳</button><input id="purl" readonly><div class="seg" id="dev"><button data-d="desktop" class="on">🖥</button><button data-d="tablet">▭</button><button data-d="mobile">📱</button></div><button class="btn2" id="pdbg">🩺 Debug</button><button class="btn2" id="paudit" title="Accessibility, SEO, performance and responsive audit">✔ Audit</button><button class="btn2" id="pedit">✎ Edit</button><button class="btn2" id="pcons">Console</button><span id="pstat" class="badge mono">—</span></div>
       <div class="pvw"><iframe id="sf" sandbox="allow-scripts"></iframe></div><div id="blog" class="mono" style="display:none!important"></div>
       <div id="epanel" class="mono" style="display:none"></div><div id="cons" class="mono" style="display:none"></div></div>
     <div class="stc" id="c-chat"><div class="sth mono"><b>STUDIO CHAT</b><span class="grow"></span><button class="btn2" id="csz">⤢</button></div><div id="stchat"></div>
@@ -1014,7 +1014,7 @@ function renderStudio(){
   g.style.gridTemplateColumns=(CSZ==='fullscreen'||mob)?'1fr':Object.keys(w).filter(vis).map(k=>w[k]).join(' ');
   ['files','editor','prev','chat'].forEach(k=>$('#c-'+(k)).style.display=(vis(k)&&(CSZ!=='fullscreen'||k==='chat'))?'':'none');
   PAGE=P.files.some(x=>x.name===PAGE)?PAGE:(P.files.find(x=>/\.html?$/.test(x.name))||{name:'index.html'}).name;refreshPreview();renderStChat();renderLogs();updateStudioBal()}
-function renderLogs(){$('#cons').innerHTML=LOGS.length?LOGS.slice(-80).map(l=>`<div class="lg ${l.level}">${esc(l.level.toUpperCase())}: ${esc(l.args)}</div>`).join(''):'<span style="color:var(--m)">Console is empty — logs from the preview appear here.</span>';$('#cons').scrollTop=1e9}
+function renderLogs(){$('#cons').innerHTML=LOGS.length?LOGS.slice(-80).map((l,i)=>`<div class="lg ${l.level}">${esc(l.level.toUpperCase())}: ${esc(l.args)}${l.level==='error'?` <button class="btn2 lgfix" data-lg="${i}" style="padding:1px 8px;margin-left:6px">Fix</button>`:''}</div>`).join(''):'<span style="color:var(--m)">Console is empty — logs from the preview appear here.</span>';$('#cons').scrollTop=1e9}
 function renderStChat(){const c=proj().chat||(proj().chat=[]);$('#stchat').innerHTML=c.length?c.map((m,i)=>{if(m.role==='activity'){const rows=actRows(m.steps.map(x=>[x.text,x.kind])),cur=m.steps[m.steps.length-1],sec=Math.round((m.done?(m.dur||0):Date.now()-m.ts)/1000),lastAct=c.map(x=>x.role).lastIndexOf('activity')===i;return m.done?`<div class="cm"><details class="act2" ${lastAct?'open':''}><summary><span class="adot">✓</span><span>${esc(m.title)} · ${sec}s</span><span class="chev">▾</span></summary><div class="alist">${rows}</div></details></div>`:`<div class="cm"><div class="act2 live"><div class="ah">${SPIN}<span>${esc(friendly(cur?cur.text:m.title))}</span><span class="el">${sec}s</span></div><div class="alist">${rows}</div></div></div>`}return `<div class="cm">${mtools(i,m.role==='user'?'user':'assistant','studio')}<div class="who mono"><b>${m.role==='user'?'YOU':'AIX'}</b></div><div class="body">${md(m.content)}</div></div>`}).join(''):'<div style="color:var(--m);padding:6px" class="mono">Ask AIX about this project. Code blocks have a “→ Studio” button that applies them to the matching file.</div>';$('#stchat').scrollTop=1e9}
 async function stAsk(text){ensureProj();if(S.stEdit!=null){proj().chat.splice(S.stEdit);S.stEdit=null}const p=proj(),f=activeFile();p.chat=p.chat||[];p.chat.push({role:'user',content:text});renderStChat();
   if(/^\/debug\b/i.test(text)||DEBUGRE.test(text)){const res=await debugProject(/^\/debug\b/i.test(text)?text.replace(/^\/debug\s*/i,''):text);p.chat.push({role:'assistant',content:res.summary});projSave();renderStChat();return}
@@ -1062,6 +1062,7 @@ function wireStudio(){
   const fl=$('#c-files');fl.ondragover=e=>{e.preventDefault();fl.style.outline='2px dashed var(--ac)'};fl.ondragleave=()=>fl.style.outline='';fl.ondrop=e=>{e.preventDefault();fl.style.outline='';addFiles(e.dataTransfer.files)};
   $('#pback').onclick=()=>{if(HI>0){HI--;goPage(HIST[HI],false)}};$('#pfwd').onclick=()=>{if(HI<HIST.length-1){HI++;goPage(HIST[HI],false)}};$('#preload').onclick=refreshPreview;
   $('#dev').onclick=e=>{const b=e.target.closest('button');if(!b)return;DEV=b.dataset.d;document.querySelectorAll('#dev button').forEach(x=>x.classList.toggle('on',x===b));$('.pvw').className='pvw '+DEV};
+  $('#cons').onclick=e=>{const b=e.target.closest('.lgfix');if(!b)return;const l=LOGS.slice(-80)[+b.dataset.lg];if(l){P.active=activeFile().name;editWithAI(`Fix this runtime error with the smallest possible edit. Error: ${l.args}`)}};
   $('#pcons').onclick=()=>{const c=$('#cons');c.style.display=c.style.display==='none'?'block':'none';renderLogs()};
   $('#pedit').onclick=()=>{EDIT=!EDIT;$('#pedit').style.borderColor=EDIT?'var(--ac)':'';$('#epanel').style.display=EDIT?'grid':'none';if(EDIT)$('#epanel').innerHTML='<span style="grid-column:1/3;color:var(--m)">Edit mode: click any element in the preview.</span>';$('#sf').contentWindow.postMessage({aixcmd:'edit',on:EDIT},'*')};
   $('#csz').onclick=()=>{CSZ=CSZ==='normal'?'expanded':CSZ==='expanded'?'fullscreen':'normal';renderStudio()};
@@ -1255,7 +1256,9 @@ function lineDiff(a,b){const A=a.split('\n'),B=b.split('\n');
 const diffStats=(a,b)=>{const d=lineDiff(a,b);return{add:d.filter(x=>x[0]==='+').length,del:d.filter(x=>x[0]==='-').length}};
 function snap(label,fname){const f=P.files.find(x=>x.name===(fname||P.active));if(!f)return;const h=proj().history||(proj().history=[]);h.push({id:uid(),ts:Date.now(),file:f.name,label,content:f.content});if(h.length>80)h.shift()}
 function setContent(f,content,label){const prev=f.content;snap(label,f.name);f.content=content;projSave();const s=diffStats(prev,content);LASTCH={name:f.name,prev};return `+${s.add} −${s.del} lines`}
-function toastUndo(msg){const t=$('#toast');t.innerHTML=esc(msg)+' <button id="tundo" style="margin-left:8px;border:0;background:#000;color:#fff;border-radius:6px;padding:2px 10px;font:inherit">Undo</button>';t.classList.add('on','act');clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove('on','act'),8000);
+function showDiff(title,a,b){const df=lineDiff(a,b),keep=new Set();df.forEach(([o],i)=>{if(o!==' ')for(let k=Math.max(0,i-2);k<=Math.min(df.length-1,i+2);k++)keep.add(k)});let last=-2;const rows=df.map((x,i)=>{if(!keep.has(i))return '';const gap=(i-last>1&&last>=0)?'<div class="df" style="opacity:.4;justify-content:center"><span>⋯</span></div>':'';last=i;return gap+`<div class="df ${x[0]}"><span>${x[0]}</span>${esc(x[1])||' '}</div>`}).join('');const st=diffStats(a,b);const d=dialog(`<h3 style="margin:0 0 6px">${esc(title)}</h3><div class="mono" style="font-size:11px;color:var(--m);margin-bottom:8px"><span style="color:var(--g)">+${st.add}</span> <span style="color:var(--r)">−${st.del}</span> lines changed</div><div class="difx mono">${rows||'No differences'}</div><div style="text-align:right;margin-top:8px"><button class="btn2" data-close>Close</button></div>`);return d}
+function toastUndo(msg){const t=$('#toast');t.innerHTML=esc(msg)+' <button id="tdiff" style="margin-left:8px;border:0;background:#27272a;color:#fff;border-radius:6px;padding:2px 10px;font:inherit">Diff</button> <button id="tundo" style="margin-left:4px;border:0;background:#000;color:#fff;border-radius:6px;padding:2px 10px;font:inherit">Undo</button>';t.classList.add('on','act');clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove('on','act'),8000);
+  $('#tdiff').onclick=()=>{if(!LASTCH)return;const f=P.files.find(x=>x.name===LASTCH.name);if(f)showDiff('What changed in '+f.name,LASTCH.prev,f.content)};
   $('#tundo').onclick=()=>{if(!LASTCH)return;const f=P.files.find(x=>x.name===LASTCH.name);if(f){snap('Before undo',f.name);f.content=LASTCH.prev;projSave();renderStudio()}t.classList.remove('on','act');LASTCH=null}}
 let BRAF=0,BTIM=null;
 function startLog(title){ensureProj();const L={role:'activity',title,ts:Date.now(),steps:[],done:false};BLOG.unshift(L);BLOG=BLOG.slice(0,4);const c=proj().chat||(proj().chat=[]);c.push(L);
@@ -1296,12 +1299,23 @@ async function editWithAI(instr,opts={}){ensureProj();
     L.step('Snapshot saved to History','ok');renderStudio();fin('Preview updated','ok');toastUndo(`Edited ${f.name} (${st})`);bump('studio.edit');
     return{summary:`Applied ${ap.ok} edit(s) to ${f.name} (${st}). Nothing else in the file was touched.`+(ap.fail.length?` ${ap.fail.length} edit(s) could not be matched.`:'')}
   }catch(e){fin('Failed: '+(e.message||e.code),'bad');return{summary:'⚠️ '+(e.message||e.code)}}}
+const DESIGN_STYLES={auto:'Modern, clean, confident: soft shadows, 12-16px radii, one strong accent colour, generous whitespace.',glass:'Glassmorphism: translucent layered panels with backdrop-filter blur, subtle 1px light borders, soft gradients, depth through blur.',brutal:'Neo-brutalism: thick 2-3px black borders, hard offset shadows, flat vivid colours, bold chunky type, no blur.',minimal:'Minimal: monochrome with one accent, hairline borders, lots of space, refined typography, almost no shadows.',neon:'Neon cyber: near-black background, glowing accent borders and text-shadows, monospace accents, subtle grid or scanline texture.',editorial:'Editorial: serif display headings, strong typographic hierarchy, wide margins, restrained palette, elegant dividers.',playful:'Playful: rounded shapes, friendly bright palette, bouncy micro-animations, large tappable controls, emoji-free icon shapes via SVG.',material:'Material-inspired: elevation levels, ripple-like press feedback, tonal surfaces, clear FAB/primary actions, 8dp rhythm.'};
+function designBrief(style){return `DESIGN SYSTEM (follow strictly):
+- Define design tokens as CSS custom properties on :root (colours, radii, spacing scale 4/8/12/16/24/32/48, shadows, easing). Reuse them everywhere. Support dark and light via prefers-color-scheme.
+- Typography: system font stack (Inter if available), fluid sizes with clamp(), line-height 1.5, clear hierarchy.
+- Layout: mobile-first, responsive with CSS grid/flex and at least two breakpoints; no horizontal scrolling at 360px; touch targets at least 44px.
+- Complete states for every control: hover, focus-visible (visible outline), active, disabled, loading, empty and error states. Never leave a blank screen: show helpful empty states.
+- Motion: purposeful micro-interactions (150-250ms), and respect prefers-reduced-motion.
+- Accessibility: semantic landmarks (header, main, nav, footer), one h1, labelled form fields, alt text, AA contrast, keyboard operable.
+- Quality: set <html lang>, <title>, meta description and meta viewport. Wrap storage and network calls in try/catch with friendly error UI. No console errors. Keep JS tidy and commented.
+- Visual style: ${DESIGN_STYLES[style]||DESIGN_STYLES.auto}`}
+function buildGenPrompt(fw,spec){const st=($('#stl')||{}).value||'auto';return `Build a complete, self-contained single-file HTML web app using ${fw}. Return only the HTML in one code block.\n\n${designBrief(st)}\n\nSpec: ${spec}`}
 async function stGenerate(spec){
   const fw=$('#fw').value,f=P.files.find(x=>x.name==='index.html')||activeFile();
   if(f.content.trim().length>600&&!REWRITE.test(spec)){const c=await choose('index.html already has content','AIX can apply this as small edits (safest) or replace the whole file. Either way the current version is saved to History.',['Apply as edits','Replace whole file','Cancel']);if(c===0){P.active=f.name;return editWithAI(spec)}if(c!==1)return}
   (proj().chat||(proj().chat=[])).push({role:'user',content:'Build: '+spec});
-  const L=startLog('Building from: '+spec.slice(0,50));L.step('Planning the build for '+f.name+' ('+fw+')');let lastPv=0;
-  try{const r=await engine(`Build a complete, self-contained single-file HTML web app using ${fw}. Return only the HTML in one code block. Spec: ${spec}`,(x,k)=>L.step(stepLabel(x,k),k),x=>{const tx=x.text||'';L.update(`Writing ${f.name}… ${tx.length.toLocaleString()} chars · ${(tx.match(/\n/g)||[]).length+1} lines`);const h=extractHtml(tx);if(h&&Date.now()-lastPv>900){lastPv=Date.now();$('#sf').srcdoc=h+INJ}});
+  const L=startLog('Building from: '+spec.slice(0,50));L.step('Planning the build for '+f.name+' ('+fw+', '+((DESIGN_STYLES[($('#stl')||{}).value]&&$('#stl').selectedOptions[0].textContent.replace('Style: ',''))||'Modern')+' style)');L.step('Applying the design system: tokens, responsive grid, states, accessibility');let lastPv=0;
+  try{const r=await engine(buildGenPrompt(fw,spec),(x,k)=>L.step(stepLabel(x,k),k),x=>{const tx=x.text||'';L.update(`Writing ${f.name}… ${tx.length.toLocaleString()} chars · ${(tx.match(/\n/g)||[]).length+1} lines`);const h=extractHtml(tx);if(h&&Date.now()-lastPv>900){lastPv=Date.now();$('#sf').srcdoc=h+INJ}});
     const m=r.text.match(/```(?:html)?\n([\s\S]*?)```/);if(!m){L.finish('No code returned','bad');return}
     const cs=codeStats(m[1]);L.step(`Finished: ${cs.lines.toLocaleString()} lines · ${cs.scripts} script(s) · ${cs.styles} style block(s)`,'ok');
     const st=setContent(f,m[1],'Generated: '+spec.slice(0,40));P.active=f.name;L.step('Previous version saved to History','ok');renderStudio();L.finish('Preview updated','ok');toastUndo('Generated '+f.name+' ('+st+')');bump('studio.generate')}
@@ -1315,9 +1329,63 @@ function openHistory(){const f=activeFile(),h=(proj().history||[]).filter(x=>x.f
     else if(v=g('data-hr')){const st=setContent(f,v.content,'Before restore');d.close();renderStudio();toastUndo('Restored '+fmtT(v.ts)+' ('+st+')')}}}
 
 
+
+/* ============ Studio Audit: accessibility, SEO, performance, responsive, quality ============ */
+function runAudit(){
+  const iss=[];const files=P.files;const html=files.find(f=>f.name===PAGE)||files.find(f=>/\.html?$/i.test(f.name));if(!html)return{iss,scores:{}};
+  const all=files.map(f=>f.content).join('\n');const h=html.content;
+  const lineOf=(re,src)=>{src=src||h;const m=re.exec(src);if(!m)return 1;return src.slice(0,m.index).split('\n').length};
+  const add=(cat,sev,msg,fix,re)=>iss.push({cat,sev,msg,fix,line:re?lineOf(re):1,file:html.name});
+  const css=(h.match(/<style[\s\S]*?<\/style>/gi)||[]).join('\n')+files.filter(f=>/\.css$/i.test(f.name)).map(f=>f.content).join('\n');
+  // Accessibility
+  const imgs=[...h.matchAll(/<img\b[^>]*>/gi)].filter(m=>!/\balt\s*=/.test(m[0]));if(imgs.length)add('Accessibility','high',`${imgs.length} image${imgs.length>1?'s':''} without alt text`,'Add meaningful alt text to every <img> (alt="" only for purely decorative images).',/<img\b(?![^>]*\balt\s*=)[^>]*>/i);
+  const ctl=[...h.matchAll(/<(input|textarea|select)\b[^>]*>/gi)].filter(m=>!/type\s*=\s*["'](hidden|submit|button|reset|checkbox|radio)["']/i.test(m[0])&&!/aria-label|aria-labelledby|title\s*=/.test(m[0])&&!(/\bid\s*=\s*["']([^"']+)["']/.exec(m[0])&&new RegExp('<label[^>]*for\\s*=\\s*["\']'+(/\bid\s*=\s*["']([^"']+)["']/.exec(m[0])||[])[1]+'["\']','i').test(h)));if(ctl.length)add('Accessibility','high',`${ctl.length} form field${ctl.length>1?'s':''} without a label`,'Give every input/textarea/select a visible <label for> or an aria-label.',/<(input|textarea|select)\b/i);
+  if(/<button\b[^>]*>\s*<\/button>/i.test(h))add('Accessibility','med','A button has no text or accessible name','Give icon-only buttons an aria-label.',/<button\b[^>]*>\s*<\/button>/i);
+  if(!/<html[^>]*\blang=/i.test(h))add('Accessibility','med','The page has no language attribute','Add lang="en" to the <html> element.',/<html/i);
+  if(!/<main\b|role=["']main["']/i.test(h))add('Accessibility','low','No <main> landmark','Wrap the primary content in a <main> element.');
+  if(/tabindex\s*=\s*["']?[1-9]/i.test(h))add('Accessibility','med','Positive tabindex values break natural keyboard order','Remove positive tabindex values; use DOM order instead.',/tabindex\s*=\s*["']?[1-9]/i);
+  if(!/:focus(-visible)?\b/.test(css)&&/<(button|a|input)\b/i.test(h))add('Accessibility','med','No visible focus styles','Add clear :focus-visible outlines for keyboard users.');
+  if(/(animation|transition)\s*:/.test(css)&&!/prefers-reduced-motion/.test(css))add('Accessibility','low','Animations ignore prefers-reduced-motion','Wrap animations in @media (prefers-reduced-motion: no-preference) or disable them under reduce.');
+  // SEO
+  if(!/<title>\s*[^<\s][^<]*<\/title>/i.test(h))add('SEO','high','Missing or empty <title>','Add a descriptive <title>.',/<head/i);
+  if(!/<meta[^>]+name=["']description["']/i.test(h))add('SEO','med','Missing meta description','Add <meta name="description" content="..."> (110-160 characters).',/<head/i);
+  const h1=(h.match(/<h1\b/gi)||[]).length;if(h1===0)add('SEO','med','No <h1> heading','Add one clear <h1> for the page.');else if(h1>1)add('SEO','low',`${h1} <h1> headings (use one)`,'Keep a single <h1>; make the others <h2>.');
+  const hs=[...h.matchAll(/<h([1-6])\b/gi)].map(m=>+m[1]);if(hs.some((x,i)=>i&&x-hs[i-1]>1))add('SEO','low','Heading levels skip (e.g. h1 to h3)','Fix the heading order so levels go down one at a time.');
+  if(!/<meta[^>]+charset/i.test(h))add('SEO','low','No charset declared','Add <meta charset="utf-8"> at the top of <head>.',/<head/i);
+  // Responsive
+  if(!/<meta[^>]+name=["']viewport["']/i.test(h))add('Responsive','high','No viewport meta tag, so phones show a zoomed-out page','Add <meta name="viewport" content="width=device-width, initial-scale=1">.',/<head/i);
+  if(!/@media|clamp\(|minmax\(|auto-fit|auto-fill|flex-wrap/.test(css+h))add('Responsive','med','No responsive rules found','Add responsive layout: mobile-first CSS with @media breakpoints, flex-wrap or grid auto-fit.');
+  const fw=(css.match(/(?<![-\w])width\s*:\s*\d{3,4}px/g)||[]).length;if(fw)add('Responsive','med',`${fw} fixed pixel width${fw>1?'s':''} of 100px or more may overflow phones`,'Replace large fixed widths with max-width, %, rem or clamp().',/(?<![-\w])width\s*:\s*\d{3,4}px/);
+  if(/\b100vw\b/.test(css+h))add('Responsive','low','100vw can cause horizontal scrollbars','Use 100% instead of 100vw for widths.',/100vw/);
+  // Performance
+  if(new Blob([all]).size>250000)add('Performance','med','Large source ('+Math.round(all.length/1024)+' KB)','Split or trim large inline scripts, styles and data.');
+  if(/data:[a-z/+-]+;base64,[A-Za-z0-9+/=]{60000,}/.test(all))add('Performance','med','Large base64 image embedded in the code','Use a smaller or external image instead of a large inline data URI.');
+  const imgn=(h.match(/<img\b/gi)||[]).length;if(imgn>3&&!/loading\s*=\s*["']lazy/i.test(h))add('Performance','low','Many images without lazy loading','Add loading="lazy" to below-the-fold images.');
+  if(/<script\b(?![^>]*(defer|async|type=["']module))[^>]*\bsrc=/i.test(h.split('</head>')[0]||''))add('Performance','low','Render-blocking script in <head>','Add defer to external scripts or move them to the end of <body>.',/<script\b[^>]*\bsrc=/i);
+  if(/document\.write\(/.test(all))add('Performance','med','document.write is slow and unsafe','Replace document.write with DOM methods.',/document\.write/);
+  // Quality
+  const tb=[...h.matchAll(/<a\b[^>]*target=["']_blank["'][^>]*>/gi)].filter(m=>!/rel=["'][^"']*noopener/i.test(m[0]));if(tb.length)add('Quality','med',`${tb.length} link${tb.length>1?'s':''} open a new tab without rel="noopener"`,'Add rel="noopener noreferrer" to target="_blank" links.',/<a\b[^>]*target=["']_blank["']/i);
+  const nf=(all.match(/\bfetch\(/g)||[]).length,nc=(all.match(/\.catch\(|catch\s*[({]/g)||[]).length;if(nf&&!nc)add('Quality','high','Network calls have no error handling','Wrap fetch calls in try/catch (or .catch) and show a friendly error state.',/\bfetch\(/);
+  if(/\balert\(/.test(all))add('Quality','low','alert() blocks the page','Replace alert() with an inline message or toast.',/\balert\(/);
+  const cl=(all.match(/console\.log\(/g)||[]).length;if(cl>5)add('Quality','low',`${cl} console.log calls left in the code`,'Remove debugging console.log calls.',/console\.log\(/);
+  const cats=['Accessibility','SEO','Responsive','Performance','Quality'],scores={};
+  cats.forEach(c=>{const x=iss.filter(i=>i.cat===c);scores[c]=Math.max(0,100-x.filter(i=>i.sev==='high').length*22-x.filter(i=>i.sev==='med').length*10-x.filter(i=>i.sev==='low').length*4)});
+  return{iss,scores}}
+function jumpLine(n,file){if(file&&file!==P.active){P.active=file;renderStudio()}const c=$('#code');if(!c)return;const ls=c.value.split('\n');let idx=0;for(let i=0;i<Math.min(n-1,ls.length);i++)idx+=ls[i].length+1;c.focus();c.setSelectionRange(idx,idx+(ls[n-1]||'').length);const lh=parseFloat(getComputedStyle(c).lineHeight)||20;c.scrollTop=Math.max(0,(n-4)*lh)}
+function openAudit(){
+  const {iss,scores}=runAudit();const cats=Object.keys(scores);const avg=cats.length?Math.round(cats.reduce((a,c)=>a+scores[c],0)/cats.length):0;
+  const col=v=>v>=90?'var(--g)':v>=70?'#f59e0b':'var(--r)';const sev={high:'var(--r)',med:'#f59e0b',low:'var(--m)'};
+  const order={high:0,med:1,low:2};iss.sort((a,b)=>order[a.sev]-order[b.sev]);
+  const d=dialog(`<h3 style="margin:0 0 8px">${ico('shield')} Project audit</h3>
+  <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px"><div style="font-size:38px;font-weight:800;color:${col(avg)};line-height:1">${avg}</div><div style="font-size:12px;color:var(--m)">overall score<br>${iss.length?iss.length+' thing'+(iss.length>1?'s':'')+' to improve':'Nothing to fix. Nice work.'}</div></div>
+  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">${cats.map(c=>`<span class="chip mono" style="border-color:${col(scores[c])}">${c} <b style="color:${col(scores[c])}">${scores[c]}</b></span>`).join('')}</div>
+  <div style="max-height:46vh;overflow:auto">${iss.map((i,n)=>`<div class="card2" style="margin:6px 0;display:flex;gap:8px;align-items:flex-start"><span style="width:8px;height:8px;border-radius:50%;background:${sev[i.sev]};margin-top:6px;flex:none"></span><div style="flex:1;min-width:0;font-size:12.5px"><div>${esc(i.msg)}</div><div class="mono" style="font-size:10px;color:var(--m)">${i.cat} · line ${i.line}</div></div><div style="display:flex;gap:6px;flex:none"><button class="btn2" data-aj="${n}" style="padding:3px 8px">Go</button><button class="btn" data-af="${n}" style="padding:3px 10px">Fix</button></div></div>`).join('')}</div>
+  <div style="display:flex;gap:8px;justify-content:space-between;margin-top:10px"><button class="btn2" data-close>Close</button>${iss.length?`<button class="btn" id="afall">Fix all ${iss.length} with AI</button>`:''}</div>`);
+  d.onclick=e=>{const j=e.target.closest('[data-aj]'),f=e.target.closest('[data-af]');if(j){const i=iss[+j.dataset.aj];d.close();setView('studio');jumpLine(i.line,i.file)}else if(f){const i=iss[+f.dataset.af];d.close();setView('studio');P.active=i.file;editWithAI(i.fix+' Make the smallest possible edit.')}else if(e.target.id==='afall'){d.close();setView('studio');P.active=iss[0].file;editWithAI('Fix these audit findings with small targeted edits, changing nothing else:\n'+iss.map((i,n)=>`${n+1}. [${i.cat}] ${i.msg}: ${i.fix}`).join('\n'))}}}
 /* ============ smart debugger: static checks, sample API data, self-healing loop ============ */
 let NETLOG=new Map(),READYRES=null,DBG=false,PSTATE={ok:true};
 const DEBUGRE=/\b(debug|bugs?|errors?|broken|not working|doesn'?t work|isn'?t working|unable to|can'?t (load|see|find)|won'?t (load|work)|fails?|failed|blank|crash\w*|exception|fix (all|errors?|everything|bugs?|problems?))\b/i;
+const stl0=store.get('aix3_style','auto');try{$('#stl').value=stl0;$('#stl').onchange=e=>store.set('aix3_style',e.target.value)}catch{}
 function toastBtn(msg,label,fn){if(!$('#vstudio').classList.contains('on'))return;const t=$('#toast');t.innerHTML=esc(msg)+` <button id="tbtn" style="margin-left:8px;border:0;background:#000;color:#fff;border-radius:6px;padding:2px 10px;font:inherit">${esc(label)}</button>`;t.classList.add('on','act');clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove('on','act'),9000);$('#tbtn').onclick=()=>{t.classList.remove('on','act');fn()}}
 function settle(){return new Promise(res=>{let done=false;const fin=()=>{if(done)return;done=true;setTimeout(res,800)};READYRES=fin;setTimeout(fin,3500)})}
 const mockMap=()=>proj().mocks||(proj().mocks={});
@@ -1696,7 +1764,7 @@ $('#bnav').onclick=e=>{const b=e.target.closest('button');if(!b)return;if(b.id==
 $('#scrim').onclick=()=>{$('#side').classList.remove('open');$('#scrim').classList.remove('on')};
 $('#menu').onclick=()=>{$('#side').classList.toggle('open');$('#scrim').classList.toggle('on',$('#side').classList.contains('open'))};
 $('#hub').onclick=()=>setView('personas');$('#about').onclick=()=>setView('about');
-wireStudio();$('#hist').onclick=openHistory;$('#pdbg').onclick=openDebugDialog;wirePersonas();wireTools();wireConnect();wireSites();wireCredits();wireMembers();refreshEst(false);
+wireStudio();$('#hist').onclick=openHistory;$('#pdbg').onclick=openDebugDialog;$('#paudit').onclick=openAudit;wirePersonas();wireTools();wireConnect();wireSites();wireCredits();wireMembers();refreshEst(false);
 addEventListener('resize',()=>{if($('#vstudio').classList.contains('on'))renderStudio()});
 
 /* ============ shared database: users & platform totals ============ */
