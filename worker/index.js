@@ -15,24 +15,26 @@ const cors = (env, req) => {
 const json = (env, req, body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...cors(env, req) } });
 const sha = async (s) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(s)))].map((b) => b.toString(16).padStart(2, '0')).join('');
 const owners = (env) => (env.OWNER_EMAILS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
-const view = (a) => ({ email: a.email, credits: +a.credits.toFixed(2), tokens: a.tokens, requests: a.requests });
-const getUser = async (env, email) => (await env.AIX.get('u:' + email, 'json')) || null;
-const putUser = (env, a) => env.AIX.put('u:' + a.email, JSON.stringify(a));
+const view = (a) => ({ email: a.email, credits: +Number(a.credits).toFixed(2), tokens: a.tokens, requests: a.requests });
+const getUser = (env, email) => env.DB.prepare('SELECT * FROM users WHERE email=?').bind(email).first();
 async function authed(env, req) {
   const h = req.headers.get('authorization') || '';
   const t = h.startsWith('Bearer ') ? h.slice(7).trim() : '';
   if (!t) return null;
-  const email = await env.AIX.get('t:' + (await sha(t)));
-  return email ? getUser(env, email) : null;
+  return env.DB.prepare('SELECT * FROM users WHERE token_hash=?').bind(await sha(t)).first();
 }
 const costUsd = (u) => ((u.input || 0) * PRICE.in + (u.output || 0) * PRICE.out + (u.cacheRead || 0) * PRICE.cr + (u.cacheWrite || 0) * PRICE.cw) / 1e6;
 
+// Atomic in SQL: no lost updates when requests overlap.
 async function charge(env, a, usage) {
-  const fresh = (await getUser(env, a.email)) || a;                      // re-read to limit lost updates
-  const usd = costUsd(usage), cr = usd / CREDIT_USD;
-  fresh.tokens += (usage.input || 0) + (usage.output || 0); fresh.requests++; fresh.last = new Date().toISOString();
-  if (!owners(env).includes(fresh.email)) fresh.credits = Math.max(0, +(fresh.credits - cr).toFixed(4));
-  await putUser(env, fresh); return { credits: +fresh.credits.toFixed(2), spentCredits: +cr.toFixed(3) };
+  const cr = costUsd(usage) / CREDIT_USD, now = new Date().toISOString(), tok = (usage.input || 0) + (usage.output || 0);
+  const owner = owners(env).includes(a.email);
+  await env.DB.batch([
+    env.DB.prepare('UPDATE users SET credits=' + (owner ? 'credits' : 'MAX(0,credits-?)') + ', tokens=tokens+?, requests=requests+1, last=? WHERE email=?').bind(...(owner ? [tok, now, a.email] : [cr, tok, now, a.email])),
+    env.DB.prepare('INSERT INTO usage(email,at,input,output,credits) VALUES(?,?,?,?,?)').bind(a.email, now, usage.input || 0, usage.output || 0, owner ? 0 : cr),
+  ]);
+  const f = await getUser(env, a.email);
+  return { credits: +Number(f.credits).toFixed(2), spentCredits: +cr.toFixed(3) };
 }
 
 async function sample(env, req) {
@@ -75,9 +77,12 @@ async function stripe(env, req) {
   if (!env.STRIPE_WEBHOOK_SECRET || mac !== p.v1) return new Response('bad signature', { status: 400 });
   const ev = JSON.parse(raw);
   if (ev.type === 'checkout.session.completed') {
-    const s = ev.data.object, usd = (s.amount_total || 0) / 100, credits = PACKS[usd];
-    const a = await getUser(env, String(s.client_reference_id || s.customer_details?.email || '').toLowerCase());
-    if (a && credits && !a.purchases.some((x) => x.ref === s.id)) { a.credits = +(a.credits + credits).toFixed(4); a.purchases.push({ at: new Date().toISOString(), usd, credits, ref: s.id }); await putUser(env, a); }
+    const o = ev.data.object, usd = (o.amount_total || 0) / 100, credits = PACKS[usd];
+    const email = String(o.client_reference_id || o.customer_details?.email || '').toLowerCase();
+    if (credits && (await getUser(env, email))) {
+      const ins = await env.DB.prepare('INSERT OR IGNORE INTO purchases(email,at,usd,credits,ref) VALUES(?,?,?,?,?)').bind(email, new Date().toISOString(), usd, credits, o.id).run();
+      if (ins.meta?.changes > 0) await env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(credits, email).run();
+    }
   }
   return new Response('{"received":true}', { headers: { 'content-type': 'application/json' } });
 }
@@ -92,8 +97,8 @@ export default {
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json(env, req, { error: 'valid email required' }, 400);
       if (await getUser(env, email)) return json(env, req, { error: 'account exists; use your saved token' }, 409);
       const token = 'aix_' + [...crypto.getRandomValues(new Uint8Array(24))].map((x) => x.toString(16).padStart(2, '0')).join('');
-      const a = { email, credits: Number(env.SIGNUP_CREDITS || 0), tokens: 0, requests: 0, created: new Date().toISOString(), last: '', purchases: [] };
-      await env.AIX.put('t:' + (await sha(token)), email); await putUser(env, a); await env.AIX.put('idx:' + email, '1');
+      const a = { email, credits: Number(env.SIGNUP_CREDITS || 0), tokens: 0, requests: 0 };
+      await env.DB.prepare('INSERT INTO users(email,token_hash,credits,tokens,requests,created,last) VALUES(?,?,?,?,0,?,?)').bind(email, await sha(token), a.credits, 0, new Date().toISOString(), '').run();
       return json(env, req, { token, account: view(a) });
     }
     if (path === '/api/account/me') { const a = await authed(env, req); return a ? json(env, req, view(a)) : json(env, req, { error: 'sign in' }, 401); }
@@ -102,14 +107,20 @@ export default {
     if (path.startsWith('/api/admin/')) {
       if (!env.ADMIN_TOKEN || req.headers.get('x-admin-token') !== env.ADMIN_TOKEN) return json(env, req, { error: 'admin token required' }, 401);
       if (path === '/api/admin/grant' && req.method === 'POST') {
-        const b = await req.json().catch(() => ({})); const a = await getUser(env, String(b.email || '').toLowerCase()); const n = Number(b.credits);
-        if (!a || !(n > 0)) return json(env, req, { error: 'email + credits required' }, 400);
-        a.credits = +(a.credits + n).toFixed(4); a.purchases.push({ at: new Date().toISOString(), usd: 0, credits: n, ref: 'admin-grant' }); await putUser(env, a); return json(env, req, view(a));
+        const b = await req.json().catch(() => ({})); const email = String(b.email || '').toLowerCase(); const n = Number(b.credits);
+        if (!(await getUser(env, email)) || !(n > 0)) return json(env, req, { error: 'email + credits required' }, 400);
+        await env.DB.batch([env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(n, email), env.DB.prepare('INSERT INTO purchases(email,at,usd,credits,ref) VALUES(?,?,0,?,?)').bind(email, new Date().toISOString(), n, 'admin-grant-' + Date.now())]);
+        return json(env, req, view(await getUser(env, email)));
       }
       if (path === '/api/admin/users.md') {
-        const list = await env.AIX.list({ prefix: 'u:' }); const rows = [];
-        for (const k of list.keys) { const a = await env.AIX.get(k.name, 'json'); if (a) rows.push(`| ${a.email} | ${a.credits.toFixed(1)} | ${a.tokens} | ${a.requests} | ${a.last || '-'} |`); }
+        const { results } = await env.DB.prepare('SELECT * FROM users ORDER BY last DESC').all();
+        const rows = results.map((a) => `| ${a.email} | ${Number(a.credits).toFixed(1)} | ${a.tokens} | ${a.requests} | ${a.last || '-'} |`);
         return new Response(`# AIX ALPHA users\n\n| Email | Credits | Tokens | Requests | Last active |\n|---|---|---|---|---|\n${rows.join('\n')}\n`, { headers: { 'content-type': 'text/markdown', ...cors(env, req) } });
+      }
+      if (path === '/api/admin/sql' && req.method === 'POST') {          // owner-only read queries
+        const b = await req.json().catch(() => ({})); const q = String(b.query || '');
+        if (!/^\s*select\b/i.test(q) || /;\s*\S/.test(q)) return json(env, req, { error: 'single SELECT only' }, 400);
+        return json(env, req, (await env.DB.prepare(q).all()).results);
       }
     }
     return json(env, req, { error: 'not found' }, 404);
