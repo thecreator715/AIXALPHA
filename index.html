@@ -1596,6 +1596,7 @@ function fitTop(){const t=$('#top');if(!t)return;t.style.paddingLeft=innerWidth>
 addEventListener('resize',fitTop);setTimeout(fitTop,0);
 buildPersonaSel();setStatus();if(S.chats.length)S.cur=S.chats[0].id;renderThreads();renderMsgs();
 (async()=>{try{sampleFn=await claude.use('sample')}catch{sampleFn=null}
+  if(!sampleFn&&!BACKEND()){try{const mr=await fetch('master.json',{cache:'no-store'});if(mr.ok){const mj=await mr.json();if(mj&&/^https?:\/\//.test(mj.url||''))store.set(BEK,String(mj.url).replace(/\/+$/,''))}}catch{}}
   if(!sampleFn)sampleFn=pickEngine();
   setStatus();if(!sampleFn){const pm=$('#pm');pm.style.cursor='pointer';pm.onclick=()=>openKey()}initDb();loadLive().then(()=>{try{rerenderConnCards()}catch{}})})();
 </script>

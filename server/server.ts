@@ -10,7 +10,7 @@ import { Transport, createAnthropicTransport, createMockTransport } from './serv
 import { runChat, ChatResult } from './server/engine/loop';
 import { getSession, dailySpend } from './server/engine/state';
 import { model3dFromPrompt, imageFromPrompt } from './server/engine/media';
-import { accountRoutes, authAccount, charge, costUsd, usdToCredits } from './server/accounts';
+import { accountRoutes, authAccount, charge, costUsd, usdToCredits, isOwner } from './server/accounts';
 
 dotenv.config({ path: ['.env.local', '.env'] });
 
@@ -63,7 +63,7 @@ app.post('/api/sample', rateLimit, async (req, res) => {
   const acct = authAccount(req);
   if (!acct) { res.status(401).json({ error: 'Sign in to use AIX.' }); return; }
   if (!API_KEY) { res.status(503).json({ error: 'Server has no ANTHROPIC_API_KEY.' }); return; }
-  if (acct.credits <= 0) { res.status(402).json({ error: 'Out of credits. Top up to continue.' }); return; }
+  if (acct.credits <= 0 && !isOwner(acct)) { res.status(402).json({ error: 'Out of credits. Top up to continue.' }); return; }
   const prompt = String(req.body?.prompt || ''); const stream = !!req.body?.stream;
   if (!prompt) { res.status(400).json({ error: 'prompt required' }); return; }
   const maxTok = Math.min(Number(req.body?.max_tokens) || 4096, 8192);

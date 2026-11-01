@@ -11,9 +11,14 @@ export NODE_ENV=production
 PORT=$(grep -E '^PORT=' .env.local | cut -d= -f2); PORT=${PORT:-3000}
 URL="http://localhost:$PORT/alpha"
 if [ "$1" = "--public" ]; then
-  if command -v cloudflared >/dev/null; then
-    ( cloudflared tunnel --url "http://localhost:$PORT" 2>&1 | grep --line-buffered -o 'https://[a-z0-9-]*\.trycloudflare\.com' | while read -r U; do echo ""; echo "  PUBLIC MASTER NODE: $U/alpha"; done ) &
-  else echo "(cloudflared not installed: running locally only)"; fi
+  TS=$(command -v tailscale || ls /Applications/Tailscale.app/Contents/MacOS/Tailscale 2>/dev/null)
+  if [ -n "$TS" ] && "$TS" status >/dev/null 2>&1; then
+    "$TS" funnel --bg "$PORT" >/dev/null 2>&1
+    H=$("$TS" status --json 2>/dev/null | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).Self.DNSName.replace(/\\.$/,''))}catch{}})")
+    if [ -n "$H" ]; then echo "https://$H" > master-url.txt; echo ""; echo "  STABLE PUBLIC MASTER NODE: https://$H/alpha  (Tailscale Funnel; this address never changes)"; echo "  Saved in master-url.txt"; fi
+  elif command -v cloudflared >/dev/null; then
+    ( cloudflared tunnel --url "http://localhost:$PORT" 2>&1 | grep --line-buffered -o 'https://[a-z0-9-]*\.trycloudflare\.com' | while read -r U; do echo "$U" > master-url.txt; echo ""; echo "  PUBLIC MASTER NODE (changes on restart): $U/alpha"; done ) &
+  else echo "(For a STABLE public address install Tailscale and enable Funnel: https://tailscale.com/download. Running locally only.)"; fi
 fi
 ( for i in $(seq 1 40); do sleep 1; if curl -fs "http://localhost:$PORT/api/health" >/dev/null 2>&1; then
     [ -z "$AIX_NO_OPEN" ] && { open "$URL" 2>/dev/null || xdg-open "$URL" 2>/dev/null; }; break; fi; done ) &

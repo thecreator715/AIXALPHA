@@ -30,7 +30,10 @@ export function authAccount(req: express.Request): Account | null {
   const t = h.startsWith('Bearer ') ? h.slice(7).trim() : '';
   return t ? byToken(t) || null : null;
 }
+const OWNERS = (process.env.AIX_OWNER_EMAILS || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
+export const isOwner = (a: Account) => OWNERS.includes(a.email);
 export function charge(a: Account, usd: number, tokens: number) {
+  if (isOwner(a)) { a.tokens += tokens; a.requests++; a.last = new Date().toISOString(); persist(); return; }
   a.credits = Math.max(0, +(a.credits - usdToCredits(usd)).toFixed(4)); a.tokens += tokens; a.requests++; a.last = new Date().toISOString(); persist();
 }
 export function addCredits(a: Account, usd: number, credits: number, ref: string) {

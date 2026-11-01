@@ -5,7 +5,7 @@ clean(){ printf '%s' "$1" | grep -o 'sk-ant-[A-Za-z0-9_-]*' | head -1; }
 check(){ curl -s -o /dev/null -w '%{http_code}' https://api.anthropic.com/v1/models -H "x-api-key: $1" -H "anthropic-version: 2023-06-01" --max-time 15; }
 CUR=""; [ -f .env.local ] && CUR=$(clean "$(grep -E '^ANTHROPIC_API_KEY=' .env.local | head -1 | cut -d= -f2-)")
 if [ -n "$CUR" ]; then
-  C=$(check "$CUR"); if [ "$C" = "200" ]; then exit 0; fi
+  C=$(check "$CUR"); if [ "$C" = "200" ]; then grep -q "^AIX_OWNER_EMAILS=" .env.local || { printf "Your email (the owner account: unlimited, never charged): "; IFS= read -r OW; echo "AIX_OWNER_EMAILS=\"$OW\"" >> .env.local; }; exit 0; fi
   echo "The saved API key was rejected by Anthropic (HTTP $C). Let's enter a new one."
 fi
 for i in 1 2 3; do
@@ -17,6 +17,8 @@ for i in 1 2 3; do
   KEY=""
 done
 [ -n "$KEY" ] || { echo "No valid key entered."; exit 1; }
+OWNER=""; [ -f .env.local ] && OWNER=$(grep -E '^AIX_OWNER_EMAILS=' .env.local | head -1 | cut -d= -f2- | tr -d '"')
+if [ -z "$OWNER" ]; then printf "Your email (the owner account: unlimited, never charged): "; IFS= read -r OWNER; fi
 ADMIN=""; [ -f .env.local ] && ADMIN=$(grep -E '^AIX_ADMIN_TOKEN=' .env.local | head -1 | cut -d= -f2- | tr -d '"')
 [ -n "$ADMIN" ] || ADMIN=$(node -e "console.log(require('crypto').randomBytes(16).toString('hex'))")
 cat > .env.local <<ENV
@@ -26,5 +28,6 @@ AIX_ALLOWED_ORIGINS="*"
 AIX_SIGNUP_CREDITS=0
 AIX_DATA_DIR="data"
 PORT=3000
+AIX_OWNER_EMAILS="$OWNER"
 ENV
 echo "Key verified and saved. Admin token (keep it): $ADMIN"
