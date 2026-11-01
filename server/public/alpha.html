@@ -320,6 +320,16 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
 .mtile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:16px 6px;border:1px solid var(--b);border-radius:14px;background:var(--p);color:var(--t);cursor:pointer;min-height:84px}
 .mtile .mti{display:grid;place-items:center;font-size:22px;color:var(--m)}.mtile .mtl{font-size:11.5px;letter-spacing:.02em}
 .mtile:hover,.mtile.on{border-color:var(--ac);color:var(--t)}.mtile.on .mti{color:var(--ac)}
+
+@media(max-width:900px){
+ #toast{max-width:92vw;width:max-content;text-align:center;white-space:normal;line-height:1.35;bottom:calc(66px + env(safe-area-inset-bottom))}
+ .view>.pad,.view .pad{padding:12px}
+ table.t{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+ .stbar{flex-wrap:wrap;gap:6px}.stbar select{max-width:100%}
+ h1{font-size:clamp(24px,7vw,34px)!important}
+ img,svg,video,canvas{max-width:100%}
+ pre,code{overflow-x:auto;max-width:100%}
+}
 </style>
 </head>
 <body>
@@ -1276,7 +1286,7 @@ function openHistory(){const f=activeFile(),h=(proj().history||[]).filter(x=>x.f
 /* ============ smart debugger: static checks, sample API data, self-healing loop ============ */
 let NETLOG=new Map(),READYRES=null,DBG=false,PSTATE={ok:true};
 const DEBUGRE=/\b(debug|bugs?|errors?|broken|not working|doesn'?t work|isn'?t working|unable to|can'?t (load|see|find)|won'?t (load|work)|fails?|failed|blank|crash\w*|exception|fix (all|errors?|everything|bugs?|problems?))\b/i;
-function toastBtn(msg,label,fn){const t=$('#toast');t.innerHTML=esc(msg)+` <button id="tbtn" style="margin-left:8px;border:0;background:#000;color:#fff;border-radius:6px;padding:2px 10px;font:inherit">${esc(label)}</button>`;t.classList.add('on','act');clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove('on','act'),9000);$('#tbtn').onclick=()=>{t.classList.remove('on','act');fn()}}
+function toastBtn(msg,label,fn){if(!$('#vstudio').classList.contains('on'))return;const t=$('#toast');t.innerHTML=esc(msg)+` <button id="tbtn" style="margin-left:8px;border:0;background:#000;color:#fff;border-radius:6px;padding:2px 10px;font:inherit">${esc(label)}</button>`;t.classList.add('on','act');clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove('on','act'),9000);$('#tbtn').onclick=()=>{t.classList.remove('on','act');fn()}}
 function settle(){return new Promise(res=>{let done=false;const fin=()=>{if(done)return;done=true;setTimeout(res,800)};READYRES=fin;setTimeout(fin,3500)})}
 const mockMap=()=>proj().mocks||(proj().mocks={});
 function staticChecks(){const out=[];const ids=new Set();
