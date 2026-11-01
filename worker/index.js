@@ -17,6 +17,9 @@ const sha = async (s) => [...new Uint8Array(await crypto.subtle.digest('SHA-256'
 const owners = (env) => (env.OWNER_EMAILS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 const view = (a) => ({ free_claimed: !!a.free_claimed, username: a.username || null, email: a.email, credits: +Number(a.credits).toFixed(2), tokens: a.tokens, requests: a.requests });
 const getUser = (env, email) => env.DB.prepare('SELECT * FROM users WHERE email=?').bind(email).first();
+// One account per person: emails are normalised so +tags and Gmail dots can't make a second account.
+const normId = (x) => { let v = String(x || '').trim().toLowerCase(); if (v.includes('@')) { let [l, d] = v.split('@'); l = l.split('+')[0]; if (d === 'gmail.com' || d === 'googlemail.com') { l = l.replace(/\./g, ''); d = 'gmail.com'; } v = l + '@' + d; } return v; };
+const validId = (v) => v.includes('@') ? /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v) && v.length <= 64 : /^[a-z0-9_.-]{3,24}$/.test(v);
 const hex = (u8) => [...u8].map((b) => b.toString(16).padStart(2, '0')).join('');
 const pbk = async (pw, salt) => hex(new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: enc.encode(salt), iterations: 100000 }, await crypto.subtle.importKey('raw', enc.encode(pw), 'PBKDF2', false, ['deriveBits']), 256)));
 const newToken = () => 'aix_' + hex(crypto.getRandomValues(new Uint8Array(24)));
@@ -107,10 +110,10 @@ export default {
       return json(env, req, { token, account: view(a) });
     }
     if (path === '/api/account/register' && req.method === 'POST') {
-      const b = await req.json().catch(() => ({})); const un = String(b.username || '').trim().toLowerCase(), pw = String(b.password || '');
-      if (!/^[a-z0-9_.-]{3,24}$/.test(un)) return json(env, req, { error: 'Username: 3-24 letters, numbers, _ . -' }, 400);
+      const b = await req.json().catch(() => ({})); const un = normId(b.username), pw = String(b.password || '');
+      if (!validId(un)) return json(env, req, { error: 'Enter a valid email, or a username of 3-24 letters, numbers, _ . -' }, 400);
       if (pw.length < 6) return json(env, req, { error: 'Password must be at least 6 characters' }, 400);
-      if (await env.DB.prepare('SELECT 1 AS x FROM users WHERE username=?').bind(un).first()) return json(env, req, { error: 'That username is taken' }, 409);
+      if (await env.DB.prepare('SELECT 1 AS x FROM users WHERE username=?').bind(un).first()) return json(env, req, { error: 'That email/username already has an account. Sign in instead.' }, 409);
       const salt = hex(crypto.getRandomValues(new Uint8Array(16))), ph = await pbk(pw, salt), cur = await authed(env, req);
       let email;
       if (cur && !cur.username) { email = cur.email; await env.DB.prepare('UPDATE users SET username=?,pw_hash=?,pw_salt=? WHERE email=?').bind(un, ph, salt, email).run(); }   // upgrade the guest in place: credits stay
@@ -119,7 +122,7 @@ export default {
       return json(env, req, { token, account: view(await getUser(env, email)) });
     }
     if (path === '/api/account/login' && req.method === 'POST') {
-      const b = await req.json().catch(() => ({})); const un = String(b.username || '').trim().toLowerCase();
+      const b = await req.json().catch(() => ({})); const un = normId(b.username);
       const u = await env.DB.prepare('SELECT * FROM users WHERE username=?').bind(un).first();
       const ok = u && u.pw_hash && (await pbk(String(b.password || ''), u.pw_salt)) === u.pw_hash;
       if (!ok) return json(env, req, { error: 'Wrong username or password' }, 401);

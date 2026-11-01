@@ -299,6 +299,22 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
  #loop .tg{padding:4px 8px;min-width:32px}#loop .tg .lbl{display:none}
  #loop .meter{margin-left:0}#loop .meter .track{width:34px}#spent{display:none}
  #pm{font-size:0!important}
+
+@media(max-width:900px){
+ #pm{font-size:11px!important;width:auto!important;height:auto!important;padding:5px 10px!important;border-radius:999px!important;background:#18181b!important;border:1px solid var(--b)!important;letter-spacing:.02em;white-space:nowrap}
+ .msg{display:flex;flex-direction:column}
+ .msg>.mtools,.cm>.mtools{position:static;order:99;align-self:flex-start;margin-top:4px;background:none;border:0;padding:0;opacity:.9;transform:none;backdrop-filter:none}
+ .mtools button{width:32px;height:32px}.msg .who{padding-right:0!important;flex-wrap:wrap}
+ #loop .meter .track{width:44px}#spent{display:none!important}
+ #loop .bar{padding:0 2px}
+}
+
+@media(max-width:900px){
+ #progb{width:36px;min-width:0;padding:4px 0!important}
+ #top .mlogo::after{letter-spacing:.1em!important;font-size:12px!important}
+ #top .mlogo{padding:0 6px 0 2px;gap:6px}
+ #top{gap:4px}
+}
 </style>
 </head>
 <body>
@@ -464,15 +480,15 @@ async function acctCall(path,body){const tok=store.get(TOKK,'');const r=await fe
 let FREE=store.get('aix3_free',false);
 async function claimFree(quiet){try{const j=await acctCall('/api/account/claim-free',{});BAL=j.credits;FREE=true;store.set('aix3_free',true);setStatus();toast('1 free credit added to your account');return true}catch(e){if(/already/i.test(e.message)){FREE=true;store.set('aix3_free',true)}else if(!quiet)toast(e.message);return false}}
 function acctDone(j,msg){FREE=!!j.account.free_claimed;store.set('aix3_free',FREE);store.set(TOKK,j.token);UNAME=j.account.username||'';store.set('aix3_user',UNAME);BAL=j.account.credits;sampleFn=backendSample();setStatus();toast(msg+' · '+BAL+' credits')}
-function openAccount(){
+function openAccount(welcome){
   const be=BACKEND();
   if(!be){const d0=dialog(`<h3 style="margin:0 0 8px">AIX account</h3><p style="font-size:12.5px;color:var(--m)">Set the AIX server address to sign in, or use your own API key.</p><label>Server address</label><input id="beu" placeholder="https://your-aix-server.example.com"><div style="display:flex;gap:8px;justify-content:space-between;margin-top:8px"><button class="btn2" id="bkey">Use my own API key</button><span><button class="btn2" data-close>Cancel</button> <button class="btn" id="bset">Connect</button></span></div>`);
     $('#bkey').onclick=()=>{d0.close();openKey(true)};$('#bset').onclick=()=>{const u=$('#beu').value.trim().replace(/\/+$/,'');if(!u)return toast('Enter the server address');store.set(BEK,u);d0.close();location.reload()};return}
   const signed=!!UNAME&&!!store.get(TOKK,'');
   const d=dialog(signed?`<h3 style="margin:0 0 8px">AIX account</h3><p style="font-size:13px;margin:0 0 4px">Signed in as <b>${esc(UNAME)}</b></p><p style="font-size:12.5px;color:var(--m);margin:0 0 10px">${BAL!=null?(+BAL).toFixed(1)+' credits':''}</p><div style="display:flex;gap:8px;justify-content:space-between"><button class="btn2" id="bout">Sign out</button>${FREE?'':'<button class="btn2" id="bclaim">Claim 1 free credit</button>'}<button class="btn" data-close>Done</button></div>`
-  :`<h3 style="margin:0 0 6px">AIX account</h3><p style="font-size:12.5px;color:var(--m);margin:0 0 8px">Pick a username and password. Your credits follow you to any device.</p>
-  <label>Username</label><input id="bun" autocomplete="username" autocapitalize="none" placeholder="yourname"><label>Password</label><input id="bpw" type="password" autocomplete="current-password" placeholder="at least 6 characters">
-  <div style="display:flex;gap:8px;margin-top:8px"><button class="btn2" id="bsignin" style="flex:1">Sign in</button><button class="btn" id="breg" style="flex:1">Create account</button></div>
+  :`<h3 style="margin:0 0 6px">${welcome?'Welcome to AIX Alpha':'AIX account'}</h3><p style="font-size:12.5px;color:var(--m);margin:0 0 8px">${welcome?'Create your account to start. <b style="color:var(--t)">Your first credit is free</b> and is added instantly.':'Sign in, or create an account. Your credits follow you to any device.'}</p>
+  <label>Username or email</label><input id="bun" autocomplete="username" autocapitalize="none" placeholder="yourname or you@email.com"><label>Password</label><input id="bpw" type="password" autocomplete="current-password" placeholder="at least 6 characters">
+  <div style="display:flex;gap:8px;margin-top:8px"><button class="btn" id="breg" style="flex:1">Create account · 1 free credit</button><button class="btn2" id="bsignin" style="flex:0 0 auto">Sign in</button></div>
   <details style="margin-top:10px"><summary style="font-size:12px;color:var(--m);cursor:pointer">Advanced</summary><label>Account token (owner / restore)</label><input id="bto" type="password" placeholder="aix_..."><div style="display:flex;gap:8px;margin-top:6px"><button class="btn2" id="btok">Use token</button><button class="btn2" id="bkey">Use my own API key</button></div></details><div style="text-align:right;margin-top:8px"><button class="btn2" data-close>Cancel</button></div>`);
   if(signed){const bc=$('#bclaim');if(bc)bc.onclick=async()=>{if(await claimFree(false))d.close()};$('#bout').onclick=()=>{store.set(TOKK,'');store.set('aix3_user','');UNAME='';sampleFn=null;d.close();location.reload()};return}
   const go=async(path,msg)=>{const un=$('#bun').value.trim(),pw=$('#bpw').value;if(!un||!pw)return toast('Enter a username and password');try{const j=await acctCall(path,{username:un,password:pw});acctDone(j,msg);d.close()}catch(e){toast(e.message)}};
@@ -752,7 +768,7 @@ $('#exp').onclick=async()=>{const c=curChat();if(!c)return;const md_=`# ${c.titl
 
 /* ============ views, palette, analytics, studio ============ */
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.remove('act');t.classList.add('on');clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove('on'),1400)}
-function setStatus(){$('#pm').title=sampleFn?'':'Click to add an API key';$('#pm').onclick=(sampleFn&&!BACKEND())?null:()=>openKey();$('#pm').textContent=sampleFn?('ONLINE'+(BACKEND()&&UNAME?' · '+UNAME:'')+(BAL!=null&&BACKEND()?' · '+(+BAL).toFixed(0)+' cr':'')):'OFFLINE';$('#pm').style.color=sampleFn?'var(--g)':'var(--r)'}
+function setStatus(){$('#pm').title=sampleFn?'':'Click to add an API key';$('#pm').onclick=(sampleFn&&!BACKEND())?null:()=>openKey();const mob=(()=>{try{return matchMedia('(max-width:900px)').matches}catch{return false}})();$('#pm').textContent=sampleFn?(mob&&BACKEND()&&BAL!=null?(+BAL).toFixed(1)+' cr':('ONLINE'+(BACKEND()&&UNAME?' · '+UNAME:'')+(BAL!=null&&BACKEND()?' · '+(+BAL).toFixed(1)+' cr':''))):(mob?'Sign in':'OFFLINE');$('#pm').style.color=sampleFn?'var(--g)':'var(--r)'}
 $('#tabs').onclick=e=>{const b=e.target.closest('button');if(b)setView(b.dataset.v)};
 function renderAnaBase(){
   const ms=S.chats.flatMap(c=>c.msgs.filter(m=>m.t)).map(m=>m.t);
@@ -1648,11 +1664,10 @@ buildPersonaSel();setStatus();if(S.chats.length)S.cur=S.chats[0].id;renderThread
 (async()=>{try{sampleFn=await claude.use('sample')}catch{sampleFn=null}
   if(!sampleFn&&!BACKEND()){try{const mr=await fetch('master.json',{cache:'no-store'});if(mr.ok){const mj=await mr.json();if(mj&&/^https?:\/\//.test(mj.url||''))store.set(BEK,String(mj.url).replace(/\/+$/,''))}}catch{}}
   try{const hm=location.hash.match(/[#&]t=(aix_[a-f0-9]+)/);if(hm){store.set(TOKK,hm[1]);history.replaceState(null,'',location.pathname+location.search)}}catch{}
-  if(!sampleFn&&BACKEND()&&!store.get(TOKK,'')&&!embKey()){try{const gid='guest-'+Array.from(crypto.getRandomValues(new Uint8Array(8))).map(x=>x.toString(16).padStart(2,'0')).join('')+'@guest.aix';
-    const r=await fetch(BACKEND()+'/api/account/signup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:gid})});if(r.ok){const j=await r.json();store.set(TOKK,j.token);BAL=j.account.credits}}catch{}}
   if(!sampleFn)sampleFn=pickEngine();
   if(BACKEND()&&store.get(TOKK,'')){try{const mr=await fetch(BACKEND()+'/api/account/me',{headers:{authorization:'Bearer '+store.get(TOKK,'')}});if(mr.ok){const mj=await mr.json();BAL=mj.credits;UNAME=mj.username||'';FREE=!!mj.free_claimed;store.set('aix3_free',FREE);store.set('aix3_user',UNAME)}else if(mr.status===401){store.set(TOKK,'');sampleFn=null}}catch{}}
-  setStatus();if(!sampleFn){const pm=$('#pm');pm.style.cursor='pointer';pm.onclick=()=>openKey()}initDb();loadLive().then(()=>{try{rerenderConnCards()}catch{}})})();
+  setStatus();if(!sampleFn&&BACKEND()&&!store.get(TOKK,'')&&!embKey()){setTimeout(()=>{try{openAccount(true)}catch{}},400)}
+  if(!sampleFn){const pm=$('#pm');pm.style.cursor='pointer';pm.onclick=()=>openKey()}initDb();loadLive().then(()=>{try{rerenderConnCards()}catch{}})})();
 </script>
 </body>
 </html>
