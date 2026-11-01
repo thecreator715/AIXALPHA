@@ -330,6 +330,14 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
  img,svg,video,canvas{max-width:100%}
  pre,code{overflow-x:auto;max-width:100%}
 }
+
+#webb .wc{margin-left:4px;font-size:9px;font-weight:700;color:var(--ac)}
+
+.ar2 .sl{flex:1;min-width:0}.ar2>.sl,.ar2>summary{display:flex;gap:8px;align-items:center}
+.ar2 .stt{margin-left:auto;font-style:normal;font-size:10px;color:#52525b;font-family:var(--mono,monospace);flex:none}
+.ar2.cur{color:var(--t);background:#ffffff08}.ar2.cur .sl::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ac);margin-right:8px;animation:curp 1s ease-in-out infinite;vertical-align:1px}
+@keyframes curp{0%,100%{opacity:.25}50%{opacity:1}}
+.ar2.a{color:#f59e0b}
 </style>
 </head>
 <body>
@@ -478,16 +486,24 @@ let sampleFn=null;
 const KEYK='aix3_apikey',MODELK='claude-haiku-5-5',TOKK='aix3_token',BEK='aix3_backend';
 const BACKEND=()=>(store.get(BEK,'')||(document.querySelector('meta[name=aix-backend]')||{}).content||'').replace(/\/+$/,'');
 let BAL=null;
+function liveEv(e,st){const em=S.emitStep;if(!em)return;
+  if(e.type==='content_block_start'&&e.content_block){const cb=e.content_block;
+    if(cb.type==='server_tool_use'){st.tool={i:e.index,json:''};em('Searching the web…','a')}
+    else if(cb.type==='web_search_tool_result'){const n=Array.isArray(cb.content)?cb.content.length:0;const hosts=(Array.isArray(cb.content)?cb.content:[]).slice(0,3).map(x=>{try{return new URL(x.url).hostname.replace(/^www\./,'')}catch{return ''}}).filter(Boolean);em(`Read ${n} web result${n==1?'':'s'}${hosts.length?': '+hosts.join(', '):''}`,'ok')}
+    else if(cb.type==='text'&&!st.wrote){st.wrote=1;em('Model started writing the answer','ok')}}
+  else if(e.type==='content_block_delta'&&e.delta&&e.delta.type==='input_json_delta'&&st.tool&&e.index===st.tool.i){st.tool.json+=e.delta.partial_json||''}
+  else if(e.type==='content_block_stop'&&st.tool&&e.index===st.tool.i){try{const q=JSON.parse(st.tool.json).query;if(q)em('Web search: “'+q+'”','a')}catch{}st.tool=null}}
+
 function backendSample(){
   const f=async(prompt,o)=>{o=o||{};const tok=store.get(TOKK,'');if(!tok)throw new Error('Sign in to use AIX.');
     const images=[];for(const im of(o.images||[])){try{const b=im.blob||im;const data=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(String(fr.result).split(',')[1]);fr.readAsDataURL(b)});images.push({media_type:b.type||'image/png',data})}catch{}}
     const res=await fetch(BACKEND()+'/api/sample',{method:'POST',signal:o.signal,headers:{'content-type':'application/json',authorization:'Bearer '+tok},body:JSON.stringify({prompt,images,stream:!!o.onText,max_tokens:4096,search:!!o.search})});
     if(!res.ok){let m='';try{m=(await res.json()).error}catch{}if(res.status===401){store.set(TOKK,'');store.set('aix3_user','');UNAME='';sampleFn=null;setStatus();setTimeout(()=>openAccount(true),60);throw new Error('Your session expired. Please sign in again.')}if(res.status===402){BAL=0;setStatus();setTimeout(()=>openCredits('out'),60);throw new Error('You are out of credits. Add credits to keep going (a window just opened).')}throw new Error(m||('Server '+res.status))}
-    if(!o.onText){const j=await res.json();if(j.credits!=null){BAL=j.credits;setStatus()}return{text:j.text||'',truncated:!!j.truncated}}
-    const rd=res.body.getReader(),dec=new TextDecoder();let buf='',text='',trunc=false;
+    if(!o.onText){const j=await res.json();if(j.credits!=null){BAL=j.credits;setStatus()}return{text:j.text||'',truncated:!!j.truncated,searches:j.searches||0,spentCr:j.spentCredits||0}}
+    const rd=res.body.getReader(),dec=new TextDecoder();const lst={};let buf='',text='',trunc=false,sr=0,spc=0;
     for(;;){const{done,value}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});const lines=buf.split('\n');buf=lines.pop();
-      for(const ln of lines){if(!ln.startsWith('data:'))continue;try{const e=JSON.parse(ln.slice(5));if(e.type==='content_block_delta'&&e.delta&&e.delta.text){text+=e.delta.text;o.onText({text})}else if(e.type==='message_delta'&&e.delta&&e.delta.stop_reason==='max_tokens')trunc=true;else if(e.type==='aix_balance'){BAL=e.credits;setStatus();if(e.searches)toast('Searched the web '+e.searches+'x · '+e.spentCredits+' credits')}}catch{}}}
-    return{text,truncated:trunc}};
+      for(const ln of lines){if(!ln.startsWith('data:'))continue;try{const e=JSON.parse(ln.slice(5));liveEv(e,lst);if(e.type==='content_block_delta'&&e.delta&&e.delta.text){text+=e.delta.text;o.onText({text})}else if(e.type==='message_delta'&&e.delta&&e.delta.stop_reason==='max_tokens')trunc=true;else if(e.type==='aix_balance'){BAL=e.credits;sr=e.searches||0;spc=e.spentCredits||0;setStatus();if(sr)toast('Searched the web '+sr+'x · this reply cost '+spc+' credits')}}catch{}}}
+    return{text,truncated:trunc,searches:sr,spentCr:spc}};
   f.limits=async()=>({images:true});return f}
 function embKey(){const m=document.querySelector('meta[name=aix-embedded-key]');return m&&/^sk-ant-/.test(m.content)?m.content:''}
 function pickEngine(){if(embKey()){store.set(KEYK,embKey());return directSample()}if(BACKEND()&&store.get(TOKK,''))return backendSample();if(store.get(KEYK,''))return directSample();return null}
@@ -538,9 +554,9 @@ function directSample(){
     const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:o.signal,headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:MODELK,max_tokens:4096,stream:!!o.onText,...(o.search?{tools:[{type:'web_search_20250305',name:'web_search',max_uses:3}]}:{}),messages:[{role:'user',content}]})});
     if(!res.ok){let m='';try{m=(await res.json()).error.message}catch{}if(res.status===401){store.set(KEYK,'');sampleFn=null;setStatus();throw new Error('Anthropic rejected this API key (401). Create a fresh key at console.anthropic.com > API Keys, make sure billing is active, and paste it again.')}throw new Error('API '+res.status+': '+(m||'request failed'))}
     if(!o.onText){const j=await res.json();return{text:(j.content||[]).map(c=>c.text||'').join(''),truncated:j.stop_reason==='max_tokens'}}
-    const rd=res.body.getReader(),dec=new TextDecoder();let buf='',text='',trunc=false;
+    const rd=res.body.getReader(),dec=new TextDecoder();const lst={};let buf='',text='',trunc=false;
     for(;;){const{done,value}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});const lines=buf.split('\n');buf=lines.pop();
-      for(const ln of lines){if(!ln.startsWith('data:'))continue;try{const e=JSON.parse(ln.slice(5));if(e.type==='content_block_delta'&&e.delta&&e.delta.text){text+=e.delta.text;o.onText({text})}else if(e.type==='message_delta'&&e.delta&&e.delta.stop_reason==='max_tokens')trunc=true}catch{}}}
+      for(const ln of lines){if(!ln.startsWith('data:'))continue;try{const e=JSON.parse(ln.slice(5));liveEv(e,lst);if(e.type==='content_block_delta'&&e.delta&&e.delta.text){text+=e.delta.text;o.onText({text})}else if(e.type==='message_delta'&&e.delta&&e.delta.stop_reason==='max_tokens')trunc=true}catch{}}}
     return{text,truncated:trunc}};
   f.limits=async()=>({images:true});return f}
 function openKey(force){if(!force)return openAccount();
@@ -588,10 +604,12 @@ async function runLoop(chat,prompt,onText,onStep){
 }
 async function runLoop0(chat,prompt,onText,onStep){
   const t={tier:'',mode:S.mode,protocol:[],loops:0,calls:0,inTok:0,outTok:0,cost:0,naive:0,saved:0,cacheHit:false,verified:true,blocked:'',notes:[]};
-  const step=(x,k)=>{t.protocol.push([x,k||''])
+  const T0=Date.now();
+  const step=(x,k)=>{t.protocol.push([x,k||'',Date.now()-T0]);try{onStep&&onStep(x,k||'',Date.now()-T0)}catch{}return;
     ;try{onStep&&onStep(x,k||'')}catch{}};
   if(S.autoNote)step(S.autoNote,'ok');
-  const r=route(prompt);t.tier=r.tier;step(`Router → ${r.tier} tier (local, 0 tokens)`);S.toolLog=[];S.toolTok=0;S.curTools=[];t.app=!!r.app;
+  S.emitStep=step;{const wc=String(prompt).trim().split(/\s+/).filter(Boolean).length;step(`Reading your message (${wc} word${wc==1?'':'s'}${(S.curImages&&S.curImages.length)?', '+S.curImages.length+' image'+(S.curImages.length>1?'s':''):''})`)}
+  const r=route(prompt);t.tier=r.tier;step(`Router → ${r.tier} tier (local, 0 tokens)`);S.toolLog=[];S.toolTok=0;S.curTools=[];t.app=!!r.app;if(r.hist)step(`Context: keeping the last ${r.hist} messages plus your notes`);if(S.web)step('Live web search is ON: the model may search (about 7 credits each)','a');
   const out=(text,extra={})=>({text,t,...extra});
   if(r.command){step(`Local command /${r.command} (0 tokens)`,'ok');t.saved=100;
     if(r.command==='connect'){await loadLive();return out('**Plug-and-play connectors** — tap *Enable in chat* on any card, then just ask for what you need and I will reply right here.',{ui:'connect'})}
@@ -621,12 +639,13 @@ async function runLoop0(chat,prompt,onText,onStep){
   const naiveIn=est(core)+origTok;
   if(!r.fresh&&!r.conn&&!S.nocache&&S.cache[ckey]){t.cacheHit=true;step('Response cache hit — 0 tokens','ok');t.saved=100;t.naive=cost(naiveIn,est(S.cache[ckey]));return out(S.cache[ckey])}
   step('Cache miss');
-  if(r.fresh)step('Fresh-fact query: no web search in the artifact build — answer may be stale');
+  if(r.fresh&&!S.web)step('This looks like a current-events question. Turn on WEB (about 7 credits per search) for live information, otherwise the answer may be out of date','a');
 
   let spent=0;
   const call=async(label,p)=>{
     if(spent>=S.caps.req){step(`Stop: request budget (${label})`,'bad');return null}
-    const imgs=label==='gen'?(S.curImages||[]):[];const res=await ask(p,label==='gen'?onText:null,null,imgs,label==='gen'?S.curTools:null);if(imgs.length)t.inTok+=1500*imgs.length;
+    const imgs=label==='gen'?(S.curImages||[]):[];step(label==='gen'?`Sending to the model · ~${est(p).toLocaleString()} tokens in`:`${label} pass · sending ~${est(p).toLocaleString()} tokens`);const res=await ask(p,label==='gen'?onText:null,null,imgs,label==='gen'?S.curTools:null);if(imgs.length)t.inTok+=1500*imgs.length;
+    if(res&&res.searches){t.web=(t.web||0)+res.searches;t.webCr=+((t.webCr||0)+(res.spentCr||0)).toFixed(1)}
     const i=est(p),o=est(res.text||'');t.inTok+=i;t.outTok+=o;const c=cost(i,o);spent+=c;t.cost+=c;t.calls++;
     step(`${label}: ~${o} out`);return res;
   };
@@ -652,7 +671,7 @@ async function runLoop0(chat,prompt,onText,onStep){
     else if(j)step('Evaluator: OK','ok');
   }
   if(S.toolLog.length){step('🔌 Used: '+[...new Set(S.toolLog)].join(', '),'ok');t.inTok+=S.toolTok}
-  t.verified=!f.length;step(t.verified?'Loop stop: pass':'Loop stop: max-loops',t.verified?'ok':'bad');
+  t.verified=!f.length;step(t.verified?'Loop stop: pass':'Loop stop: max-loops',t.verified?'ok':'bad');step(`Credits: ~${usd(t.cost)} est. · ${t.calls} model call${t.calls==1?'':'s'}${t.web?` · ${t.web} web search${t.web>1?'es':''}`:''}`,'ok');
   t.naive=cost(naiveIn,Math.max(t.outTok,est(text)));t.saved=t.naive>0?Math.max(0,Math.min(100,Math.round((1-t.cost/t.naive)*100))):0;
   if(t.verified&&!r.fresh&&!r.conn)S.cache[ckey]=text;
   return out(text);
@@ -692,7 +711,7 @@ function chipsHtml(t){
   ch(t.tier);if(t.cacheHit)ch('CACHE HIT','g');else if(!t.calls&&!t.blocked)ch('LOCAL','g');if(t.blocked)ch('BLOCKED · '+t.blocked.toUpperCase(),'r');
   ch(`${t.calls} call${t.calls==1?'':'s'}${t.loops?' · '+t.loops+' repair':''}`);
   if(t.calls)ch(`~${t.inTok} in · ~${t.outTok} out (est.)`);ch(usd(t.cost)+' est.');ch(`−${t.saved}% vs naive`);
-  if(!t.verified&&t.calls)ch('UNVERIFIED','a');return `<div class="chips mono">${c.join('')}</div>`;
+  if(t.web)ch(`WEB · ${t.web} search${t.web>1?'es':''} · ${t.webCr} cr this reply`,'a');if(!t.verified&&t.calls)ch('UNVERIFIED','a');return `<div class="chips mono">${c.join('')}</div>`;
 }
 function curChat(){return S.chats.find(c=>c.id===S.cur)}
 function save(){store.set('aix3_chats',S.chats.slice(0,60));store.set('aix3_ledger',S.ledger)}
@@ -718,7 +737,7 @@ function updateMeter(){if($('#estline'))refreshEst(false);const c=curChat(),sp=c
   $('#sub').textContent=c&&c.calls?`${c.calls} model calls · ${free} replies at $0 · today ${usd(daySpend())} (estimates)`:'';
   $('#ps').textContent=(personas().find(p=>p.id===S.pid)||PRESETS[0]).name;
   document.querySelectorAll('#modes button').forEach(b=>b.classList.toggle('on',S.auto?b.dataset.m==='auto':b.dataset.m===S.mode));
-  $('#evalb').classList.toggle('on',S.verify==='llm');$('#webb').classList.toggle('on',!!S.web);$('#webb').innerHTML=ico('sites')+'<span class="lbl"> WEB '+(S.web?'ON':'OFF')+'</span>';$('#evalb').innerHTML=ico('shield')+'<span class="lbl"> EVAL '+(S.verify==='llm'?'ON':'OFF')+'</span>';
+  $('#evalb').classList.toggle('on',S.verify==='llm');$('#webb').classList.toggle('on',!!S.web);$('#webb').innerHTML=ico('sites')+'<span class="lbl"> WEB '+(S.web?'ON':'OFF')+'</span>'+(S.web?'<span class="wc">+7</span>':'');$('#evalb').innerHTML=ico('shield')+'<span class="lbl"> EVAL '+(S.verify==='llm'?'ON':'OFF')+'</span>';
 }
 
 /* ============ send ============ */
@@ -737,7 +756,7 @@ async function send(text,opts={}){
     abort=new AbortController();let lastPv=0;const stp=[];const t0=Date.now();let ttl='Planning the answer',openL=true;
     const drawL=()=>{const el=$('#livelog');if(!el)return;const was=el.querySelector('.act2');if(was&&was.classList.contains('closed'))openL=false;el.innerHTML=liveActHtml(stp,ttl,Math.round((Date.now()-t0)/1000));const a2=el.querySelector('.act2');if(!openL)a2.classList.add('closed');el.querySelector('.ah').onclick=()=>{a2.classList.toggle('closed');openL=!a2.classList.contains('closed')};$('#chat').scrollTop=1e9};
     const tick=setInterval(()=>{const e=$('#livelog .el');if(e)e.textContent=Math.round((Date.now()-t0)/1000)+'s'},1000);
-    const onStep=(x,k)=>{stp.push([x,k]);ttl=friendly(x);drawL();if($('#prog').classList.contains('on'))renderProg()};drawL();
+    const onStep=(x,k,ms)=>{stp.push([x,k,ms]);ttl=friendly(x);drawL();if($('#prog').classList.contains('on'))renderProg()};drawL();
     const onText=x=>{const tx=x.text||'';const e=$('#live');if(e)e.innerHTML=md(tx);const st=$('#livestat');if(st)st.textContent=`writing… ${tx.length.toLocaleString()} chars · ${(tx.match(/\n/g)||[]).length+1} lines`;if(ttl.indexOf('Writing')!==0||tx.length%7===0){ttl='Writing… '+tx.length.toLocaleString()+' chars';const h2=$('#livelog .ah span:nth-child(2)');if(h2)h2.textContent=ttl}
       const h=extractHtml(tx);if(h&&Date.now()-lastPv>800){lastPv=Date.now();let fr=$('#livepv');if(!fr){$('#livepvw').innerHTML='<div class="mono" style="font-size:10px;color:var(--ac);margin:6px 0 2px">LIVE PREVIEW — updates as it is written</div><iframe id="livepv" sandbox="allow-scripts" class="inpvf"></iframe>';fr=$('#livepv')}fr.srcdoc=h}
       $('#chat').scrollTop=1e9};
@@ -774,7 +793,16 @@ $('#persona').onchange=e=>{S.pid=e.target.value;store.set('aix3_pid',S.pid);upda
 $('#newc').onclick=()=>{S.cur=null;renderThreads();renderMsgs();syncStudio();$('#side').classList.remove('open')};
 $('#hub').onclick=openHub;$('#set').onclick=openSettings;$('#about').onclick=openAbout;$('#menu').onclick=()=>$('#side').classList.toggle('open');
 $('#modes').onclick=e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.m==='auto'){S.auto=!S.auto;store.set('aix3_auto',S.auto);updateMeter();refreshEst(true);return}S.auto=false;store.set('aix3_auto',false);S.mode=b.dataset.m;store.set('aix3_mode',S.mode);updateMeter();refreshEst(true)};
-$('#webb').onclick=()=>{S.web=!S.web;store.set('aix3_web',S.web);updateMeter();refreshEst(true);toast(S.web?'Live web search on · about 7 credits per search':'Live web search off')};
+const SEARCH_CR=7.2;
+function setWeb(on){S.web=on;store.set('aix3_web',on);updateMeter();refreshEst(false);toast(on?'Live web ON · about 7 credits per search':'Live web off')}
+$('#webb').onclick=()=>{if(S.web)return setWeb(false);
+  const bal=(BACKEND()&&BAL!=null&&!ISOWNER)?`<p style="font-size:12.5px;margin:8px 0 0">Your balance: <b>${(+BAL).toFixed(1)} credits</b>${BAL<8?' <span style="color:#f59e0b">(you need 8+ credits for a web search)</span>':''}</p>`:'';
+  const d=dialog(`<h3 style="margin:0 0 8px">${ico('sites')} Live web search costs more</h3>
+  <p style="font-size:13px;color:var(--m);margin:0 0 8px">With WEB on, the model can search the internet for current information. Searches cost real money, so they use more credits than a normal reply:</p>
+  <div class="card2" style="font-size:13px;line-height:1.6"><b>About ${Math.round(SEARCH_CR)} credits per search</b> (roughly $${(SEARCH_CR*PPC).toFixed(2)})<br>Up to 3 searches in one reply, so up to about ${Math.round(SEARCH_CR*3)} credits<br>Plus the normal cost of the answer itself</div>
+  <p style="font-size:12px;color:var(--m);margin:8px 0 0">You are only charged for searches the model actually runs. Turn WEB off any time to go back to normal pricing.</p>${bal}
+  <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><button class="btn2" data-close>Keep it off</button><button class="btn" id="webyes">Turn on WEB</button></div>`);
+  $('#webyes').onclick=()=>{d.close();setWeb(true)}};
 $('#evalb').onclick=()=>{S.verify=S.verify==='llm'?'local':'llm';store.set('aix3_verify',S.verify);updateMeter();refreshEst(true)};
 $('#estb').onclick=()=>$('#estp').classList.toggle('on');
 $('#threads').onclick=e=>{const pn=e.target.closest('[data-pin]');if(pn){const c=S.chats.find(x=>x.id===pn.dataset.pin);c.pin=!c.pin;save();renderThreads();return}
@@ -1525,6 +1553,14 @@ $('#aboutbody').addEventListener('input',e=>{if(e.target.id==='abrpd'){ABM.rpd=+
 
 /* ============ activity timeline + progress panel ============ */
 function stepDetail(x){
+  if(/^Reading your message/.test(x))return 'The request is read locally first. Nothing is sent to the model yet.';
+  if(/^Context:/.test(x))return 'Only the most recent messages and your pinned notes are sent, which keeps the request small and cheap.';
+  if(/^Sending to the model|pass · sending/.test(x))return 'The prompt is sent to the model. The size shown is an estimate of the tokens in the request.';
+  if(/^Web search:|^Searching the web/.test(x))return 'The model decided it needs current information and ran a live web search. Each search is billed at about 7 credits.';
+  if(/^Read \d+ web/.test(x))return 'The model read the search results and will use them in its answer.';
+  if(/^Model started/.test(x))return 'The model began streaming the answer.';
+  if(/^Credits:/.test(x))return 'Estimated credit use for this reply. Your exact balance is shown at the top right.';
+  if(/^Live web search is ON/.test(x))return 'WEB is switched on, so the model is allowed to search the internet. You pay about 7 credits for each search it runs.';
   if(/^Router →/.test(x))return 'A local classifier chose the tier, output cap, effort level and how much history to send. No model call — 0 credits.';
   if(/^(Context trimmed|ctx:)/.test(x))return 'Older messages were replaced by a short digest and large code blocks by one-line stubs, so fewer tokens are sent.';
   if(/^(Prompt diet|sys:)/.test(x))return 'The persona prompt was distilled to its core before sending.';
@@ -1544,14 +1580,15 @@ function stepDetail(x){
   if(/^Previous version saved/.test(x)||/^Snapshot saved/.test(x))return 'Every AI change keeps the old version so you can compare or restore it.';
   return ''}
 function friendly(x){x=String(x||'');
+  if(/^Searching the web|^Web search/.test(x))return 'Searching the web';if(/^Read \d+ web/.test(x))return 'Reading web results';if(/^Sending to the model|pass · sending/.test(x))return 'Sending to the model';if(/^Model started/.test(x))return 'Writing the answer';if(/^Context:/.test(x))return 'Preparing context';if(/^Credits:/.test(x))return 'Finishing up';
   if(/^Router|^Planning/.test(x))return 'Planning the answer';if(/^gen:|^Writing|^Receiving/.test(x))return x.startsWith('Writing')||x.startsWith('Receiving')?x:'Writing';
   if(/^cont#/.test(x))return 'Continuing where it stopped';if(/^refine/.test(x))return 'Refining the result';if(/^(Verify|Check)/.test(x))return 'Checking the result';
   if(/^Cache/.test(x))return 'Looking for a saved answer';if(/^Connectors/.test(x))return 'Connecting tools';if(/^Reading/.test(x))return 'Reading your file';if(/^Applied|^Preview/.test(x))return 'Applying changes';return x.slice(0,40)}
 const SPIN='<span class="spin"><i></i><i></i><i></i><i></i></span>';
-function actRows(steps){return steps.map(([x,k])=>{const d=stepDetail(x),t=esc(stepLabel?stepLabel(x,k):x);return d?`<details class="ar2 ${k||''}"><summary>${t}</summary><div>${esc(d)}</div></details>`:`<div class="ar2 ${k||''}"><span>${t}</span></div>`}).join('')}
+function actRows(steps,live){return steps.map(([x,k,ms],i)=>{const d=stepDetail(x),t=esc(stepLabel?stepLabel(x,k):x),tm=(ms!=null)?`<i class="stt">${(ms/1000).toFixed(1)}s</i>`:'',cur=(live&&i===steps.length-1)?' cur':'';return d?`<details class="ar2 ${k||''}${cur}"><summary><span class="sl">${t}</span>${tm}</summary><div>${esc(d)}</div></details>`:`<div class="ar2 ${k||''}${cur}"><span class="sl">${t}</span>${tm}</div>`}).join('')}
 function actHtml(steps,o={}){const dur=o.dur!=null?Math.max(1,Math.round(o.dur/1000)):null;
   return `<details class="act2" ${o.open?'open':''}><summary><span class="adot">✓</span><span>Worked for ${dur||'<1'}s</span><span class="chev">▾</span></summary><div class="alist">${actRows(steps)}</div></details>`}
-function liveActHtml(steps,title,sec){return `<div class="act2 live"><div class="ah">${SPIN}<span>${esc(title)}</span><span class="el">${sec}s</span><span class="chev" id="alchev">▾</span></div><div class="alist" id="alistl">${actRows(steps)}</div></div>`}
+function liveActHtml(steps,title,sec){return `<div class="act2 live"><div class="ah">${SPIN}<span>${esc(title)}</span><span class="el">${sec}s</span><span class="chev" id="alchev">▾</span></div><div class="alist" id="alistl">${actRows(steps,true)}</div></div>`}
 
 function progData(){const c=curChat(),out={};out.uploads=[];if(c)c.msgs.forEach(m=>{if(m.role==='user'){for(const x of m.content.matchAll(/\[Attached file: ([^\]]+)\]/g))out.uploads.push(x[1])}});ATT.forEach(a=>out.uploads.push(a.name+' (queued)'));
   out.conn=[];if(c)c.msgs.forEach(m=>{(m.t?.protocol||[]).forEach(([x])=>{if(/^🔌 Used:/.test(x))out.conn.push(x.replace('🔌 Used: ',''))})});
