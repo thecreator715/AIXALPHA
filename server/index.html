@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>AIX Alpha v3.0 AI Suite</title>
+    <meta name="description" content="High-throughput neural quantum intelligence suite with multi-file App Studio, customizable personas, fine-tuned quantum reasoning models, live web grounding, and real-time cognitive execution telemetry." />
+    <meta property="og:title" content="AIX Alpha v3.0 AI Suite" />
+    <meta property="og:description" content="High-throughput neural quantum intelligence suite with multi-file App Studio, customizable personas, fine-tuned quantum reasoning models, live web grounding, and real-time cognitive execution telemetry." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      window.global = window;
+      window.process = window.process || { env: {} };
+      window.addEventListener('error', function(e) {
+        fetch('/api/log-client-error', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: e.message,
+            filename: e.filename,
+            lineno: e.lineno,
+            colno: e.colno,
+            stack: e.error ? e.error.stack : null
+          })
+        }).catch(function(){});
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        fetch('/api/log-client-error', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: 'Unhandled Promise: ' + (e.reason && e.reason.message ? e.reason.message : String(e.reason)),
+            stack: e.reason && e.reason.stack ? e.reason.stack : null
+          })
+        }).catch(function(){});
+      });
+    </script>
+  </head>
+  <body style="background-color: #000000; color: #f4f4f5; margin: 0; min-height: 100vh;">
+    <div id="root">
+      <!-- Fast Splash Placeholder while JS mounts -->
+      <div style="min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: #000000; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui, sans-serif;">
+        <div style="width: 48px; height: 48px; border-radius: 14px; background: #18181b; border: 1px solid #27272a; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+            <rect x="9" y="9" width="6" height="6"></rect>
+            <path d="M9 1v3"></path>
+            <path d="M15 1v3"></path>
+            <path d="M9 20v3"></path>
+            <path d="M15 20v3"></path>
+            <path d="M20 9h3"></path>
+            <path d="M20 14h3"></path>
+            <path d="M1 9h3"></path>
+            <path d="M1 14h3"></path>
+          </svg>
+        </div>
+        <h2 style="font-size: 18px; font-weight: 600; color: #ffffff; margin: 0 0 6px 0; letter-spacing: -0.03em;">
+          AIX Alpha v2.0 <span style="color: #71717a; font-weight: 400;">AI Suite</span>
+        </h2>
+        <p style="font-size: 12px; color: #a1a1aa; margin: 0; font-family: ui-monospace, monospace;">Initializing Quantum Engine & UI...</p>
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

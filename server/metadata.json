@@ -1,0 +1,5 @@
+{
+  "name": "AIX Alpha v3.0 AI Suite",
+  "description": "AIX Alpha v2 rebuilt on Claude Haiku 5.5 with a loop-based token-saving engine: local routing, prompt caching, deterministic verification, append-only repair loops and hard spend caps.",
+  "requestFramePermissions": ["microphone", "camera"]
+}

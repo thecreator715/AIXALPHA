@@ -1,0 +1,191 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-apple: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --sat: env(safe-area-inset-top, 0px);
+    --sab: env(safe-area-inset-bottom, 0px);
+    --sal: env(safe-area-inset-left, 0px);
+    --sar: env(safe-area-inset-right, 0px);
+  }
+  
+  html {
+    height: 100%;
+    height: 100dvh;
+    padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  }
+
+  body {
+    font-family: var(--font-apple);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    min-height: 100%;
+    min-height: 100dvh;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+}
+
+/* Safe Area Utility */
+.safe-top {
+  padding-top: max(env(safe-area-inset-top, 0px), 0px);
+}
+
+.safe-bottom {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 0px);
+}
+
+/* =========================================================================
+   LIGHT THEME PRECISION RULES
+   Ensures pristine, modern, high-contrast light mode across all UI layers
+   ========================================================================= */
+:root:not(.dark) {
+  color-scheme: light;
+}
+
+:root:not(.dark) body {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+:root:not(.dark) .bg-black {
+  background-color: #ffffff !important;
+}
+
+:root:not(.dark) .bg-zinc-950 {
+  background-color: #f8fafc !important;
+}
+
+:root:not(.dark) .bg-zinc-900 {
+  background-color: #f1f5f9 !important;
+}
+
+:root:not(.dark) .bg-zinc-900\/50,
+:root:not(.dark) .bg-zinc-900\/60,
+:root:not(.dark) .bg-zinc-900\/80,
+:root:not(.dark) .bg-zinc-950\/80,
+:root:not(.dark) .bg-zinc-950\/90,
+:root:not(.dark) .bg-black\/80,
+:root:not(.dark) .bg-black\/85,
+:root:not(.dark) .bg-black\/90,
+:root:not(.dark) .bg-black\/95 {
+  background-color: rgba(255, 255, 255, 0.94) !important;
+}
+
+:root:not(.dark) .border-zinc-800,
+:root:not(.dark) .border-zinc-800\/80,
+:root:not(.dark) .border-zinc-800\/90,
+:root:not(.dark) .border-zinc-700,
+:root:not(.dark) .border-zinc-700\/80,
+:root:not(.dark) .border-zinc-700\/90,
+:root:not(.dark) .border-zinc-900 {
+  border-color: #e2e8f0 !important;
+}
+
+:root:not(.dark) .text-white {
+  color: #0f172a !important;
+}
+
+:root:not(.dark) .text-zinc-100,
+:root:not(.dark) .text-zinc-200,
+:root:not(.dark) .text-zinc-300 {
+  color: #1e293b !important;
+}
+
+:root:not(.dark) .text-zinc-400 {
+  color: #475569 !important;
+}
+
+:root:not(.dark) .text-zinc-500 {
+  color: #64748b !important;
+}
+
+:root:not(.dark) .text-zinc-600 {
+  color: #94a3b8 !important;
+}
+
+:root:not(.dark) .hover\:bg-zinc-800:hover,
+:root:not(.dark) .hover\:bg-zinc-900:hover,
+:root:not(.dark) .hover\:bg-zinc-900\/50:hover,
+:root:not(.dark) .hover\:bg-zinc-950:hover {
+  background-color: #e2e8f0 !important;
+}
+
+:root:not(.dark) .hover\:text-white:hover {
+  color: #0f172a !important;
+}
+
+:root:not(.dark) .hover\:border-zinc-700:hover,
+:root:not(.dark) .hover\:border-zinc-600:hover {
+  border-color: #94a3b8 !important;
+}
+
+/* In light mode, primary action buttons styled as bg-white text-black in dark mode flip to high-contrast dark badges */
+:root:not(.dark) .bg-white.text-black:not(.keep-white) {
+  background-color: #0f172a !important;
+  color: #ffffff !important;
+}
+
+:root:not(.dark) .bg-white.text-black:not(.keep-white) svg {
+  stroke: #ffffff !important;
+}
+
+:root:not(.dark) .bg-white.text-black:not(.keep-white):hover {
+  background-color: #1e293b !important;
+}
+
+/* Inputs and textareas in light mode */
+:root:not(.dark) input:not([type="checkbox"]):not([type="radio"]),
+:root:not(.dark) textarea,
+:root:not(.dark) select {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+:root:not(.dark) input::placeholder,
+:root:not(.dark) textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* Modals & Dialog overlays in light mode */
+:root:not(.dark) .fixed.inset-0.bg-black\/80,
+:root:not(.dark) .fixed.inset-0.bg-black\/85,
+:root:not(.dark) .fixed.inset-0.bg-black\/90 {
+  background-color: rgba(15, 23, 42, 0.6) !important;
+}
+
+/* Glow subtle animations */
+.glow-subtle {
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glow-subtle:hover {
+  box-shadow: 0 0 20px -2px rgba(255, 255, 255, 0.12), 0 0 6px rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+:root:not(.dark) .glow-subtle:hover {
+  box-shadow: 0 0 16px -2px rgba(15, 23, 42, 0.08);
+  border-color: rgba(15, 23, 42, 0.3);
+}
+
+.glow-subtle-zinc:hover {
+  box-shadow: 0 0 20px -2px rgba(212, 212, 216, 0.14);
+  border-color: rgba(161, 161, 170, 0.6);
+}
+
+.glow-card {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glow-card:hover {
+  box-shadow: 0 0 30px -4px rgba(255, 255, 255, 0.09);
+  border-color: rgba(228, 228, 231, 0.4);
+  transform: translateY(-1px);
+}
+
+:root:not(.dark) .glow-card:hover {
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.08);
+  border-color: #94a3b8;
+}
