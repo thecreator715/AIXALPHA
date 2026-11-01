@@ -15,13 +15,18 @@ const cors = (env, req) => {
 const json = (env, req, body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...cors(env, req) } });
 const sha = async (s) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(s)))].map((b) => b.toString(16).padStart(2, '0')).join('');
 const owners = (env) => (env.OWNER_EMAILS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
-const view = (a) => ({ email: a.email, credits: +Number(a.credits).toFixed(2), tokens: a.tokens, requests: a.requests });
+const view = (a) => ({ username: a.username || null, email: a.email, credits: +Number(a.credits).toFixed(2), tokens: a.tokens, requests: a.requests });
 const getUser = (env, email) => env.DB.prepare('SELECT * FROM users WHERE email=?').bind(email).first();
+const hex = (u8) => [...u8].map((b) => b.toString(16).padStart(2, '0')).join('');
+const pbk = async (pw, salt) => hex(new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: enc.encode(salt), iterations: 100000 }, await crypto.subtle.importKey('raw', enc.encode(pw), 'PBKDF2', false, ['deriveBits']), 256)));
+const newToken = () => 'aix_' + hex(crypto.getRandomValues(new Uint8Array(24)));
+async function startSession(env, email) { const t = newToken(); await env.DB.prepare('INSERT INTO sessions(token_hash,email,created) VALUES(?,?,?)').bind(await sha(t), email, new Date().toISOString()).run(); return t; }
 async function authed(env, req) {
   const h = req.headers.get('authorization') || '';
   const t = h.startsWith('Bearer ') ? h.slice(7).trim() : '';
   if (!t) return null;
-  return env.DB.prepare('SELECT * FROM users WHERE token_hash=?').bind(await sha(t)).first();
+  const th = await sha(t);
+  return (await env.DB.prepare('SELECT u.* FROM sessions s JOIN users u ON u.email=s.email WHERE s.token_hash=?').bind(th).first()) || (await env.DB.prepare('SELECT * FROM users WHERE token_hash=?').bind(th).first());
 }
 const costUsd = (u) => ((u.input || 0) * PRICE.in + (u.output || 0) * PRICE.out + (u.cacheRead || 0) * PRICE.cr + (u.cacheWrite || 0) * PRICE.cw) / 1e6;
 
@@ -101,20 +106,39 @@ export default {
       await env.DB.prepare('INSERT INTO users(email,token_hash,credits,tokens,requests,created,last) VALUES(?,?,?,?,0,?,?)').bind(email, await sha(token), a.credits, 0, new Date().toISOString(), '').run();
       return json(env, req, { token, account: view(a) });
     }
+    if (path === '/api/account/register' && req.method === 'POST') {
+      const b = await req.json().catch(() => ({})); const un = String(b.username || '').trim().toLowerCase(), pw = String(b.password || '');
+      if (!/^[a-z0-9_.-]{3,24}$/.test(un)) return json(env, req, { error: 'Username: 3-24 letters, numbers, _ . -' }, 400);
+      if (pw.length < 6) return json(env, req, { error: 'Password must be at least 6 characters' }, 400);
+      if (await env.DB.prepare('SELECT 1 AS x FROM users WHERE username=?').bind(un).first()) return json(env, req, { error: 'That username is taken' }, 409);
+      const salt = hex(crypto.getRandomValues(new Uint8Array(16))), ph = await pbk(pw, salt), cur = await authed(env, req);
+      let email;
+      if (cur && !cur.username) { email = cur.email; await env.DB.prepare('UPDATE users SET username=?,pw_hash=?,pw_salt=? WHERE email=?').bind(un, ph, salt, email).run(); }   // upgrade the guest in place: credits stay
+      else { email = un + '@user.aix'; await env.DB.prepare('INSERT INTO users(email,token_hash,credits,tokens,requests,created,last,username,pw_hash,pw_salt) VALUES(?,?,?,0,0,?,?,?,?,?)').bind(email, await sha(newToken()), Number(env.SIGNUP_CREDITS || 0), new Date().toISOString(), '', un, ph, salt).run(); }
+      const token = await startSession(env, email);
+      return json(env, req, { token, account: view(await getUser(env, email)) });
+    }
+    if (path === '/api/account/login' && req.method === 'POST') {
+      const b = await req.json().catch(() => ({})); const un = String(b.username || '').trim().toLowerCase();
+      const u = await env.DB.prepare('SELECT * FROM users WHERE username=?').bind(un).first();
+      const ok = u && u.pw_hash && (await pbk(String(b.password || ''), u.pw_salt)) === u.pw_hash;
+      if (!ok) return json(env, req, { error: 'Wrong username or password' }, 401);
+      return json(env, req, { token: await startSession(env, u.email), account: view(u) });
+    }
     if (path === '/api/account/me') { const a = await authed(env, req); return a ? json(env, req, view(a)) : json(env, req, { error: 'sign in' }, 401); }
     if (path === '/api/sample' && req.method === 'POST') return sample(env, req);
     if (path === '/api/stripe/webhook' && req.method === 'POST') return stripe(env, req);
     if (path.startsWith('/api/admin/')) {
       if (!env.ADMIN_TOKEN || req.headers.get('x-admin-token') !== env.ADMIN_TOKEN) return json(env, req, { error: 'admin token required' }, 401);
       if (path === '/api/admin/grant' && req.method === 'POST') {
-        const b = await req.json().catch(() => ({})); const email = String(b.email || '').toLowerCase(); const n = Number(b.credits);
-        if (!(await getUser(env, email)) || !(n > 0)) return json(env, req, { error: 'email + credits required' }, 400);
+        const b = await req.json().catch(() => ({})); const q0 = String(b.email || b.username || '').toLowerCase(); const row = await env.DB.prepare('SELECT email FROM users WHERE email=? OR username=?').bind(q0, q0).first(); const email = row ? row.email : ''; const n = Number(b.credits);
+        if (!row || !(n > 0)) return json(env, req, { error: 'email + credits required' }, 400);
         await env.DB.batch([env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(n, email), env.DB.prepare('INSERT INTO purchases(email,at,usd,credits,ref) VALUES(?,?,0,?,?)').bind(email, new Date().toISOString(), n, 'admin-grant-' + Date.now())]);
         return json(env, req, view(await getUser(env, email)));
       }
       if (path === '/api/admin/users.md') {
         const { results } = await env.DB.prepare('SELECT * FROM users ORDER BY last DESC').all();
-        const rows = results.map((a) => `| ${a.email} | ${Number(a.credits).toFixed(1)} | ${a.tokens} | ${a.requests} | ${a.last || '-'} |`);
+        const rows = results.map((a) => `| ${a.username || a.email} | ${Number(a.credits).toFixed(1)} | ${a.tokens} | ${a.requests} | ${a.last || '-'} |`);
         return new Response(`# AIX ALPHA users\n\n| Email | Credits | Tokens | Requests | Last active |\n|---|---|---|---|---|\n${rows.join('\n')}\n`, { headers: { 'content-type': 'text/markdown', ...cors(env, req) } });
       }
       if (path === '/api/admin/sql' && req.method === 'POST') {          // owner-only read queries
