@@ -2,11 +2,11 @@ name = "aix-alpha"
 main = "index.js"
 compatibility_date = "2026-10-01"
 
+# No id here on purpose: wrangler creates the storage automatically on first deploy.
 [[kv_namespaces]]
 binding = "AIX"
-id = "REPLACE_WITH_KV_ID"   # Deploy-Cloud.command fills this in automatically
 
 [vars]
 ALLOWED_ORIGINS = "*"
 SIGNUP_CREDITS = "0"
-OWNER_EMAILS = ""            # your email: unlimited, never charged (Deploy-Cloud.command sets this)
+OWNER_EMAILS = ""
