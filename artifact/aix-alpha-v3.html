@@ -403,10 +403,10 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
     <span class="sp"></span>
     <button class="tg on" data-col="files">Files</button><button class="tg on" data-col="editor">Editor</button><button class="tg on" data-col="prev">Preview</button><button class="tg on" data-col="chat">Chat</button>
   </div>
-  <div class="stbar mono"><select id="fw"><option value="tailwind">Tailwind</option><option value="vanilla">Vanilla</option><option value="canvas">Canvas</option><option value="threejs">Three.js</option></select><select id="stl" title="Visual style the AI should design in"><option value="auto">Style: Modern</option><option value="glass">Glass</option><option value="brutal">Brutalist</option><option value="minimal">Minimal</option><option value="neon">Neon / Cyber</option><option value="editorial">Editorial</option><option value="playful">Playful</option><option value="material">Material</option></select><input id="gen" placeholder="Describe an app to generate into index.html…"><button class="btn" id="gengo">⚡ Generate</button></div>
+  <div class="stbar mono"><select id="fw"><option value="tailwind">Tailwind</option><option value="vanilla">Vanilla</option><option value="canvas">Canvas</option><option value="threejs">Three.js</option><option value="model3d">3D model (STL)</option><option value="pdfdoc">PDF document</option><option value="textdoc">Text / Markdown</option></select><select id="stl" title="Visual style the AI should design in"><option value="auto">Style: Modern</option><option value="glass">Glass</option><option value="brutal">Brutalist</option><option value="minimal">Minimal</option><option value="neon">Neon / Cyber</option><option value="editorial">Editorial</option><option value="playful">Playful</option><option value="material">Material</option></select><input id="gen" placeholder="Describe an app to generate into index.html…"><button class="btn" id="gengo">⚡ Generate</button></div>
   <div id="stgrid" class="stgrid">
     <div class="stc" id="c-files"><div class="sth mono"><b>FILES</b><span class="grow"></span><button class="btn2" id="fadd">＋</button></div><div id="flist"></div>
-      <div class="sth mono" style="border-top:1px solid var(--b);border-bottom:0;flex-wrap:wrap"><button class="btn2" id="fren">Rename</button><button class="btn2" id="fdel">Delete</button><button class="btn2" id="fzip">⬇ ZIP</button><button class="btn2" id="fhtml">⬇ HTML</button><button class="btn2" id="fimp">⬆ Import</button><input type="file" id="fimpi" multiple hidden></div></div>
+      <div class="sth mono" style="border-top:1px solid var(--b);border-bottom:0;flex-wrap:wrap"><button class="btn2" id="fren">Rename</button><button class="btn2" id="fdel">Delete</button><button class="btn2" id="fzip">⬇ ZIP</button><button class="btn2" id="fhtml">⬇ HTML</button><button class="btn2" id="fimp">⬆ Import</button><button class="btn2" id="fexp">⬇ Export…</button><input type="file" id="fimpi" multiple hidden accept=".html,.htm,.css,.js,.json,.txt,.md,.zip,.stl,.obj,.fbx,.pdf"></div></div>
     <div class="stc" id="c-editor"><div class="sth mono"><b id="fname">index.html</b><span class="grow"></span><button class="btn2" id="hist">🕘 History</button><button class="btn2" id="srun">▶ Run</button><button class="btn2" id="scopy">Copy</button></div>
       <div class="ed"><pre id="gut" class="mono"></pre><textarea id="code" spellcheck="false" class="mono"></textarea></div>
       <div id="selbar" class="sth mono" style="display:none"><span id="seltxt" style="color:var(--ac)"></span><input id="selp" placeholder="Edit selection with AI…"><button class="btn" id="selgo">Apply</button></div>
@@ -992,6 +992,7 @@ const INJ='<script data-aix>(function(){var send=function(t,d){parent.postMessag
 +'send("html",{html:"<!DOCTYPE html>\\n"+c.outerHTML})}})})();<\/script>';
 
 function buildPage(files,page,inject){
+  {const af=files.find(x=>x.name===page&&x.bin);if(af)return assetPage(af)}
   const f=files.find(x=>x.name===page)||files.find(x=>/\.html?$/.test(x.name));let h=f?f.content:'<p style="font-family:sans-serif">Add an index.html</p>';
   h=h.replace(/<link[^>]*href=["']([^"']+)["'][^>]*>/gi,(m,n)=>{const g=files.find(x=>x.name===n);return g&&/\.css$/i.test(n)?`<style data-aixsrc="${n}">${g.content}}
 </style>`:m});
@@ -1036,7 +1037,7 @@ function renderStudio(){
   $('#pj').innerHTML=PROJECTS.filter(p=>p.sid===SID()).map(p=>`<option value="${p.id}" ${p.id===CURP?'selected':''}>${esc(p.title)}</option>`).join('');
   const f=activeFile();P.active=f.name;
   $('#flist').innerHTML=P.files.map(x=>`<div class="fi ${x.name===f.name?'on':''}" data-f="${esc(x.name)}">${esc(x.name)}</div>`).join('');
-  $('#fname').textContent=f.name;$('#code').value=f.content;gutter();renderDiag();
+  $('#fname').textContent=f.name;$('#code').readOnly=!!f.bin;$('#code').value=f.bin?'/* binary asset: '+f.name+' ('+Math.round((f.content.length*0.75)/1024)+' KB). Shown in Preview; use Export to download. */':f.content;gutter();renderDiag();
   const mob=matchMedia('(max-width:900px)').matches;const vis=k=>mob?MCOL===k:!!COLS[k];document.querySelectorAll('[data-col]').forEach(b=>b.classList.toggle('on',vis(b.dataset.col)));
   const w={files:'170px',editor:'minmax(0,1.1fr)',prev:'minmax(0,1fr)',chat:CSZ==='expanded'?'460px':'300px'};
   const g=$('#stgrid');g.classList.toggle('fs',CSZ==='fullscreen');
@@ -1067,7 +1068,7 @@ function wireStudio(){
   $('#pjall').onclick=openAllApps;
   document.querySelectorAll('[data-col]').forEach(b=>b.onclick=()=>{if(matchMedia('(max-width:900px)').matches)MCOL=b.dataset.col;else{COLS[b.dataset.col]=COLS[b.dataset.col]?0:1;store.set('aix3_cols',COLS)}renderStudio()});
   $('#gengo').onclick=()=>{const v=$('#gen').value.trim();if(!v)return toast('Describe the app first');$('#gen').value='';stGenerate(v)};
-  $('#flist').onclick=e=>{const i=e.target.closest('[data-f]');if(i){activeFile().content=$('#code').value;P.active=i.dataset.f;projSave();renderStudio()}};
+  $('#flist').onclick=e=>{const i=e.target.closest('[data-f]');if(i){const cf=activeFile();if(!cf.bin)cf.content=$('#code').value;P.active=i.dataset.f;const nf=activeFile();if(nf.bin||/\.(html?)$/i.test(nf.name))PAGE=nf.name;projSave();renderStudio();if(nf.bin||/\.html?$/i.test(nf.name))refreshPreview()}};
   $('#code').oninput=e=>{activeFile().content=e.target.value;projSave();gutter();renderDiag();clearTimeout(pvT);pvT=setTimeout(refreshPreview,700)};
   $('#code').onscroll=e=>{$('#gut').scrollTop=e.target.scrollTop};
   $('#code').onkeydown=e=>{if(e.key==='Tab'){e.preventDefault();const t=e.target,s=t.selectionStart;t.value=t.value.slice(0,s)+'  '+t.value.slice(t.selectionEnd);t.selectionStart=t.selectionEnd=s+2;t.dispatchEvent(new Event('input'))}};
@@ -1338,7 +1339,7 @@ function designBrief(style){return `DESIGN SYSTEM (follow strictly):
 - Accessibility: semantic landmarks (header, main, nav, footer), one h1, labelled form fields, alt text, AA contrast, keyboard operable.
 - Quality: set <html lang>, <title>, meta description and meta viewport. Wrap storage and network calls in try/catch with friendly error UI. No console errors. Keep JS tidy and commented.
 - Visual style: ${DESIGN_STYLES[style]||DESIGN_STYLES.auto}`}
-function buildGenPrompt(fw,spec){const st=($('#stl')||{}).value||'auto';return `Build a complete, self-contained single-file HTML web app using ${fw}. Return only the HTML in one code block.\n\n${designBrief(st)}\n\nSpec: ${spec}`}
+function buildGenPrompt(fw,spec){if(fw==='model3d')return model3dPrompt(spec);if(fw==='pdfdoc')return `Build a print-ready, self-contained single-file HTML document (A4, @page margins, clean typography, page-break rules) for this spec. Return only the HTML in one code block. It will be exported to PDF with the browser print dialog.\n\nSpec: ${spec}`;if(fw==='textdoc')return `Write this as a plain-text or Markdown document. Return only the document in one code block labelled markdown.\n\nSpec: ${spec}`;const st=($('#stl')||{}).value||'auto';return `Build a complete, self-contained single-file HTML web app using ${fw}. Return only the HTML in one code block.\n\n${designBrief(st)}\n\nSpec: ${spec}`}
 async function stGenerate(spec){
   const fw=$('#fw').value,f=P.files.find(x=>x.name==='index.html')||activeFile();
   if(f.content.trim().length>600&&!REWRITE.test(spec)){const c=await choose('index.html already has content','AIX can apply this as small edits (safest) or replace the whole file. Either way the current version is saved to History.',['Apply as edits','Replace whole file','Cancel']);if(c===0){P.active=f.name;return editWithAI(spec)}if(c!==1)return}
@@ -1807,6 +1808,60 @@ $('#hub').onclick=()=>setView('personas');$('#about').onclick=()=>setView('about
   fit();addEventListener('resize',fit);setTimeout(fit,300);addEventListener('orientationchange',()=>setTimeout(fit,200));
   const sm=$('#stmore');if(sm)sm.onclick=()=>{const d=dialog(`<h3 style="margin:0 0 10px">Project</h3><div class="mgrid" style="grid-template-columns:repeat(2,1fr)">${[['pjnew','＋','New app'],['pjren','','Rename'],['pjdel','','Delete'],['pjall','','All apps']].map(([id,,l])=>`<button class="mtile" data-pa="${id}" style="min-height:56px"><span class="mtl" style="font-size:13px">${l}</span></button>`).join('')}</div><div class="mono" style="font-size:11px;color:var(--m);margin-top:10px">${esc(($('#stsess')||{}).textContent||'')}<br>${esc(($('#stbal')||{}).textContent||'')}</div><div style="text-align:right;margin-top:10px"><button class="btn2" data-close>Close</button></div>`);d.onclick=e=>{const b=e.target.closest('[data-pa]');if(b){d.close();const t=$('#'+b.dataset.pa);if(t)t.click()}}};
 })();
+
+/* ===== Studio assets: 3D (STL/OBJ/FBX) viewer with stylized materials, PDF + text export ===== */
+const BINX=/\.(stl|obj|fbx|pdf)$/i;
+const readDU=f=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(f)});
+function assetPage(f){
+  const ext=(f.name.split('.').pop()||'').toLowerCase();
+  if(ext==='pdf')return `<!doctype html><body style="margin:0;background:#111;color:#ddd;font:14px sans-serif"><object data="${f.content}" type="application/pdf" style="width:100vw;height:100vh"><div style="padding:24px">PDF preview is blocked in this sandbox. Use Export → Download to open it.</div></object>`;
+  const CD='https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/';
+  const ld={stl:'loaders/STLLoader.js',obj:'loaders/OBJLoader.js',fbx:'loaders/FBXLoader.js'}[ext];
+  return `<!doctype html><meta name=viewport content="width=device-width,initial-scale=1"><style>html,body{margin:0;height:100%;background:#0b0d0f;overflow:hidden;font:12px ui-monospace,monospace;color:#cfd}#bar{position:fixed;left:6px;right:6px;top:6px;display:flex;gap:6px;flex-wrap:wrap;z-index:2}#bar select,#bar button,#bar input{background:#15191c;color:#cfd;border:1px solid #2a3a36;border-radius:8px;height:30px;padding:0 8px;font:inherit}#msg{position:fixed;bottom:8px;left:8px;opacity:.7}canvas{display:block}</style>
+<div id=bar><select id=mat><option value=standard>Clay</option><option value=metal>Metal</option><option value=toon>Toon</option><option value=glass>Glass</option><option value=holo>Hologram</option><option value=wire>Wireframe</option><option value=normal>Normal map</option><option value=basic>Flat</option></select><input id=col type=color value="#18b8a0"><button id=rot>Rotate</button><button id=stl>Export STL</button></div><div id=msg>loading…</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"><\/script>${ext==='fbx'?'<script src="'+CD+'libs/fflate.min.js"><\/script>':''}<script src="${CD+ld}"><\/script><script src="${CD}exporters/STLExporter.js"><\/script>
+<script>
+(function(){try{
+var msg=document.getElementById('msg'),du=${JSON.stringify(f.content)},ext=${JSON.stringify(ext)};
+var sc=new THREE.Scene();sc.background=new THREE.Color(0x0b0d0f);var cam=new THREE.PerspectiveCamera(45,innerWidth/innerHeight,.01,5000);
+var rd=new THREE.WebGLRenderer({antialias:true});rd.setPixelRatio(Math.min(devicePixelRatio,2));rd.setSize(innerWidth,innerHeight);document.body.appendChild(rd.domElement);
+sc.add(new THREE.HemisphereLight(0xffffff,0x223344,.9));var dl=new THREE.DirectionalLight(0xffffff,1.1);dl.position.set(3,5,4);sc.add(dl);
+var obj=null,spin=true,drag=false,px=0,py=0,ry=.6,rx=.3,dist=3;
+function mk(kind,c){var col=new THREE.Color(c);switch(kind){case'metal':return new THREE.MeshStandardMaterial({color:col,metalness:1,roughness:.25});case'toon':return new THREE.MeshToonMaterial({color:col});case'glass':return new THREE.MeshPhysicalMaterial({color:col,transparent:true,opacity:.45,roughness:.05,metalness:0,clearcoat:1});case'holo':return new THREE.MeshBasicMaterial({color:col,wireframe:true,transparent:true,opacity:.8});case'wire':return new THREE.MeshBasicMaterial({color:col,wireframe:true});case'normal':return new THREE.MeshNormalMaterial();case'basic':return new THREE.MeshBasicMaterial({color:col});default:return new THREE.MeshStandardMaterial({color:col,roughness:.85,metalness:0})}}
+function style(){if(!obj)return;var m=mk(document.getElementById('mat').value,document.getElementById('col').value);obj.traverse(function(o){if(o.isMesh){o.material=m;if(o.geometry&&!o.geometry.attributes.normal)o.geometry.computeVertexNormals()}})}
+function fit(o){var b=new THREE.Box3().setFromObject(o),c=b.getCenter(new THREE.Vector3()),sz=b.getSize(new THREE.Vector3()),m=Math.max(sz.x,sz.y,sz.z)||1;o.position.sub(c);var g=new THREE.Group();g.add(o);g.scale.setScalar(2/m);sc.add(g);obj=g;dist=6.5}
+function done(o){fit(o);style();msg.textContent=ext.toUpperCase()+' loaded · drag to orbit · scroll to zoom'}
+function buf(){var b=atob(du.split(',')[1]),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a.buffer}
+try{if(ext==='stl'){var g=new THREE.STLLoader().parse(buf());done(new THREE.Mesh(g,new THREE.MeshStandardMaterial()))}
+else if(ext==='obj'){done(new THREE.OBJLoader().parse(atob(du.split(',')[1])))}
+else{done(new THREE.FBXLoader().parse(buf(),''))}}catch(e){msg.textContent='Could not read model: '+e.message}
+['mat','col'].forEach(function(i){document.getElementById(i).oninput=style});
+document.getElementById('rot').onclick=function(){spin=!spin};
+document.getElementById('stl').onclick=function(){if(!obj)return;var t=new THREE.STLExporter().parse(obj);parent.postMessage({aix3d:'stl',data:t,name:${JSON.stringify(f.name.replace(/\.\w+$/,''))}+'.stl'},'*')};
+var el=rd.domElement;el.onpointerdown=function(e){drag=true;px=e.clientX;py=e.clientY;el.setPointerCapture(e.pointerId)};el.onpointerup=function(){drag=false};el.onpointermove=function(e){if(!drag)return;ry+=(e.clientX-px)*.01;rx=Math.max(-1.4,Math.min(1.4,rx+(e.clientY-py)*.01));px=e.clientX;py=e.clientY};
+el.addEventListener('wheel',function(e){e.preventDefault();dist=Math.max(1.2,Math.min(16,dist*(1+e.deltaY*.001)))},{passive:false});
+addEventListener('resize',function(){cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();rd.setSize(innerWidth,innerHeight)});
+(function loop(){requestAnimationFrame(loop);if(spin&&!drag)ry+=.004;if(obj)obj.rotation.set(rx,ry,0);cam.position.set(0,0,dist);cam.lookAt(0,0,0);rd.render(sc,cam)})();
+}catch(e){document.getElementById('msg').textContent='Viewer error: '+e.message}})();
+<\/script>`}
+function model3dPrompt(spec){return `Build a self-contained single-file HTML page that creates a 3D model with Three.js r128 (load https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js). Build the model procedurally as a THREE.Group named window.MODEL, with a stylized material (pick one that suits the subject: toon, brushed metal, glass, clay or low-poly flat shading), good lighting, a ground shadow and drag-to-orbit. Also add this exact export hook so Studio can download an STL:\\naddEventListener('message',function(e){if(e.data==='aix-export-stl'){var t=['solid model'];MODEL.updateMatrixWorld(true);MODEL.traverse(function(o){if(!o.isMesh)return;var g=o.geometry.index?o.geometry.toNonIndexed():o.geometry,p=g.attributes.position,a=new THREE.Vector3(),b=new THREE.Vector3(),c=new THREE.Vector3(),n=new THREE.Vector3();for(var i=0;i<p.count;i+=3){a.fromBufferAttribute(p,i).applyMatrix4(o.matrixWorld);b.fromBufferAttribute(p,i+1).applyMatrix4(o.matrixWorld);c.fromBufferAttribute(p,i+2).applyMatrix4(o.matrixWorld);n.subVectors(c,b).cross(new THREE.Vector3().subVectors(a,b)).normalize();t.push('facet normal '+n.x+' '+n.y+' '+n.z,'outer loop','vertex '+a.x+' '+a.y+' '+a.z,'vertex '+b.x+' '+b.y+' '+b.z,'vertex '+c.x+' '+c.y+' '+c.z,'endloop','endfacet')}});t.push('endsolid model');parent.postMessage({aix3d:'stl',data:t.join('\\\\n'),name:'model.stl'},'*')}});\\nReturn only the HTML in one code block.\\n\\nSpec: ${spec}`}
+function dl(name,data,type){const a=document.createElement('a');a.href=data instanceof Blob?URL.createObjectURL(data):data;a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>a.remove(),500)}
+addEventListener('message',e=>{if(e.data&&e.data.aix3d==='stl'){dl(e.data.name||'model.stl',new Blob([e.data.data],{type:'model/stl'}));toast('STL downloaded')}});
+function pdfFromText(name,text){
+  const go=()=>{const {jsPDF}=window.jspdf;const d=new jsPDF({unit:'pt',format:'a4'});d.setFont('courier','normal');d.setFontSize(10);const lines=d.splitTextToSize(text,520);let y=56;lines.forEach(l=>{if(y>790){d.addPage();y=56}d.text(l,38,y);y+=13});d.save(name.replace(/\.\w+$/,'')+'.pdf');toast('PDF downloaded')};
+  if(window.jspdf)return go();const sc=document.createElement('script');sc.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';sc.onload=go;sc.onerror=()=>toast('Could not load the PDF library');document.head.appendChild(sc)}
+function openExport(){
+  const f=activeFile();if(!f)return;const isH=/\.html?$/i.test(f.name),is3=/\.(stl|obj|fbx)$/i.test(f.name)||/MODEL\b/.test(f.content||'');
+  const items=[['raw','Download file',f.name],...(isH?[['print','Save page as PDF','opens the print dialog — choose Save as PDF']]:[]),...(!f.bin&&!isH?[['pdf','Text to PDF','builds a PDF from this file']]:[]),...(is3?[['stl','Export STL','from the 3D preview']]:[]),['txt','Download as .txt',f.bin?'not available for binary assets':'plain text']].filter(x=>!(x[0]==='txt'&&f.bin));
+  const d=dialog(`<h3 style="margin:0 0 10px">Export</h3><div style="display:grid;gap:8px">${items.map(([k,t,sub])=>`<button class="btn2" data-x="${k}" style="text-align:left;padding:10px 12px;height:auto"><b>${t}</b><br><span class="mono" style="font-size:11px;color:var(--m)">${esc(sub)}</span></button>`).join('')}</div><div style="text-align:right;margin-top:10px"><button class="btn2" data-close>Close</button></div>`);
+  d.onclick=e=>{const b=e.target.closest('[data-x]');if(!b)return;const k=b.dataset.x;d.close();
+    if(k==='raw')dl(f.name,f.bin?f.content:new Blob([f.content],{type:'text/plain'}));
+    else if(k==='txt')dl(f.name.replace(/\.\w+$/,'')+'.txt',new Blob([f.content],{type:'text/plain'}));
+    else if(k==='pdf')pdfFromText(f.name,f.content);
+    else if(k==='print'){const w=open('','_blank');if(!w){toast('Allow pop-ups to print');return}w.document.write(buildPage(P.files,f.name,false));w.document.close();setTimeout(()=>w.print(),600)}
+    else if(k==='stl'){if(f.bin){const fr=$('#sf');toast('Use the Export STL button in the viewer')}else{$('#sf').contentWindow.postMessage('aix-export-stl','*')}}}}
+setTimeout(function(){const b=$('#fexp');if(b)b.onclick=openExport;const fi=$('#fimpi');if(fi)fi.onchange=async e=>{const list=[...e.target.files];e.target.value='';const rest=[];for(const f of list){if(BINX.test(f.name)){ensureProj();const nm=safeName(f.name);const du=await readDU(f);const ex=P.files.find(x=>x.name===nm);if(ex){ex.content=du;ex.bin=true}else P.files.push({name:nm,content:du,bin:true});P.active=nm;PAGE=nm}else rest.push(f)}
+  if(rest.length)await addFiles(rest);projSave();renderStudio();refreshPreview();setView('studio');if(list.length)toast('Imported '+list.length+' file'+(list.length>1?'s':''))}},0);
 wireStudio();$('#hist').onclick=openHistory;$('#pdbg').onclick=openDebugDialog;$('#paudit').onclick=openAudit;wirePersonas();wireTools();wireConnect();wireSites();wireCredits();wireMembers();refreshEst(false);
 addEventListener('resize',()=>{if($('#vstudio').classList.contains('on'))renderStudio()});
 
