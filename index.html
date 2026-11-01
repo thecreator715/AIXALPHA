@@ -428,7 +428,7 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
   <div class="stbar mono"><select id="fw"><option value="tailwind">Tailwind</option><option value="vanilla">Vanilla</option><option value="canvas">Canvas</option><option value="threejs">Three.js</option><option value="model3d">3D model (STL)</option><option value="flux">Image (FLUX / FLUX.2)</option><option value="clip">Animated clip (WebM)</option><option value="sprite">Sprite sheet (pixel art)</option><option value="image">Image / illustration (SVG)</option><option value="pdfdoc">PDF document</option><option value="textdoc">Text / Markdown</option></select><select id="stl" title="Visual style the AI should design in"><option value="auto">Style: Modern</option><option value="glass">Glass</option><option value="brutal">Brutalist</option><option value="minimal">Minimal</option><option value="neon">Neon / Cyber</option><option value="editorial">Editorial</option><option value="playful">Playful</option><option value="material">Material</option></select><input id="gen" placeholder="Describe an app to generate into index.html…"><button class="btn" id="gengo">⚡ Generate</button></div>
   <div id="stgrid" class="stgrid">
     <div class="stc" id="c-files"><div class="sth mono"><b>FILES</b><span class="grow"></span><button class="btn2" id="fadd">＋</button></div><div id="flist"></div>
-      <div class="sth mono" style="border-top:1px solid var(--b);border-bottom:0;flex-wrap:wrap"><button class="btn2" id="fren">Rename</button><button class="btn2" id="fdel">Delete</button><button class="btn2" id="fzip">⬇ ZIP</button><button class="btn2" id="fhtml">⬇ HTML</button><button class="btn2" id="fimp">⬆ Import</button><button class="btn2" id="fexp">⬇ Export…</button><button class="btn2" id="fanim">🎬 Animate image</button><input type="file" id="fimpi" multiple hidden accept=".html,.htm,.css,.js,.json,.txt,.md,.zip,.stl,.obj,.fbx,.pdf"></div></div>
+      <div class="sth mono" style="border-top:1px solid var(--b);border-bottom:0;flex-wrap:wrap"><button class="btn2" id="fren">Rename</button><button class="btn2" id="fdel">Delete</button><button class="btn2" id="fzip">⬇ ZIP</button><button class="btn2" id="fhtml">⬇ HTML</button><button class="btn2" id="fimp">⬆ Import</button><button class="btn2" id="fexp">⬇ Export…</button><button class="btn2" id="fanim">🎬 Animate image</button><button class="btn2" id="fvid">🎞 AI video (beta)</button><input type="file" id="fimpi" multiple hidden accept=".html,.htm,.css,.js,.json,.txt,.md,.zip,.stl,.obj,.fbx,.pdf"></div></div>
     <div class="stc" id="c-editor"><div class="sth mono"><b id="fname">index.html</b><span class="grow"></span><button class="btn2" id="hist">🕘 History</button><button class="btn2" id="srun">▶ Run</button><button class="btn2" id="scopy">Copy</button></div>
       <div class="ed"><pre id="gut" class="mono"></pre><textarea id="code" spellcheck="false" class="mono"></textarea></div>
       <div id="selbar" class="sth mono" style="display:none"><span id="seltxt" style="color:var(--ac)"></span><input id="selp" placeholder="Edit selection with AI…"><button class="btn" id="selgo">Apply</button></div>
@@ -1913,6 +1913,36 @@ async function chatFlux(c,text){
 
 setTimeout(()=>{try{hydAll()}catch{}},400);
 function imgFail(el){const d=document.createElement('div');d.className='mono';d.style.cssText='color:var(--a);padding:8px 0';d.textContent='The free public image service is busy or blocked right now. Sign in with a free account to use the AIX server FLUX instead.';const a=el.parentNode&&el.parentNode.querySelector('a');if(a)a.remove();el.replaceWith(d)}
+
+/* ===== AI video (beta): image -> short clip via the AIX server (free Hugging Face GPU queue) ===== */
+async function videoCall(imgDataUrl,prompt){
+  if(!BACKEND())throw new Error('AI video needs the AIX server (use the GitHub site).');
+  const tok=store.get(TOKK,'');if(!tok){setTimeout(()=>{try{openAccount('Sign in to generate video. A clip costs 3 credits.')}catch{}},200);throw new Error('Sign in to generate video (3 credits per clip).')}
+  const r=await fetch(BACKEND()+'/api/video',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+tok},body:JSON.stringify({prompt,image:imgDataUrl})});
+  const j=await r.json().catch(()=>({}));
+  if(r.status===402){BAL=0;try{setStatus()}catch{}setTimeout(()=>{try{openCredits('A video clip costs 3 credits. Add credits to continue.')}catch{}},200);throw new Error(j.error||'Out of credits.')}
+  if(r.status===401){setTimeout(()=>{try{openAccount('Your session expired. Sign in again.')}catch{}},200);throw new Error('Please sign in again.')}
+  if(!r.ok||!j.video)throw new Error(j.error||('Video failed ('+r.status+')'));
+  if(j.credits!=null){BAL=j.credits;try{setStatus()}catch{}}
+  return j}
+const fitJpeg=src=>new Promise((ok,no)=>{const im=new Image();im.onload=()=>{const c=document.createElement('canvas');c.width=704;c.height=512;const x=c.getContext('2d'),ir=im.width/im.height,cr=704/512;let sw=im.width,sh=im.height,sx=0,sy=0;if(ir>cr){sw=im.height*cr;sx=(im.width-sw)/2}else{sh=im.width/cr;sy=(im.height-sh)/2}x.drawImage(im,sx,sy,sw,sh,0,0,704,512);ok(c.toDataURL('image/jpeg',.85))};im.onerror=()=>no(new Error('Could not read that image'));im.src=src});
+function openVideoBeta(){
+  ensureProj();const imgs=P.files.filter(f=>f.bin&&/\.(png|jpe?g|webp|gif)$/i.test(f.name));
+  const d=dialog(`<h3 style="margin:0 0 4px">AI video <span class="chip" style="font-size:10px">BETA</span></h3><div class="mono" style="font-size:11px;color:var(--m);margin-bottom:10px">Turns an image into a ~2 second clip using a free shared GPU queue (LTX-Video). 3 credits per clip, free for admin, refunded if it fails. It can be slow or busy at times.</div>
+  <select id="avsrc" style="width:100%">${imgs.length?imgs.map(f=>`<option value="${esc(f.name)}">${esc(f.name)}</option>`).join(''):'<option value="">No images yet. Upload one or generate with Image mode</option>'}</select>
+  <textarea id="avp" rows="2" placeholder="Describe the motion, e.g. the hummingbird hovers and its wings blur, slow camera push-in" style="width:100%;margin-top:8px"></textarea>
+  <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn2" id="avup">⬆ Upload image</button><span style="flex:1"></span><button class="btn2" data-close>Close</button><button class="btn" id="avgo">Generate · 3 cr</button></div>
+  <div id="avst" class="mono" style="font-size:11px;color:var(--ac);margin-top:8px;min-height:16px"></div><input type="file" id="avfi" accept="image/*" hidden>`);
+  d.querySelector('#avup').onclick=()=>d.querySelector('#avfi').click();
+  d.querySelector('#avfi').onchange=async e=>{const f=e.target.files[0];if(!f)return;const nm=safeName(f.name),nf=await makeAsset(nm,await readDU(f));P.files.push(nf);projSave();renderStudio();const sel=d.querySelector('#avsrc');sel.innerHTML+=`<option value="${esc(nm)}">${esc(nm)}</option>`;sel.value=nm};
+  d.querySelector('#avgo').onclick=async()=>{const n=d.querySelector('#avsrc').value,f=P.files.find(x=>x.name===n),st=d.querySelector('#avst'),btn=d.querySelector('#avgo');if(!f){st.textContent='Pick or upload an image first';return}
+    btn.disabled=true;const t0=Date.now(),tm=setInterval(()=>{st.textContent='Generating on the free GPU queue… '+Math.round((Date.now()-t0)/1000)+'s (can take a few minutes)'},500);
+    try{const small=await fitJpeg(f.content);const j=await videoCall(small,d.querySelector('#avp').value.trim());
+      const nm=safeName('video-'+Date.now().toString(36)+'.mp4'),nf=await makeAsset(nm,j.video);P.files.push(nf);P.active=nm;PAGE=nm;projSave();
+      const c=proj().chat||(proj().chat=[]);c.push({role:'assistant',content:'AI video '+nm+' from '+f.name+' · '+(j.spentCredits?j.spentCredits+' credits used':'admin, 0 credits')+(j.credits!=null?' · balance '+j.credits+' cr':'')+'. Use Export to download.'});projSave();
+      clearInterval(tm);d.close();renderStudio();renderStChat();refreshPreview();setView('studio');toast('Video ready')}
+    catch(e){clearInterval(tm);st.style.color='var(--a)';st.textContent=e.message||String(e);btn.disabled=false}}}
+setTimeout(function(){const b=$('#fvid');if(b)b.onclick=openVideoBeta},0);
 /* ===== Studio assets: 3D (STL/OBJ/FBX) viewer with stylized materials, PDF + text export ===== */
 const BINX=/\.(stl|obj|fbx|pdf|png|jpe?g|webp|gif|webm|mp4)$/i;
 const readDU=f=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(f)});

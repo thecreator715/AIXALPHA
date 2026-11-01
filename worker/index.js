@@ -155,6 +155,7 @@ export default {
     }
     if (path === '/api/account/me') { const a = await authed(env, req); return a ? json(env, req, vw(env, a)) : json(env, req, { error: 'sign in' }, 401); }
     if (path === '/api/image' && req.method === 'POST') return image(env, req);
+    if (path === '/api/video' && req.method === 'POST') return video(env, req);
     if (path === '/api/sample' && req.method === 'POST') return sample(env, req);
     if (path === '/api/stripe/webhook' && req.method === 'POST') return stripe(env, req);
     if (path.startsWith('/api/admin/')) {
@@ -225,5 +226,70 @@ async function image(env, req) {
   } catch (e) {
     if (!owner) await env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(cost, a.email).run();
     return json(env, req, { error: 'Image model error: ' + (e.message || e) }, 502);
+  }
+}
+
+// ---- AI video (beta): free Hugging Face ZeroGPU Space (Lightricks LTX-Video distilled), image -> short clip ----
+const VIDEO_CR = 3;
+const HF_VIDEO = 'https://lightricks-ltx-video-distilled.hf.space';
+const b64 = (u8) => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
+async function hfVideo(env, prompt, imageDataUrl) {
+  const h = env.HF_TOKEN ? { authorization: 'Bearer ' + env.HF_TOKEN } : {};
+  const m = /^data:([^;]+);base64,(.+)$/.exec(imageDataUrl || '');
+  if (!m) throw new Error('A start image is required.');
+  const bin = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));
+  const form = new FormData(); form.append('files', new Blob([bin], { type: m[1] }), 'start.' + (m[1].split('/')[1] || 'png'));
+  const up = await fetch(HF_VIDEO + '/gradio_api/upload', { method: 'POST', headers: h, body: form });
+  if (!up.ok) throw new Error('The free video service is not reachable right now (' + up.status + ').');
+  const path = (await up.json())[0];
+  const data = [prompt || 'The scene comes alive with smooth cinematic motion', 'worst quality, inconsistent motion, blurry, jittery, distorted', { path, meta: { _type: 'gradio.FileData' } }, null, 512, 704, 'image-to-video', 2, 9, 42, true, 1, true];
+  const call = await fetch(HF_VIDEO + '/gradio_api/call/image_to_video', { method: 'POST', headers: { 'content-type': 'application/json', ...h }, body: JSON.stringify({ data }) });
+  const cj = await call.json().catch(() => ({}));
+  if (!call.ok || !cj.event_id) throw new Error('The free video service refused the job (' + call.status + ').');
+  const sse = await fetch(HF_VIDEO + '/gradio_api/call/image_to_video/' + cj.event_id, { headers: h });
+  if (!sse.ok || !sse.body) throw new Error('The free video queue is unavailable (' + sse.status + ').');
+  const rd = sse.body.getReader(), dec = new TextDecoder(); let buf = '', ev = '', result = null; const t0 = Date.now();
+  while (Date.now() - t0 < 170000) {
+    const { value, done } = await rd.read(); if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i; while ((i = buf.indexOf('\n\n')) >= 0) {
+      const blk = buf.slice(0, i); buf = buf.slice(i + 2);
+      const e = /event: (\w+)/.exec(blk), d = /data: ([\s\S]*)/.exec(blk);
+      if (e) ev = e[1];
+      if (ev === 'complete' && d) { try { result = JSON.parse(d[1]); } catch {} }
+      if (ev === 'error') throw new Error('The free GPU queue is busy or out of quota right now. Try again in a few minutes.');
+    }
+    if (result) break;
+  }
+  try { rd.cancel(); } catch {}
+  if (!result) throw new Error('The free video queue took too long. Try again in a few minutes.');
+  let v = result[0]; v = (v && v.video) || v;
+  const url = v && (v.url || (v.path && HF_VIDEO + '/gradio_api/file=' + v.path));
+  if (!url) throw new Error('No video came back.');
+  const vr = await fetch(url, { headers: h });
+  if (!vr.ok) throw new Error('Could not fetch the finished video (' + vr.status + ').');
+  const bytes = new Uint8Array(await vr.arrayBuffer());
+  if (bytes.length > 12e6) throw new Error('The video was too large.');
+  return 'data:video/mp4;base64,' + b64(bytes);
+}
+async function video(env, req) {
+  const a = await authed(env, req);
+  if (!a) return json(env, req, { error: 'Sign in to generate video.' }, 401);
+  let b; try { b = await req.json(); } catch { return json(env, req, { error: 'bad request' }, 400); }
+  const prompt = String(b.prompt || '').slice(0, 500).trim();
+  if (!b.image || String(b.image).length > 6e6) return json(env, req, { error: 'Add a start image (under ~4 MB).' }, 400);
+  const owner = owners(env).includes(a.email);
+  if (!owner) {
+    const up = await env.DB.prepare('UPDATE users SET credits=credits-? WHERE email=? AND credits>=?').bind(VIDEO_CR, a.email, VIDEO_CR).run();
+    if (!(up.meta && up.meta.changes > 0)) return json(env, req, { error: 'Out of credits. A video clip costs ' + VIDEO_CR + ' credits.' }, 402);
+  }
+  try {
+    const vid = await hfVideo(env, prompt, b.image);
+    if (!owner) await env.DB.prepare('INSERT INTO usage(email,at,input,output,credits) VALUES(?,?,0,0,?)').bind(a.email, new Date().toISOString(), VIDEO_CR).run();
+    const f = await getUser(env, a.email);
+    return json(env, req, { video: vid, credits: +Number(f.credits).toFixed(2), spentCredits: owner ? 0 : VIDEO_CR });
+  } catch (e) {
+    if (!owner) await env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(VIDEO_CR, a.email).run();
+    return json(env, req, { error: e.message || 'Video failed' }, 502);
   }
 }
