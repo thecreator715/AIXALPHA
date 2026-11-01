@@ -286,7 +286,7 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
       <div id="chat"><div class="wrap" id="msgs"></div></div>
       <div id="loop"><div class="bar mono">
         <b class="lp">↻ LOOP</b>
-        <div class="seg" id="modes"><button data-m="eco" class="on">ECO</button><button data-m="balanced">BALANCED</button><button data-m="thorough">THOROUGH</button></div>
+        <div class="seg" id="modes"><button data-m="auto" title="Reasoning mode: picks the best mode, depth and evaluator for each reply, ignoring credit cost">AUTO</button><button data-m="eco" class="on">ECO</button><button data-m="balanced">BALANCED</button><button data-m="thorough">THOROUGH</button></div>
         <button class="tg" id="evalb" title="One tiny reviewer call on DEEP answers">🛡 EVAL OFF</button>
         <button class="tg" id="estb" title="Estimated credits per reply for each mode">≈ credits</button><div class="meter"><div class="track"><div class="fill" id="fill"></div></div><span id="spent">0 / 178 cr</span></div>
       </div><div id="estp"></div><div class="mono" id="estline"></div><div class="mono" id="sub" style="font-size:10px;color:#52525b;padding:3px 4px"></div></div>
@@ -356,7 +356,7 @@ const CR=0.0014; // 1 credit = 0.0014 of spend; the UI only ever shows credits
 const capCr=x=>Math.floor(x/CR+1e-9);
 const usd=n=>{const c=n/CR;return c===0?'0 cr':c<0.01?'<0.01 cr':(c<10?c.toFixed(2):c<100?c.toFixed(1):String(Math.round(c)))+' cr'};
 const BREV={MICRO:'Style: reply in at most 4 sentences.',STANDARD:'Style: be concise; use a list only to compare or sequence.',DEEP:'Style: complete but economical. No restating the question, no closing summary unless asked.'};
-const S={mode:store.get('aix3_mode','eco'),verify:store.get('aix3_verify','local'),caps:store.get('aix3_caps',{req:0.01,ses:0.25,day:2}),
+const S={auto:store.get('aix3_auto',false),mode:store.get('aix3_mode','eco'),verify:store.get('aix3_verify','local'),caps:store.get('aix3_caps',{req:0.01,ses:0.25,day:2}),
  chats:store.get('aix3_chats',[]),cur:null,pid:store.get('aix3_pid','aix-alpha-v3'),busy:false,cache:{},ledger:store.get('aix3_ledger',{})};
 const today=()=>new Date().toISOString().slice(0,10);
 const daySpend=()=>S.ledger[today()]||0;
@@ -376,7 +376,7 @@ function route0(p,att){
   const m3=/\b(3d model|3d mesh|mesh|3d (cube|sphere|torus|knot|crystal|pyramid|cylinder))\b/i.test(t)&&!code;
   const fresh=/\b(today|latest|current(ly)?|news|right now|this week|price of|weather|score|stock)\b/i.test(t);
   const heavy=app||(code&&w>25)||t.length>1500||/\b(architecture|analy[sz]e|compare|in depth|deep dive|step[- ]by[- ]step|essay|report|comprehensive|audit)\b/i.test(t);
-  const tier=heavy?'DEEP':(w<=14&&!code)?'MICRO':'STANDARD';
+  let tier=heavy?'DEEP':(w<=14&&!code)?'MICRO':'STANDARD';if(S.forceTier&&tier!=='NANO')tier=S.forceTier;
   const M=MODES[S.mode];
   return{tier,code,app,m3,fresh,hist:Math.round({MICRO:4,STANDARD:8,DEEP:6}[tier]*M.hist),refines:M.refines};
 }
@@ -467,10 +467,32 @@ function compose(core,brev,memory,msgs,extra){
 }
 
 /* ============ loop ============ */
+/* ===== AUTO (reasoning) mode: picks the best mode, tier and evaluator for each reply, ignoring credit cost ===== */
+function autoPick(p,att){
+  const t=String(p||'').trim(),w=t.split(/\s+/).filter(Boolean).length;let sc=0;
+  if(w>40)sc++;if(w>120)sc++;if(t.length>1200)sc++;
+  if(/```/.test(t)||/\b(code|function|bug|error|debug|refactor|api|regex|sql|algorithm|script|component)\b/i.test(t))sc++;
+  if(/\b(build|create|make|generate|design)\b[\s\S]{0,40}\b(app|website|page|game|dashboard|system|tool|platform)\b/i.test(t))sc+=2;
+  if(/\b(why|how come|prove|derive|optimi[sz]e|trade-?offs?|compare|analy[sz]e|evaluate|strategy|plan|architecture|security|audit|reason|diagnose|decide|pros and cons|root cause)\b/i.test(t))sc+=2;
+  if(/\b(step[- ]by[- ]step|in depth|deep dive|thorough|detailed|comprehensive|carefully|complex|hard)\b/i.test(t))sc+=2;
+  if((t.match(/\?/g)||[]).length>1||/\b\d\.\s|\band then\b|\bfirst\b[\s\S]{0,80}\bthen\b/i.test(t))sc++;
+  if(att&&att.length)sc++;
+  if(sc>=4)return{mode:'thorough',tier:'DEEP',ev:true,sc};
+  if(sc>=2)return{mode:'balanced',tier:w>60?'DEEP':'STANDARD',ev:false,sc};
+  return{mode:w<=14?'eco':'balanced',tier:'',ev:false,sc};
+}
 async function runLoop(chat,prompt,onText,onStep){
+  if(!S.auto)return runLoop0(chat,prompt,onText,onStep);
+  const pk=autoPick(prompt,S.curAtt||ATT),sv={m:S.mode,v:S.verify,rq:S.caps.req,ft:S.forceTier};
+  S.mode=pk.mode;S.forceTier=pk.tier||null;if(pk.ev)S.verify='llm';if(pk.mode==='thorough')S.caps.req=Math.max(S.caps.req,S.caps.ses);
+  S.autoNote=`AUTO chose ${pk.mode.toUpperCase()}${pk.tier?' · '+pk.tier:''}${pk.ev?' + EVAL':''} (complexity ${pk.sc}); credit cost ignored for quality`;
+  try{return await runLoop0(chat,prompt,onText,onStep)}finally{S.mode=sv.m;S.verify=sv.v;S.caps.req=sv.rq;S.forceTier=sv.ft;S.autoNote=''}
+}
+async function runLoop0(chat,prompt,onText,onStep){
   const t={tier:'',mode:S.mode,protocol:[],loops:0,calls:0,inTok:0,outTok:0,cost:0,naive:0,saved:0,cacheHit:false,verified:true,blocked:'',notes:[]};
   const step=(x,k)=>{t.protocol.push([x,k||''])
     ;try{onStep&&onStep(x,k||'')}catch{}};
+  if(S.autoNote)step(S.autoNote,'ok');
   const r=route(prompt);t.tier=r.tier;step(`Router → ${r.tier} tier (local, 0 tokens)`);S.toolLog=[];S.toolTok=0;S.curTools=[];t.app=!!r.app;
   const out=(text,extra={})=>({text,t,...extra});
   if(r.command){step(`Local command /${r.command} (0 tokens)`,'ok');t.saved=100;
@@ -597,7 +619,7 @@ function updateMeter(){if($('#estline'))refreshEst(false);const c=curChat(),sp=c
   $('#spent').textContent=`${usd(sp)} / ${capCr(S.caps.ses)} cr`;const free=(c?.msgs||[]).filter(m=>m.t&&!m.t.calls).length;
   $('#sub').textContent=c&&c.calls?`${c.calls} model calls · ${free} replies at $0 · today ${usd(daySpend())} (estimates)`:'';
   $('#ps').textContent=(personas().find(p=>p.id===S.pid)||PRESETS[0]).name;
-  document.querySelectorAll('#modes button').forEach(b=>b.classList.toggle('on',b.dataset.m===S.mode));
+  document.querySelectorAll('#modes button').forEach(b=>b.classList.toggle('on',S.auto?b.dataset.m==='auto':b.dataset.m===S.mode));
   $('#evalb').classList.toggle('on',S.verify==='llm');$('#evalb').textContent='🛡 EVAL '+(S.verify==='llm'?'ON':'OFF');
 }
 
@@ -653,7 +675,7 @@ function buildPersonaSel(){$('#persona').innerHTML=personas().map(p=>`<option va
 $('#persona').onchange=e=>{S.pid=e.target.value;store.set('aix3_pid',S.pid);updateMeter()};
 $('#newc').onclick=()=>{S.cur=null;renderThreads();renderMsgs();syncStudio();$('#side').classList.remove('open')};
 $('#hub').onclick=openHub;$('#set').onclick=openSettings;$('#about').onclick=openAbout;$('#menu').onclick=()=>$('#side').classList.toggle('open');
-$('#modes').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.mode=b.dataset.m;store.set('aix3_mode',S.mode);updateMeter();refreshEst(true)};
+$('#modes').onclick=e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.m==='auto'){S.auto=!S.auto;store.set('aix3_auto',S.auto);updateMeter();refreshEst(true);return}S.auto=false;store.set('aix3_auto',false);S.mode=b.dataset.m;store.set('aix3_mode',S.mode);updateMeter();refreshEst(true)};
 $('#evalb').onclick=()=>{S.verify=S.verify==='llm'?'local':'llm';store.set('aix3_verify',S.verify);updateMeter();refreshEst(true)};
 $('#estb').onclick=()=>$('#estp').classList.toggle('on');
 $('#threads').onclick=e=>{const pn=e.target.closest('[data-pin]');if(pn){const c=S.chats.find(x=>x.id===pn.dataset.pin);c.pin=!c.pin;save();renderThreads();return}
@@ -701,7 +723,7 @@ $('#srch').oninput=renderThreads;
 const ACC={emerald:'#34d399',cyan:'#22d3ee',violet:'#a78bfa',amber:'#fbbf24',rose:'#fb7185'};
 function setAccent(n){document.documentElement.style.setProperty('--ac',ACC[n]);store.set('aix3_acc',n)}setAccent(store.get('aix3_acc','emerald'));
 const ACTIONS=()=>[['New chat','⌘N',()=>$('#newc').click()],['Go to Chat','',()=>setView('chat')],['Go to Analytics','',()=>setView('ana')],['Go to Studio','',()=>setView('studio')],['Go to Tools','',()=>setView('tools')],['Toggle progress panel','',()=>toggleProg()],['Go to Users & platform','',()=>setView('users')],['Voice settings','',()=>$('#voice').click()],['Backup / import','',()=>$('#bk').click()],
- ['Mode: ECO','',()=>{S.mode='eco';store.set('aix3_mode','eco');updateMeter()}],['Mode: BALANCED','',()=>{S.mode='balanced';store.set('aix3_mode','balanced');updateMeter()}],['Mode: THOROUGH','',()=>{S.mode='thorough';store.set('aix3_mode','thorough');updateMeter()}],
+ ['Mode: AUTO (best for each reply)','',()=>{S.auto=true;store.set('aix3_auto',true);updateMeter()}],['Mode: ECO','',()=>{S.mode='eco';store.set('aix3_mode','eco');updateMeter()}],['Mode: BALANCED','',()=>{S.mode='balanced';store.set('aix3_mode','balanced');updateMeter()}],['Mode: THOROUGH','',()=>{S.mode='thorough';store.set('aix3_mode','thorough');updateMeter()}],
  ['Toggle evaluator','',()=>$('#evalb').click()],['Go to Persona Hub','',()=>setView('personas')],['Go to Connect','',()=>setView('connect')],['Go to Sites','',()=>setView('sites')],['Go to Credits','',()=>setView('credits')],['Go to Members & pricing','',()=>setView('members')],['Go to About','',()=>setView('about')],['Spend caps / settings','',openSettings],['Export chat','',()=>$('#exp').click()],
  ...Object.keys(ACC).map(k=>['Accent: '+k,'',()=>setAccent(k)]),...personas().map(p=>['Persona: '+p.name,'',()=>{S.pid=p.id;store.set('aix3_pid',p.id);buildPersonaSel();updateMeter()}])];
 let pi=0,pf=[];
@@ -768,12 +790,13 @@ function measured(mode){
   const by={};S.chats.forEach(c=>c.msgs.forEach(m=>{if(m.t&&m.t.mode===mode&&m.t.calls){(by[m.t.tier]=by[m.t.tier]||[]).push(m.t.cost/CR)}}));
   const o={};for(const k in by)if(by[k].length>=2)o[k]=by[k].reduce((a,b)=>a+b,0)/by[k].length;return o}
 const f1=n=>n<10?n.toFixed(2):n<100?n.toFixed(1):String(Math.round(n));
-function estLine(){const e=modeEst(S.mode,S.verify==='llm'),m=measured(S.mode);
+function estLine(){if(S.auto){const e=modeEst('thorough',true);return `AUTO · picks the best mode per reply, cost ignored · up to DEEP ~${f1(e.DEEP.typ)} cr (max ${f1(e.DEEP.max)})`}const e=modeEst(S.mode,S.verify==='llm'),m=measured(S.mode);
   return `est. per reply · ${S.mode.toUpperCase()}${S.verify==='llm'?' + EVAL':''}: `+['MICRO','STANDARD','DEEP'].map(t=>`${t} ${f1(m[t]??e[t].typ)}${m[t]!=null?'*':''} cr`).join(' · ')+` (DEEP up to ${f1(e.DEEP.max)})`+(Object.keys(m).length?'  * measured':'')}
 function estPanel(){
   const rows=['eco','balanced','thorough'].map(md=>{const a=modeEst(md,false),b=modeEst(md,true);return `<tr class="${md===S.mode?'cur':''}"><td>${md.toUpperCase()}</td>${['MICRO','STANDARD','DEEP'].map(t=>`<td>${f1(a[t].typ)}</td>`).join('')}<td>${f1(a.DEEP.max)}</td><td>+${f1(b.DEEP.typ-a.DEEP.typ)}</td></tr>`}).join('');
   return `<table class="t mono"><tr><th>MODE</th><th>MICRO</th><th>STANDARD</th><th>DEEP</th><th>DEEP MAX*</th><th>EVAL ADDS (DEEP)</th></tr>${rows}</table><div class="mono" style="font-size:10px;color:var(--m);margin-top:4px">Credits per reply. *Max includes every repair pass the mode allows. Replies that finish locally (reflex, cache, 3D, commands) cost 0. Starred values in the line below the bar are measured from your own chats.</div>`}
 function refreshEst(announce){$('#estline').textContent=estLine();$('#estp').innerHTML=estPanel();
+  if(announce&&S.auto){toast('AUTO reasoning mode on · picks the best mode for each reply, credit cost ignored');return}
   if(announce){const e=modeEst(S.mode,S.verify==='llm');toast(`${S.mode.toUpperCase()}${S.verify==='llm'?' + EVAL':''} · ~${f1(e.STANDARD.typ)} cr / answer · DEEP ~${f1(e.DEEP.typ)} (max ${f1(e.DEEP.max)})`)}}
 
 /* ============ projects (multi-project Studio, v2 presets) ============ */

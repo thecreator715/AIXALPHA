@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import fs from 'node:fs';
 import vm from 'node:vm';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
@@ -408,6 +409,15 @@ app.get('/api/mcp/sse', mcpAuth, (req, res) => {
   req.on('close', () => clearInterval(heartbeat));
 });
 
+// The AIX Alpha app, served by the master node itself. The server's own address is injected so the
+// app signs in and streams through this machine automatically (works on localhost and through a tunnel).
+app.get(['/alpha', '/alpha/'], (req, res) => {
+  const proto = String(req.headers['x-forwarded-proto'] || req.protocol).split(',')[0];
+  const origin = `${proto}://${req.headers['x-forwarded-host'] || req.headers.host}`;
+  const html = fs.readFileSync(path.join(process.cwd(), 'public', 'alpha.html'), 'utf8').replace('<meta name="aix-backend" content="">', `<meta name="aix-backend" content="${origin}">`);
+  res.type('html').send(html);
+});
+
 // ----------------------------------------------------
 // VITE & STATIC FILES
 // ----------------------------------------------------
@@ -418,7 +428,7 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (_req, res) => res.sendFile(path.join(distPath, 'index.html')));
+    app.get('*', (_req, res) => res.sendFile(path.join(distPath, 'index.html'), (err) => { if (err) res.redirect('/alpha'); }));
   }
   app.listen(PORT, '0.0.0.0', () => {
     const b = readBudgets();
