@@ -754,9 +754,9 @@ function renderMsgs(){
   if(!c||!c.msgs.length){box.innerHTML=`<div class="empty"><h2>AIX Alpha v3.0</h2><div class="mono" style="font-size:12px">Loop engine · route → diet → cache → generate → verify → repair</div>
    <div class="tiles">${[['Single-file app','Build a single html pomodoro timer app with dark UI and session history'],['3D mesh (free)','Render a gold metallic torus knot 3d model'],['Fast answer','what is a mutex?'],['Constraint check','explain recursion in 20 words'],['Compare','Compare Postgres and SQLite for a 5k-user SaaS and give a recommendation']].map(([a,b])=>`<div class="tile" data-ex="${esc(b)}"><b>${a}</b>${esc(b)}</div>`).join('')}</div></div>`;updateMeter();return}
   box.innerHTML=c.msgs.map((m,i)=>m.role==='user'?`<div class="msg u">${mtools(i,'user')}<div class="who mono"><b>OPERATOR</b></div><div class="body">${md(m.content.replace(/\n*\[Attached file: ([^\]]+)\]\n```[\s\S]*?```/g,'\n📎 $1'))}</div></div>`:
-   `<div class="msg" data-m="${i}">${mtools(i,'assistant')}<div class="who mono"><b>${esc((personas().find(p=>p.id===m.pid)||PRESETS[0]).name)}</b><span class="chip">${m.t&&!m.t.calls?'LOCAL · 0 TOKENS':'AIX ENGINE'}</span></div>
+   `<div class="msg" data-m="${i}">${mtools(i,'assistant')}<div class="who mono"><b>${esc((personas().find(p=>p.id===m.pid)||PRESETS[0]).name)}</b><span class="chip">${m.aid||m.imgurl?'FLUX · FREE':m.t&&!m.t.calls?'LOCAL · 0 TOKENS':'AIX ENGINE'}</span></div>
    ${m.t?`${actHtml(m.t.protocol,{dur:m.dur,open:!!m.t.app})}${chipsHtml(m.t)}${m.t.app?buildDetails(m):''}`:''}
-   <div class="body">${m.err?`<span style="color:var(--r)">${esc(m.content)}</span>`:md(m.content)}</div>${m.mesh?`<div class="mv" data-mesh="${i}"></div>`:''}${m.ui==='connect'?'<div class="ccwrap">'+connectCardsHtml()+'</div>':''}${PVHTML(m,i)}</div>`).join('');
+   <div class="body">${m.err?`<span style="color:var(--r)">${esc(m.content)}</span>`:md(m.content)}</div>${m.mesh?`<div class="mv" data-mesh="${i}"></div>`:''}${(m.aid&&ASSET[m.aid])||m.imgurl?`<div class="gimg"><img src="${m.imgurl||ASSET[m.aid]}" alt="generated image" style="max-width:100%;border-radius:12px;display:block;margin:8px 0"><a class="btn2" download="aix-image.${(ASSET[m.aid]||'').startsWith('data:image/png')?'png':'jpg'}" href="${m.imgurl||ASSET[m.aid]}" target="_blank" rel="noopener">Save image</a></div>`:''}${m.ui==='connect'?'<div class="ccwrap">'+connectCardsHtml()+'</div>':''}${PVHTML(m,i)}</div>`).join('');
   box.querySelectorAll('[data-mesh]').forEach(el=>mountMesh(el,c.msgs[+el.dataset.mesh].mesh));
   box.querySelectorAll('[data-inpv]').forEach(el=>{el.srcdoc=extractHtml(c.msgs[+el.dataset.inpv].content)||''});
   $('#chat').scrollTop=1e9;updateMeter();
@@ -780,6 +780,7 @@ async function send(text,opts={}){
   for(const a of ATT){if(a.type==='text')full+=`\n\n[Attached file: ${a.name}]\n\`\`\`\n${a.text.slice(0,20000)}\n\`\`\``;else if(a.type==='image')imgs.push(a.blob)}
   S.curImages=imgs;ATT=[];renderAtt();text=full;
   c.msgs.push({role:'user',content:text,ts:Date.now()});S.busy=true;$('#send').disabled=true;renderThreads();renderMsgs();
+  if(IMGINTENT.test(text)&&!imgs.length){try{await chatFlux(c,text)}finally{S.busy=false;$('#send').disabled=false;save();renderThreads();renderMsgs()}return}
   const live=document.createElement('div');live.className='msg';live.innerHTML='<div class="who mono"><b>AIX ALPHA</b><span class="typing"><i></i><i></i><i></i></span></div><div id="livelog"></div><div class="mono" id="livestat" style="font-size:11px;color:var(--m)"></div><div class="body" id="live"></div><div id="livepvw"></div>';$('#msgs').appendChild(live);$('#chat').scrollTop=1e9;
   try{
     abort=new AbortController();let lastPv=0;const stp=[];const t0=Date.now();let ttl='Planning the answer',openL=true;
@@ -1820,8 +1821,9 @@ const adel=async id=>{try{const d=await adb();d.transaction('a','readwrite').obj
 function bindAsset(f){if(!f.aid||Object.getOwnPropertyDescriptor(f,'content')&&!Object.getOwnPropertyDescriptor(f,'content').enumerable)return f;const id=f.aid;Object.defineProperty(f,'content',{get:()=>ASSET[id]||'',set:v=>{ASSET[id]=v;aput(id,v)},enumerable:false,configurable:true});return f}
 async function makeAsset(name,data,extra){const id='a'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);ASSET[id]=data;const ok=await aput(id,data);const f=Object.assign({name,bin:true,aid:id},extra||{});if(!ok){f.content=data;return f}return bindAsset(f)}
 let _hydBusy=false;
-function hydAll(){let need=false;for(const pr of PROJECTS)for(const f of(pr.files||[])){if(f.aid){bindAsset(f);if(!ASSET[f.aid])need=true}}
-  if(need&&!_hydBusy){_hydBusy=true;(async()=>{for(const pr of PROJECTS)for(const f of(pr.files||[]))if(f.aid&&!ASSET[f.aid]){const v=await aget(f.aid);if(v)ASSET[f.aid]=v}_hydBusy=false;try{renderStudio();renderStChat();if(activeFile()&&activeFile().bin)refreshPreview()}catch{}})()}}
+function hydAll(){let need=false;for(const ch of(S.chats||[]))for(const m of ch.msgs)if(m.aid&&!ASSET[m.aid]){need=true}
+  for(const pr of PROJECTS)for(const f of(pr.files||[])){if(f.aid){bindAsset(f);if(!ASSET[f.aid])need=true}}
+  if(need&&!_hydBusy){_hydBusy=true;(async()=>{for(const pr of PROJECTS)for(const f of(pr.files||[]))if(f.aid&&!ASSET[f.aid]){const v=await aget(f.aid);if(v)ASSET[f.aid]=v}for(const ch of(S.chats||[]))for(const m of ch.msgs)if(m.aid&&!ASSET[m.aid]){const v=await aget(m.aid);if(v)ASSET[m.aid]=v}_hydBusy=false;try{renderMsgs()}catch{}try{renderStudio();renderStChat();if(activeFile()&&activeFile().bin)refreshPreview()}catch{}})()}}
 function chatImage(aid,text){const c=proj().chat||(proj().chat=[]);c.push({role:'assistant',content:text,aid});projSave();try{renderStChat()}catch{}}
 
 /* ===== Animate an image (Runway-style motion: zoom, pan, shake...) -> WebM, rendered free in the browser ===== */
@@ -1873,6 +1875,22 @@ function openAnimate(){
     const nf=await makeAsset(nm,await readDU(blob));P.files.push(nf);P.active=nm;PAGE=nm;projSave();const c=proj().chat||(proj().chat=[]);c.push({role:'assistant',content:'Animated clip '+nm+' ('+MOTIONS[o.motion]+', '+o.dur+'s) rendered on this device · 0 credits. Use Export to download.'});projSave();st.textContent='Saved '+nm;d.close();renderStudio();renderStChat();refreshPreview();setView('studio');toast('Clip saved — Export to download')};
   d.addEventListener('close',()=>cancelAnimationFrame(raf))}
 setTimeout(function(){const b=$('#fanim');if(b)b.onclick=openAnimate},0);
+
+/* ===== Chat image generation: "create an image of a hummingbird" ===== */
+const IMGINTENT=/^\s*(please\s+)?(can you\s+|could you\s+)?(create|generate|make|draw|paint|render|design|show me)\s+(me\s+)?(an?\s+|the\s+|some\s+)?(\w+\s+)?(image|picture|photo|photograph|illustration|artwork|painting|portrait|wallpaper)s?\b/i;
+async function chatFlux(c,text){
+  const subj=text.replace(IMGINTENT,'').replace(/^\s*(of|for|showing|with|that shows)\s+/i,'').trim()||text;
+  const prompt=subj+(/\b(photo|realistic|painting|illustration|cartoon|anime|pixel|sketch|3d|render)\b/i.test(subj)?'':', highly detailed, beautiful lighting');
+  const t0=Date.now();let data='',url='',via='';
+  try{
+    if(BACKEND()&&store.get(TOKK,'')){try{const r=await fetch(BACKEND()+'/api/image',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+store.get(TOKK,'')},body:JSON.stringify({prompt})});const j=await r.json().catch(()=>({}));if(r.ok&&j.image){data=j.image;via='AIX server'}else if(r.status===429){c.msgs.push({role:'assistant',content:j.error||'Daily free image limit reached.',err:1,ts:Date.now(),dur:Date.now()-t0});return}}catch{}}
+    if(!data){const u='https://image.pollinations.ai/prompt/'+encodeURIComponent(prompt)+'?model=flux&width=1024&height=1024&nologo=true&seed='+Math.floor(Math.random()*1e6);
+      try{const r=await fetch(u);if(!r.ok)throw new Error('HTTP '+r.status);data=await readDU(await r.blob());via='Pollinations'}catch{url=u;via='Pollinations (direct)'}}
+    const msg={role:'assistant',content:`Here's your image: **${subj}**\n\n_FLUX · free · 0 credits${via?' · '+via:''}. Stored on this device._`,ts:Date.now(),dur:Date.now()-t0};
+    if(data){const id='a'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);ASSET[id]=data;aput(id,data);msg.aid=id}else msg.imgurl=url;
+    c.msgs.push(msg);
+  }catch(e){c.msgs.push({role:'assistant',content:'Image generation failed: '+(e.message||e),err:1,ts:Date.now()})}}
+setTimeout(()=>{try{hydAll()}catch{}},400);
 /* ===== Studio assets: 3D (STL/OBJ/FBX) viewer with stylized materials, PDF + text export ===== */
 const BINX=/\.(stl|obj|fbx|pdf|png|jpe?g|webp|gif|webm|mp4)$/i;
 const readDU=f=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(f)});
