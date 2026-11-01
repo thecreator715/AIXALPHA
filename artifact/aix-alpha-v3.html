@@ -367,6 +367,26 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
  #stchat{flex:1;min-height:0;overflow:auto}
  #pstat{display:none}
 }
+
+</style>
+<style id="deskfix">
+@media(min-width:901px){
+ #top{display:flex!important;align-items:center;gap:12px;padding:10px 18px}
+ #menu,#top .mlogo{display:none!important}
+ #tabs{flex:1 1 0!important;width:auto!important;max-width:none!important;margin:0 auto!important;display:flex!important;align-items:center;justify-content:center;height:36px;box-sizing:border-box;container-type:normal!important}
+ #tabs button{flex:1 1 auto!important;font-size:12px!important;padding:6px 10px!important;text-overflow:clip!important;white-space:nowrap}
+ #toprt{flex:none;display:flex;align-items:center;gap:8px}
+ #toprt>*{height:36px!important;min-height:36px!important;box-sizing:border-box;display:inline-flex!important;align-items:center;justify-content:center;gap:8px;padding:0 14px!important;margin:0!important;font-size:12px!important;line-height:1;border-radius:12px;white-space:nowrap}
+ #toprt>#pm{border-radius:99px}
+ #progb .pi{display:inline-flex;align-items:center}#progb .pl{margin:0;padding:0}
+}
+@media(min-width:1350px){
+ #top{display:grid!important;grid-template-columns:210px minmax(0,1fr) 210px}
+ #tabs{grid-column:2;margin:0!important;width:100%!important;max-width:760px!important;justify-self:center;flex:none!important}
+ #toprt{grid-column:3;justify-self:end}
+ #progb .pl{display:none}#progb{padding:0 12px!important}
+}
+@media(min-width:1750px){#progb .pl{display:inline}#top{grid-template-columns:300px minmax(0,1fr) 300px}}
 </style>
 </head>
 <body>
@@ -756,7 +776,7 @@ function renderMsgs(){
   box.innerHTML=c.msgs.map((m,i)=>m.role==='user'?`<div class="msg u">${mtools(i,'user')}<div class="who mono"><b>OPERATOR</b></div><div class="body">${md(m.content.replace(/\n*\[Attached file: ([^\]]+)\]\n```[\s\S]*?```/g,'\n📎 $1'))}</div></div>`:
    `<div class="msg" data-m="${i}">${mtools(i,'assistant')}<div class="who mono"><b>${esc((personas().find(p=>p.id===m.pid)||PRESETS[0]).name)}</b><span class="chip">${m.aid||m.imgurl?'FLUX · FREE':m.t&&!m.t.calls?'LOCAL · 0 TOKENS':'AIX ENGINE'}</span></div>
    ${m.t?`${actHtml(m.t.protocol,{dur:m.dur,open:!!m.t.app})}${chipsHtml(m.t)}${m.t.app?buildDetails(m):''}`:''}
-   <div class="body">${m.err?`<span style="color:var(--r)">${esc(m.content)}</span>`:md(m.content)}</div>${m.mesh?`<div class="mv" data-mesh="${i}"></div>`:''}${(m.aid&&ASSET[m.aid])||m.imgurl?`<div class="gimg"><img src="${m.imgurl||ASSET[m.aid]}" alt="generated image" style="max-width:100%;border-radius:12px;display:block;margin:8px 0"><a class="btn2" download="aix-image.${(ASSET[m.aid]||'').startsWith('data:image/png')?'png':'jpg'}" href="${m.imgurl||ASSET[m.aid]}" target="_blank" rel="noopener">Save image</a></div>`:''}${m.ui==='connect'?'<div class="ccwrap">'+connectCardsHtml()+'</div>':''}${PVHTML(m,i)}</div>`).join('');
+   <div class="body">${m.err?`<span style="color:var(--r)">${esc(m.content)}</span>`:md(m.content)}</div>${m.mesh?`<div class="mv" data-mesh="${i}"></div>`:''}${(m.aid&&ASSET[m.aid])||m.imgurl?`<div class="gimg"><img src="${m.imgurl||ASSET[m.aid]}" alt="generated image" onerror="imgFail(this)" style="max-width:100%;border-radius:12px;display:block;margin:8px 0"><a class="btn2" download="aix-image.${(ASSET[m.aid]||'').startsWith('data:image/png')?'png':'jpg'}" href="${m.imgurl||ASSET[m.aid]}" target="_blank" rel="noopener">Save image</a></div>`:''}${m.ui==='connect'?'<div class="ccwrap">'+connectCardsHtml()+'</div>':''}${PVHTML(m,i)}</div>`).join('');
   box.querySelectorAll('[data-mesh]').forEach(el=>mountMesh(el,c.msgs[+el.dataset.mesh].mesh));
   box.querySelectorAll('[data-inpv]').forEach(el=>{el.srcdoc=extractHtml(c.msgs[+el.dataset.inpv].content)||''});
   $('#chat').scrollTop=1e9;updateMeter();
@@ -1886,11 +1906,12 @@ async function chatFlux(c,text){
     if(BACKEND()&&store.get(TOKK,'')){try{const r=await fetch(BACKEND()+'/api/image',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+store.get(TOKK,'')},body:JSON.stringify({prompt})});const j=await r.json().catch(()=>({}));if(r.ok&&j.image){data=j.image;via='AIX server'}else if(r.status===429){c.msgs.push({role:'assistant',content:j.error||'Daily free image limit reached.',err:1,ts:Date.now(),dur:Date.now()-t0});return}}catch{}}
     if(!data){const u='https://image.pollinations.ai/prompt/'+encodeURIComponent(prompt)+'?model=flux&width=1024&height=1024&nologo=true&seed='+Math.floor(Math.random()*1e6);
       try{const r=await fetch(u);if(!r.ok)throw new Error('HTTP '+r.status);data=await readDU(await r.blob());via='Pollinations'}catch{url=u;via='Pollinations (direct)'}}
-    const msg={role:'assistant',content:`Here's your image: **${subj}**\n\n_FLUX · free · 0 credits${via?' · '+via:''}. Stored on this device._`,ts:Date.now(),dur:Date.now()-t0};
+    const msg={role:'assistant',content:`Here's your image: **${subj}**\n\nFLUX · free · 0 credits${via?' · '+via:''} · stored on this device`,ts:Date.now(),dur:Date.now()-t0};
     if(data){const id='a'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);ASSET[id]=data;aput(id,data);msg.aid=id}else msg.imgurl=url;
     c.msgs.push(msg);
   }catch(e){c.msgs.push({role:'assistant',content:'Image generation failed: '+(e.message||e),err:1,ts:Date.now()})}}
 setTimeout(()=>{try{hydAll()}catch{}},400);
+function imgFail(el){const d=document.createElement('div');d.className='mono';d.style.cssText='color:var(--a);padding:8px 0';d.textContent='The free public image service is busy or blocked right now. Sign in with a free account to use the AIX server FLUX instead.';el.replaceWith(d)}
 /* ===== Studio assets: 3D (STL/OBJ/FBX) viewer with stylized materials, PDF + text export ===== */
 const BINX=/\.(stl|obj|fbx|pdf|png|jpe?g|webp|gif|webm|mp4)$/i;
 const readDU=f=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(f)});
@@ -2005,7 +2026,7 @@ async function renderUsers(){
   $('#ujs').onclick=()=>saveFile('users.json',JSON.stringify(rows,null,1),'application/json')}
 const cardsHtml=a=>`<div class="cards mono">${a.map(([x,y])=>`<div class="card"><small>${x}</small><div>${y}</div></div>`).join('')}</div>`;
 
-function fitTop(){const t=$('#top');if(!t)return;t.style.paddingLeft=innerWidth>900?($('#toprt').offsetWidth+10)+'px':''}
+function fitTop(){const t=$('#top');if(!t)return;t.style.paddingLeft=''}
 addEventListener('resize',fitTop);setTimeout(fitTop,0);
 try{if(matchMedia('(max-width:900px)').matches)$('#q').placeholder='Message AIX ALPHA'}catch{}
 $('#menu').innerHTML=ico('menu');$('#att').innerHTML=ico('attach');$('#mic').innerHTML=ico('mic');$('#estb').innerHTML=ico('coins')+'<span class="lbl"> credits</span>';document.querySelector('#progb .pi').innerHTML=ico('pulse');
