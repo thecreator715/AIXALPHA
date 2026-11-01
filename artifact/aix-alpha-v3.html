@@ -425,7 +425,7 @@ function pickEngine(){if(embKey()){store.set(KEYK,embKey());return directSample(
 function openAccount(){
   const be=BACKEND();
   const d=dialog(`<h3 style="margin:0 0 8px">AIX account</h3><p style="font-size:12.5px;color:var(--m);margin:0 0 8px">${be?'Sign in to use credits from your balance.':'Set the AIX server address to sign in, or use your own API key below.'}</p>
-  <label>Server address</label><input id="beu" placeholder="https://your-aix-server.example.com" value="${esc(store.get(BEK,''))}">
+  <label>Server address</label><input id="beu" placeholder="https://your-aix-server.example.com" value="${esc(BACKEND()||'https://aix-alpha.aixalpha.workers.dev')}">
   <label>Email (new account)</label><input id="bem" type="email" placeholder="you@example.com"><label>or paste your account token</label><input id="bto" type="password" placeholder="aix_...">
   <div style="display:flex;gap:8px;justify-content:space-between;margin-top:6px"><button class="btn2" id="bkey">Use my own API key</button><span><button class="btn2" data-close>Cancel</button> <button class="btn" id="bgo">Sign in</button></span></div>`);
   $('#bkey').onclick=()=>{d.close();openKey(true)};
