@@ -403,7 +403,7 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
     <span class="sp"></span>
     <button class="tg on" data-col="files">Files</button><button class="tg on" data-col="editor">Editor</button><button class="tg on" data-col="prev">Preview</button><button class="tg on" data-col="chat">Chat</button>
   </div>
-  <div class="stbar mono"><select id="fw"><option value="tailwind">Tailwind</option><option value="vanilla">Vanilla</option><option value="canvas">Canvas</option><option value="threejs">Three.js</option><option value="model3d">3D model (STL)</option><option value="sprite">Sprite sheet (pixel art)</option><option value="image">Image / illustration (SVG)</option><option value="pdfdoc">PDF document</option><option value="textdoc">Text / Markdown</option></select><select id="stl" title="Visual style the AI should design in"><option value="auto">Style: Modern</option><option value="glass">Glass</option><option value="brutal">Brutalist</option><option value="minimal">Minimal</option><option value="neon">Neon / Cyber</option><option value="editorial">Editorial</option><option value="playful">Playful</option><option value="material">Material</option></select><input id="gen" placeholder="Describe an app to generate into index.html…"><button class="btn" id="gengo">⚡ Generate</button></div>
+  <div class="stbar mono"><select id="fw"><option value="tailwind">Tailwind</option><option value="vanilla">Vanilla</option><option value="canvas">Canvas</option><option value="threejs">Three.js</option><option value="model3d">3D model (STL)</option><option value="flux">Flux image (FREE)</option><option value="sprite">Sprite sheet (pixel art)</option><option value="image">Image / illustration (SVG)</option><option value="pdfdoc">PDF document</option><option value="textdoc">Text / Markdown</option></select><select id="stl" title="Visual style the AI should design in"><option value="auto">Style: Modern</option><option value="glass">Glass</option><option value="brutal">Brutalist</option><option value="minimal">Minimal</option><option value="neon">Neon / Cyber</option><option value="editorial">Editorial</option><option value="playful">Playful</option><option value="material">Material</option></select><input id="gen" placeholder="Describe an app to generate into index.html…"><button class="btn" id="gengo">⚡ Generate</button></div>
   <div id="stgrid" class="stgrid">
     <div class="stc" id="c-files"><div class="sth mono"><b>FILES</b><span class="grow"></span><button class="btn2" id="fadd">＋</button></div><div id="flist"></div>
       <div class="sth mono" style="border-top:1px solid var(--b);border-bottom:0;flex-wrap:wrap"><button class="btn2" id="fren">Rename</button><button class="btn2" id="fdel">Delete</button><button class="btn2" id="fzip">⬇ ZIP</button><button class="btn2" id="fhtml">⬇ HTML</button><button class="btn2" id="fimp">⬆ Import</button><button class="btn2" id="fexp">⬇ Export…</button><input type="file" id="fimpi" multiple hidden accept=".html,.htm,.css,.js,.json,.txt,.md,.zip,.stl,.obj,.fbx,.pdf"></div></div>
@@ -1341,6 +1341,7 @@ function designBrief(style){return `DESIGN SYSTEM (follow strictly):
 - Visual style: ${DESIGN_STYLES[style]||DESIGN_STYLES.auto}`}
 function buildGenPrompt(fw,spec){if(fw==='sprite'||fw==='image')return artPrompt(fw,spec);if(fw==='model3d')return model3dPrompt(spec);if(fw==='pdfdoc')return `Build a print-ready, self-contained single-file HTML document (A4, @page margins, clean typography, page-break rules) for this spec. Return only the HTML in one code block. It will be exported to PDF with the browser print dialog.\n\nSpec: ${spec}`;if(fw==='textdoc')return `Write this as a plain-text or Markdown document. Return only the document in one code block labelled markdown.\n\nSpec: ${spec}`;const st=($('#stl')||{}).value||'auto';return `Build a complete, self-contained single-file HTML web app using ${fw}. Return only the HTML in one code block.\n\n${designBrief(st)}\n\nSpec: ${spec}`}
 async function stGenerate(spec){
+  if($('#fw').value==='flux')return fluxGenerate(spec);
   const fw=$('#fw').value,f=P.files.find(x=>x.name==='index.html')||activeFile();
   if(f.content.trim().length>600&&!REWRITE.test(spec)){const c=await choose('index.html already has content','AIX can apply this as small edits (safest) or replace the whole file. Either way the current version is saved to History.',['Apply as edits','Replace whole file','Cancel']);if(c===0){P.active=f.name;return editWithAI(spec)}if(c!==1)return}
   (proj().chat||(proj().chat=[])).push({role:'user',content:'Build: '+spec});
@@ -1810,10 +1811,11 @@ $('#hub').onclick=()=>setView('personas');$('#about').onclick=()=>setView('about
 })();
 
 /* ===== Studio assets: 3D (STL/OBJ/FBX) viewer with stylized materials, PDF + text export ===== */
-const BINX=/\.(stl|obj|fbx|pdf)$/i;
+const BINX=/\.(stl|obj|fbx|pdf|png|jpe?g|webp|gif)$/i;
 const readDU=f=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(f)});
 function assetPage(f){
   const ext=(f.name.split('.').pop()||'').toLowerCase();
+  if(/^(png|jpe?g|webp|gif)$/.test(ext))return `<!doctype html><body style="margin:0;background:#0b0d0f;display:grid;place-items:center;min-height:100vh"><img src="${f.content}" style="max-width:100%;max-height:100vh">`;
   if(ext==='pdf')return `<!doctype html><body style="margin:0;background:#111;color:#ddd;font:14px sans-serif"><object data="${f.content}" type="application/pdf" style="width:100vw;height:100vh"><div style="padding:24px">PDF preview is blocked in this sandbox. Use Export → Download to open it.</div></object>`;
   const CD='https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/';
   const ld={stl:'loaders/STLLoader.js',obj:'loaders/OBJLoader.js',fbx:'loaders/FBXLoader.js'}[ext];
@@ -1864,14 +1866,28 @@ setTimeout(function(){const b=$('#fexp');if(b)b.onclick=openExport;const fi=$('#
   if(rest.length)await addFiles(rest);projSave();renderStudio();refreshPreview();setView('studio');if(list.length)toast('Imported '+list.length+' file'+(list.length>1?'s':''))}},0);
 
 /* ===== Studio art: sprites + images, with credit estimates ===== */
-const ART_CR={sprite:3,image:2,model3d:4};
+const ART_CR={sprite:3,image:2,model3d:4,flux:0};
 const DLHOOK="addEventListener('message',function(e){});function aixSave(c,n){parent.postMessage({aixdl:'png',data:c.toDataURL('image/png'),name:n},'*')}";
 function artPrompt(kind,spec){
   const common=`Return only one complete self-contained HTML file in one code block. No external assets or libraries. Dark neutral page background, centred artwork, and clearly labelled buttons. For downloads you MUST use this helper (the sandbox blocks normal downloads): ${DLHOOK}`;
   if(kind==='sprite')return `You are a pixel-art sprite artist. Draw the sprite(s) as small pixel grids written in code (arrays of palette-index strings, 16x16 or 32x32 per frame, a defined limited palette with outline, shading and highlights, transparent background). Build every frame (idle, walk or the animation the spec needs, 4 to 8 frames) and render them with canvas using imageSmoothingEnabled=false.\nShow: an animated preview with a speed slider, the full sprite sheet laid out in a row with frame numbers, and a zoom control. Buttons: "Download sprite sheet PNG" (frames in one horizontal strip, 1 pixel per art pixel), "Download frame PNGs" (each frame via aixSave in turn), "Copy palette".\n${common}\n\nSpec: ${spec}`;
   return `You are an illustrator. Create the image as a hand-built SVG (viewBox 0 0 1024 1024, layered shapes, gradients, soft shadows, a coherent palette, no text unless the spec asks). Show it large, plus a style switcher if it helps (e.g. light and dark background). Buttons: "Download PNG" (rasterise the SVG to a 2048px canvas via an Image and call aixSave), "Copy SVG".\n${common}\n\nSpec: ${spec}`}
 addEventListener('message',e=>{if(e.data&&e.data.aixdl==='png'){dl(e.data.name||'image.png',e.data.data);toast('PNG downloaded')}});
-setTimeout(function(){const fw=$('#fw'),g=$('#gen');if(!fw||!g)return;const base=g.placeholder;const upd=()=>{const c=ART_CR[fw.value];g.placeholder=c?base.replace(/\s*\(~.*$/,'')+' (~'+c+' credits)':base};fw.addEventListener('change',upd);upd()},50);
+setTimeout(function(){const fw=$('#fw'),g=$('#gen');if(!fw||!g)return;const base=g.placeholder;const upd=()=>{const c=ART_CR[fw.value];g.placeholder=fw.value==='flux'?'Describe the image (free · 0 credits)':c?base.replace(/\s*\(~.*$/,'')+' (~'+c+' credits)':base};fw.addEventListener('change',upd);upd()},50);
+
+async function fluxGenerate(spec){
+  ensureProj();const L=startLog('Free Flux image: '+spec.slice(0,50));let data='',via='';
+  try{
+    if(BACKEND()&&store.get(TOKK,'')){L.step('Asking the AIX server for a FLUX.1 image (free, no credits)');
+      const r=await fetch(BACKEND()+'/api/image',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+store.get(TOKK,'')},body:JSON.stringify({prompt:spec})});
+      const j=await r.json().catch(()=>({}));if(r.ok&&j.image){data=j.image;via='AIX server ('+j.left+' free left today)'}else if(r.status===429||r.status===401){L.finish(j.error||'Not available','bad');return}else L.step('Server image mode unavailable ('+(j.error||r.status)+'), trying the public FLUX service','ok')}
+    if(!data){L.step('Requesting FLUX from the public Pollinations service (free, rate limited)');
+      const u='https://image.pollinations.ai/prompt/'+encodeURIComponent(spec)+'?model=flux&width=1024&height=1024&nologo=true&seed='+Math.floor(Math.random()*1e6);
+      try{const r=await fetch(u);if(!r.ok)throw new Error('HTTP '+r.status);data=await readDU(await r.blob());via='Pollinations FLUX'}
+      catch(e){const nm=safeName('flux-'+Date.now().toString(36)+'.html');P.files.push({name:nm,content:`<!doctype html><body style="margin:0;background:#0b0d0f;display:grid;place-items:center;min-height:100vh"><img src="${u}" style="max-width:100%;max-height:100vh" alt="${esc(spec)}">`});P.active=nm;PAGE=nm;projSave();renderStudio();refreshPreview();L.finish('Image page created (direct link to the free service)','ok');return}}
+    const nm=safeName('flux-'+Date.now().toString(36)+'.'+(data.startsWith('data:image/png')?'png':'jpg'));
+    P.files.push({name:nm,content:data,bin:true,img:true});P.active=nm;PAGE=nm;projSave();renderStudio();refreshPreview();L.step('Saved '+nm+' · via '+via,'ok');L.finish('Image ready · 0 credits','ok');bump('studio.flux')
+  }catch(e){L.finish('Failed: '+(e.message||e),'bad')}}
 wireStudio();$('#hist').onclick=openHistory;$('#pdbg').onclick=openDebugDialog;$('#paudit').onclick=openAudit;wirePersonas();wireTools();wireConnect();wireSites();wireCredits();wireMembers();refreshEst(false);
 addEventListener('resize',()=>{if($('#vstudio').classList.contains('on'))renderStudio()});
 
