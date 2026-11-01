@@ -191,19 +191,8 @@ export default {
 const IMG_MODELS = {
   flux:  { cr: 1, label: 'FLUX.1 schnell' },
   flux2: { cr: 3, label: 'FLUX.2' },
-  nano:  { cr: 3, label: 'Nano Banana' },
 };
 async function genImage(env, kind, prompt, steps) {
-  if (kind === 'nano') {
-    if (!env.GEMINI_API_KEY) throw Object.assign(new Error('Nano Banana is not set up on this server yet.'), { notConfigured: true });
-    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent', { method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }) });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error((j.error && j.error.message) || 'Nano Banana request failed (' + r.status + ')');
-    const part = ((j.candidates || [])[0]?.content?.parts || []).find((p) => (p.inlineData || p.inline_data));
-    const d = part && (part.inlineData || part.inline_data);
-    if (!d || !d.data) throw new Error('Nano Banana returned no image (the prompt may have been declined).');
-    return 'data:' + (d.mimeType || d.mime_type || 'image/png') + ';base64,' + d.data;
-  }
   if (kind === 'flux2') {
     const form = new FormData(); form.append('prompt', prompt); form.append('width', '1024'); form.append('height', '1024');
     const fr = new Response(form);
@@ -223,7 +212,6 @@ async function image(env, req) {
   const prompt = String(b.prompt || '').slice(0, 1000).trim();
   if (!prompt) return json(env, req, { error: 'Describe the image' }, 400);
   const kind = IMG_MODELS[b.model] ? b.model : 'flux', cost = IMG_MODELS[kind].cr;
-  if (kind === 'nano' && !env.GEMINI_API_KEY) return json(env, req, { error: 'Nano Banana is not set up on this server yet.' }, 501);
   const owner = owners(env).includes(a.email);
   if (!owner) {
     const up = await env.DB.prepare('UPDATE users SET credits=credits-? WHERE email=? AND credits>=?').bind(cost, a.email, cost).run();
