@@ -9,12 +9,24 @@ import { Transport, createAnthropicTransport, createMockTransport } from './serv
 import { runChat, ChatResult } from './server/engine/loop';
 import { getSession, dailySpend } from './server/engine/state';
 import { model3dFromPrompt, imageFromPrompt } from './server/engine/media';
+import { accountRoutes, authAccount, charge, costUsd, usdToCredits } from './server/accounts';
 
 dotenv.config({ path: ['.env.local', '.env'] });
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
-app.use(express.json({ limit: '25mb' }));
+// CORS: the static front end (e.g. GitHub Pages) calls this server. Set AIX_ALLOWED_ORIGINS="https://you.github.io,https://..."
+const ORIGINS = (process.env.AIX_ALLOWED_ORIGINS || '').split(',').map((x) => x.trim()).filter(Boolean);
+app.use((req, res, next) => {
+  const o = String(req.headers.origin || '');
+  if (o && (ORIGINS.includes('*') || ORIGINS.includes(o))) {
+    res.setHeader('Access-Control-Allow-Origin', o); res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Headers', 'content-type, authorization'); res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  }
+  if (req.method === 'OPTIONS') { res.sendStatus(204); return; }
+  next();
+});
+app.use((req, res, next) => (req.path === '/api/stripe/webhook' ? next() : express.json({ limit: '25mb' })(req, res, next)));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
 // ----------------------------------------------------
@@ -41,6 +53,39 @@ function rateLimit(req: express.Request, res: express.Response, next: express.Ne
   hits.set(ip, recent);
   next();
 }
+
+accountRoutes(app, rateLimit);
+
+// Metered model proxy for the front end: the browser never sees the API key.
+// Bearer account token -> balance check -> Anthropic (streamed) -> deduct credits -> final aix_balance event.
+app.post('/api/sample', rateLimit, async (req, res) => {
+  const acct = authAccount(req);
+  if (!acct) { res.status(401).json({ error: 'Sign in to use AIX.' }); return; }
+  if (!API_KEY) { res.status(503).json({ error: 'Server has no ANTHROPIC_API_KEY.' }); return; }
+  if (acct.credits <= 0) { res.status(402).json({ error: 'Out of credits. Top up to continue.' }); return; }
+  const prompt = String(req.body?.prompt || ''); const stream = !!req.body?.stream;
+  if (!prompt) { res.status(400).json({ error: 'prompt required' }); return; }
+  const maxTok = Math.min(Number(req.body?.max_tokens) || 4096, 8192);
+  const content: any[] = Array.isArray(req.body?.images) ? req.body.images.slice(0, 4).map((i: any) => ({ type: 'image', source: { type: 'base64', media_type: String(i.media_type || 'image/png'), data: String(i.data || '') } })) : [];
+  content.push({ type: 'text', text: prompt });
+  const up = await fetch(process.env.AIX_UPSTREAM_URL || 'https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': API_KEY, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: MODEL_ID, max_tokens: maxTok, stream, messages: [{ role: 'user', content }] }) });
+  if (!up.ok) { res.status(up.status === 429 ? 429 : 502).json({ error: 'Model request failed (' + up.status + ').' }); return; }
+  const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  const bill = () => { charge(acct, costUsd(usage), usage.input + usage.output); return { credits: +acct.credits.toFixed(2), spentCredits: +usdToCredits(costUsd(usage)).toFixed(3) }; };
+  if (!stream) {
+    const j: any = await up.json(); usage.input = j.usage?.input_tokens || 0; usage.output = j.usage?.output_tokens || 0;
+    res.json({ text: (j.content || []).map((c: any) => c.text || '').join(''), truncated: j.stop_reason === 'max_tokens', ...bill() }); return;
+  }
+  res.setHeader('content-type', 'text/event-stream'); res.setHeader('cache-control', 'no-cache');
+  const rd = (up.body as any).getReader(); const dec = new TextDecoder(); let buf = '';
+  for (;;) {
+    const { done, value } = await rd.read(); if (done) break;
+    const chunk = dec.decode(value, { stream: true }); res.write(chunk); buf += chunk;
+    const lines = buf.split('\n'); buf = lines.pop() || '';
+    for (const ln of lines) if (ln.startsWith('data:')) { try { const e = JSON.parse(ln.slice(5)); if (e.type === 'message_start') usage.input = e.message?.usage?.input_tokens || 0; if (e.type === 'message_delta') usage.output = e.usage?.output_tokens || usage.output; } catch {} }
+  }
+  res.write('data: ' + JSON.stringify({ type: 'aix_balance', ...bill() }) + '\n\n'); res.end();
+});
 
 // ----------------------------------------------------
 // API ROUTES

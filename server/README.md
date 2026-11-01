@@ -56,3 +56,14 @@ A typical chat reply (~600 in, ~300 out) is ≈ $0.0002; a full single-file app 
 - Cost numbers are list-price estimates from usage returned by the API; "% vs naive" compares against a hypothetical call with the full raw prompt and whole history and no caching.
 
 Layout: `server.ts` (HTTP + MCP) · `server/engine/*` (router, context, prompt, verify, loop, budget state, transport) · `server/engine/loop.test.ts` · `src/` (React UI).
+
+## Accounts, credits and Stripe (backend mode)
+
+The static front end signs users in and calls this server; the Anthropic key never leaves the server.
+
+- `POST /api/account/signup {email}` returns a one-time account token. `GET /api/account/me` shows the balance.
+- `POST /api/sample` is the metered model proxy (Bearer token). Credits are deducted from actual token usage (1 credit = $0.0014 of spend) and the final stream event reports the new balance. It returns 402 when the balance is empty.
+- Stripe: create Payment Links for the $5 / $10 / $100 packs with the buyer's email as `client_reference_id`, and point the webhook at `/api/stripe/webhook`. Credits are added per pack (50 / 100 / 1,000) and duplicate events are ignored.
+- Owner: `POST /api/admin/grant` and `GET /api/admin/users.md` with the `x-admin-token` header.
+
+Deploy on Render or Railway with a persistent disk for `AIX_DATA_DIR`, set the env vars above, then paste the server URL into the app's sign-in dialog (or into the `aix-backend` meta tag).

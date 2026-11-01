@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
+<meta charset="utf-8"><meta name="aix-backend" content="">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>AIX Alpha v3.0 AI Suite</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -406,7 +406,34 @@ function merge(acc,c){const mx=Math.min(200,acc.length,c.length);for(let k=mx;k>
 
 /* ============ model transport: the artifact "sample" capability, cheapest tier ============ */
 let sampleFn=null;
-const KEYK='aix3_apikey',MODELK='claude-haiku-5-5';
+const KEYK='aix3_apikey',MODELK='claude-haiku-5-5',TOKK='aix3_token',BEK='aix3_backend';
+const BACKEND=()=>(store.get(BEK,'')||(document.querySelector('meta[name=aix-backend]')||{}).content||'').replace(/\/+$/,'');
+let BAL=null;
+function backendSample(){
+  const f=async(prompt,o)=>{o=o||{};const tok=store.get(TOKK,'');if(!tok)throw new Error('Sign in to use AIX.');
+    const images=[];for(const im of(o.images||[])){try{const b=im.blob||im;const data=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(String(fr.result).split(',')[1]);fr.readAsDataURL(b)});images.push({media_type:b.type||'image/png',data})}catch{}}
+    const res=await fetch(BACKEND()+'/api/sample',{method:'POST',signal:o.signal,headers:{'content-type':'application/json',authorization:'Bearer '+tok},body:JSON.stringify({prompt,images,stream:!!o.onText,max_tokens:4096})});
+    if(!res.ok){let m='';try{m=(await res.json()).error}catch{}if(res.status===401){store.set(TOKK,'');sampleFn=null;setStatus()}if(res.status===402)openAccount();throw new Error(m||('Server '+res.status))}
+    if(!o.onText){const j=await res.json();if(j.credits!=null){BAL=j.credits;setStatus()}return{text:j.text||'',truncated:!!j.truncated}}
+    const rd=res.body.getReader(),dec=new TextDecoder();let buf='',text='',trunc=false;
+    for(;;){const{done,value}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});const lines=buf.split('\n');buf=lines.pop();
+      for(const ln of lines){if(!ln.startsWith('data:'))continue;try{const e=JSON.parse(ln.slice(5));if(e.type==='content_block_delta'&&e.delta&&e.delta.text){text+=e.delta.text;o.onText({text})}else if(e.type==='message_delta'&&e.delta&&e.delta.stop_reason==='max_tokens')trunc=true;else if(e.type==='aix_balance'){BAL=e.credits;setStatus()}}catch{}}}
+    return{text,truncated:trunc}};
+  f.limits=async()=>({images:true});return f}
+function pickEngine(){if(BACKEND()&&store.get(TOKK,''))return backendSample();if(store.get(KEYK,''))return directSample();return null}
+function openAccount(){
+  const be=BACKEND();
+  const d=dialog(`<h3 style="margin:0 0 8px">AIX account</h3><p style="font-size:12.5px;color:var(--m);margin:0 0 8px">${be?'Sign in to use credits from your balance.':'Set the AIX server address to sign in, or use your own API key below.'}</p>
+  <label>Server address</label><input id="beu" placeholder="https://your-aix-server.example.com" value="${esc(store.get(BEK,''))}">
+  <label>Email (new account)</label><input id="bem" type="email" placeholder="you@example.com"><label>or paste your account token</label><input id="bto" type="password" placeholder="aix_...">
+  <div style="display:flex;gap:8px;justify-content:space-between;margin-top:6px"><button class="btn2" id="bkey">Use my own API key</button><span><button class="btn2" data-close>Cancel</button> <button class="btn" id="bgo">Sign in</button></span></div>`);
+  $('#bkey').onclick=()=>{d.close();openKey(true)};
+  $('#bgo').onclick=async()=>{const u=$('#beu').value.trim().replace(/\/+$/,'');if(u)store.set(BEK,u);if(!BACKEND())return toast('Enter the server address');
+    let tok=$('#bto').value.trim(),fresh=false;
+    try{if(!tok){const em=$('#bem').value.trim();if(!em)return toast('Enter an email or token');const r=await fetch(BACKEND()+'/api/account/signup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:em})});const j=await r.json();if(!r.ok)throw new Error(j.error||'sign-up failed');tok=j.token;fresh=true}
+      store.set(TOKK,tok);const m=await fetch(BACKEND()+'/api/account/me',{headers:{authorization:'Bearer '+tok}});if(!m.ok)throw new Error('token not accepted');BAL=(await m.json()).credits;sampleFn=backendSample();setStatus();toast('Signed in · '+BAL+' credits');if(fresh)prompt_token(tok);else d.close()}catch(e){store.set(TOKK,'');toast('Could not sign in: '+e.message)}};
+}
+function prompt_token(t){try{dialog(`<h3 style="margin:0 0 8px">Save your account token</h3><p style="font-size:12.5px;color:var(--m)">This is shown once. Keep it somewhere safe; it signs you back in on any device.</p><input readonly value="${esc(t)}" onclick="this.select()"><div style="text-align:right;margin-top:8px"><button class="btn" data-close>Done</button></div>`)}catch{}}
 function directSample(){
   const f=async(prompt,o)=>{o=o||{};const key=store.get(KEYK,'');if(!key)throw new Error('Add your API key in Settings to bring AIX online.');
     const content=[];
@@ -420,13 +447,13 @@ function directSample(){
       for(const ln of lines){if(!ln.startsWith('data:'))continue;try{const e=JSON.parse(ln.slice(5));if(e.type==='content_block_delta'&&e.delta&&e.delta.text){text+=e.delta.text;o.onText({text})}else if(e.type==='message_delta'&&e.delta&&e.delta.stop_reason==='max_tokens')trunc=true}catch{}}}
     return{text,truncated:trunc}};
   f.limits=async()=>({images:true});return f}
-function openKey(){
+function openKey(force){if(!force)return openAccount();
   const d=dialog(`<h3 style="margin:0 0 8px">Bring AIX online</h3><p style="font-size:12.5px;color:var(--m);margin:0 0 8px">This page runs outside claude.ai, so it connects straight to the model with your own Anthropic API key. The key is saved only in this browser and sent only to api.anthropic.com.</p><label>Anthropic API key</label><input id="akey" type="password" placeholder="sk-ant-..." value="${esc(store.get(KEYK,''))}"><div style="display:flex;gap:8px;justify-content:space-between"><button class="btn2" id="aclr">Remove key</button><span><button class="btn2" data-close>Cancel</button> <button class="btn" id="asave">Save and connect</button></span></div>`);
   $('#asave').onclick=()=>{const k=$('#akey').value.trim();if(!k)return toast('Paste a key first');store.set(KEYK,k);sampleFn=directSample();setStatus();toast('AIX is online');d.close()};
   $('#aclr').onclick=()=>{store.set(KEYK,'');if(sampleFn&&!window.claude)sampleFn=null;setStatus();d.close()};
 }
 async function ask(promptStr,onText,signal,images,tools){
-  if(!sampleFn&&store.get(KEYK,''))sampleFn=directSample();
+  if(!sampleFn)sampleFn=pickEngine();
   if(!sampleFn){try{openKey()}catch{}throw new Error('AIX is offline. Add your API key (Settings, or tap OFFLINE) to bring it online.')}
   const o={modelTier:'quick',cache:false,onText,signal};
   try{if(images&&images.length&&sampleFn.limits&&(await sampleFn.limits()).images)o.images=images}catch{}
@@ -612,7 +639,7 @@ function openHub(){
 }
 function openSettings(){
   const d=dialog(`<h3 style="margin:0 0 8px">Credit caps</h3><label>Per request (credits)</label><input id="c1" type="number" step="1" value="${capCr(S.caps.req)}"><label>Per chat (credits)</label><input id="c2" type="number" step="1" value="${capCr(S.caps.ses)}"><label>Per day (credits)</label><input id="c3" type="number" step="10" value="${capCr(S.caps.day)}">
-  <button class="btn2" id="keyb" style="margin:4px 0 8px">API key / go online</button><div style="display:flex;gap:8px;justify-content:space-between"><button class="btn2" id="wipe">Delete all chats</button><span><button class="btn2" data-close>Cancel</button> <button class="btn" id="ssave">Save</button></span></div>`);
+  <button class="btn2" id="keyb" style="margin:4px 0 8px">Account / go online</button><div style="display:flex;gap:8px;justify-content:space-between"><button class="btn2" id="wipe">Delete all chats</button><span><button class="btn2" data-close>Cancel</button> <button class="btn" id="ssave">Save</button></span></div>`);
   $('#ssave').onclick=()=>{S.caps={req:(+$('#c1').value||7)*CR,ses:(+$('#c2').value||178)*CR,day:(+$('#c3').value||1428)*CR};store.set('aix3_caps',S.caps);updateMeter();d.close()};
   $('#keyb').onclick=()=>{d.close();openKey()};
   $('#wipe').onclick=()=>{S.chats=[];S.cur=null;save();renderThreads();renderMsgs();d.close()};
@@ -656,7 +683,7 @@ $('#exp').onclick=async()=>{const c=curChat();if(!c)return;const md_=`# ${c.titl
 
 /* ============ views, palette, analytics, studio ============ */
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.remove('act');t.classList.add('on');clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove('on'),1400)}
-function setStatus(){$('#pm').title=sampleFn?'':'Click to add an API key';$('#pm').onclick=sampleFn?null:openKey;$('#pm').textContent=sampleFn?'ONLINE':'OFFLINE';$('#pm').style.color=sampleFn?'var(--g)':'var(--r)'}
+function setStatus(){$('#pm').title=sampleFn?'':'Click to add an API key';$('#pm').onclick=sampleFn?null:()=>openKey();$('#pm').textContent=sampleFn?('ONLINE'+(BAL!=null&&BACKEND()?' · '+(+BAL).toFixed(0)+' cr':'')):'OFFLINE';$('#pm').style.color=sampleFn?'var(--g)':'var(--r)'}
 $('#tabs').onclick=e=>{const b=e.target.closest('button');if(b)setView(b.dataset.v)};
 function renderAnaBase(){
   const ms=S.chats.flatMap(c=>c.msgs.filter(m=>m.t)).map(m=>m.t);
@@ -1546,8 +1573,8 @@ function fitTop(){const t=$('#top');if(!t)return;t.style.paddingLeft=innerWidth>
 addEventListener('resize',fitTop);setTimeout(fitTop,0);
 buildPersonaSel();setStatus();if(S.chats.length)S.cur=S.chats[0].id;renderThreads();renderMsgs();
 (async()=>{try{sampleFn=await claude.use('sample')}catch{sampleFn=null}
-  if(!sampleFn&&store.get(KEYK,''))sampleFn=directSample();
-  setStatus();if(!sampleFn){const pm=$('#pm');pm.style.cursor='pointer';pm.onclick=openKey}initDb();loadLive().then(()=>{try{rerenderConnCards()}catch{}})})();
+  if(!sampleFn)sampleFn=pickEngine();
+  setStatus();if(!sampleFn){const pm=$('#pm');pm.style.cursor='pointer';pm.onclick=()=>openKey()}initDb();loadLive().then(()=>{try{rerenderConnCards()}catch{}})})();
 </script>
 </body>
 </html>
