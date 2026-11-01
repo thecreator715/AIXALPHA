@@ -16,6 +16,7 @@ const json = (env, req, body, status = 200) => new Response(JSON.stringify(body)
 const sha = async (s) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(s)))].map((b) => b.toString(16).padStart(2, '0')).join('');
 const owners = (env) => (env.OWNER_EMAILS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 const view = (a) => ({ free_claimed: !!a.free_claimed, username: a.username || null, email: a.email, credits: +Number(a.credits).toFixed(2), tokens: a.tokens, requests: a.requests });
+const vw = (env, a) => ({ ...view(a), owner: owners(env).includes(a.email) });
 const getUser = (env, email) => env.DB.prepare('SELECT * FROM users WHERE email=?').bind(email).first();
 // One account per person: emails are normalised so +tags and Gmail dots can't make a second account.
 const normId = (x) => { let v = String(x || '').trim().toLowerCase(); if (v.includes('@')) { let [l, d] = v.split('@'); l = l.split('+')[0]; if (d === 'gmail.com' || d === 'googlemail.com') { l = l.replace(/\./g, ''); d = 'gmail.com'; } v = l + '@' + d; } return v; };
@@ -107,7 +108,7 @@ export default {
       const token = 'aix_' + [...crypto.getRandomValues(new Uint8Array(24))].map((x) => x.toString(16).padStart(2, '0')).join('');
       const a = { email, credits: Number(env.SIGNUP_CREDITS || 0), tokens: 0, requests: 0 };
       await env.DB.prepare('INSERT INTO users(email,token_hash,credits,tokens,requests,created,last) VALUES(?,?,?,?,0,?,?)').bind(email, await sha(token), a.credits, 0, new Date().toISOString(), '').run();
-      return json(env, req, { token, account: view(a) });
+      return json(env, req, { token, account: vw(env, a) });
     }
     if (path === '/api/account/register' && req.method === 'POST') {
       const b = await req.json().catch(() => ({})); const un = normId(b.username), pw = String(b.password || '');
@@ -119,14 +120,14 @@ export default {
       if (cur && !cur.username) { email = cur.email; await env.DB.prepare('UPDATE users SET username=?,pw_hash=?,pw_salt=? WHERE email=?').bind(un, ph, salt, email).run(); }   // upgrade the guest in place: credits stay
       else { email = un + '@user.aix'; await env.DB.prepare('INSERT INTO users(email,token_hash,credits,tokens,requests,created,last,username,pw_hash,pw_salt) VALUES(?,?,?,0,0,?,?,?,?,?)').bind(email, await sha(newToken()), Number(env.SIGNUP_CREDITS || 0), new Date().toISOString(), '', un, ph, salt).run(); }
       const token = await startSession(env, email);
-      return json(env, req, { token, account: view(await getUser(env, email)) });
+      return json(env, req, { token, account: vw(env, await getUser(env, email)) });
     }
     if (path === '/api/account/login' && req.method === 'POST') {
       const b = await req.json().catch(() => ({})); const un = normId(b.username);
       const u = await env.DB.prepare('SELECT * FROM users WHERE username=?').bind(un).first();
       const ok = u && u.pw_hash && (await pbk(String(b.password || ''), u.pw_salt)) === u.pw_hash;
       if (!ok) return json(env, req, { error: 'Wrong username or password' }, 401);
-      return json(env, req, { token: await startSession(env, u.email), account: view(u) });
+      return json(env, req, { token: await startSession(env, u.email), account: vw(env, u) });
     }
     if (path === '/api/account/claim-free' && req.method === 'POST') {      // 1 free credit per username account, 1 per network
       const a = await authed(env, req);
@@ -140,9 +141,13 @@ export default {
         env.DB.prepare('UPDATE users SET credits=credits+1, free_claimed=1 WHERE email=? AND free_claimed=0').bind(a.email),
         env.DB.prepare('INSERT INTO purchases(email,at,usd,credits,ref) VALUES(?,?,0,1,?)').bind(a.email, new Date().toISOString(), 'free-claim-' + a.email),
       ]);
-      return json(env, req, view(await getUser(env, a.email)));
+      return json(env, req, vw(env, await getUser(env, a.email)));
     }
-    if (path === '/api/account/me') { const a = await authed(env, req); return a ? json(env, req, view(a)) : json(env, req, { error: 'sign in' }, 401); }
+    if (path === '/api/config' && req.method === 'GET') {            // public: pack payment links set by the owner
+      const r = await env.DB.prepare("SELECT v FROM settings WHERE k='links'").first();
+      return json(env, req, { links: r ? JSON.parse(r.v) : {} });
+    }
+    if (path === '/api/account/me') { const a = await authed(env, req); return a ? json(env, req, vw(env, a)) : json(env, req, { error: 'sign in' }, 401); }
     if (path === '/api/sample' && req.method === 'POST') return sample(env, req);
     if (path === '/api/stripe/webhook' && req.method === 'POST') return stripe(env, req);
     if (path.startsWith('/api/admin/')) {
@@ -151,7 +156,13 @@ export default {
         const b = await req.json().catch(() => ({})); const q0 = String(b.email || b.username || '').toLowerCase(); const row = await env.DB.prepare('SELECT email FROM users WHERE email=? OR username=?').bind(q0, q0).first(); const email = row ? row.email : ''; const n = Number(b.credits);
         if (!row || !(n > 0)) return json(env, req, { error: 'email + credits required' }, 400);
         await env.DB.batch([env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(n, email), env.DB.prepare('INSERT INTO purchases(email,at,usd,credits,ref) VALUES(?,?,0,?,?)').bind(email, new Date().toISOString(), n, 'admin-grant-' + Date.now())]);
-        return json(env, req, view(await getUser(env, email)));
+        return json(env, req, vw(env, await getUser(env, email)));
+      }
+      if (path === '/api/admin/config' && req.method === 'POST') {
+        const b = await req.json().catch(() => ({})); const L = {};
+        for (const k of ['starter', 'topup', 'enterprise']) { const u = String((b.links || {})[k] || '').trim(); if (u && !/^https:\/\/(buy|checkout)\.stripe\.com\//.test(u)) return json(env, req, { error: k + ': must be a Stripe Payment Link (https://buy.stripe.com/...)' }, 400); if (u) L[k] = u; }
+        await env.DB.prepare("INSERT INTO settings(k,v) VALUES('links',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(JSON.stringify(L)).run();
+        return json(env, req, { links: L });
       }
       if (path === '/api/admin/users.md') {
         const { results } = await env.DB.prepare('SELECT * FROM users ORDER BY last DESC').all();
