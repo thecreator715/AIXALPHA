@@ -195,13 +195,14 @@ async function image(env, req) {
   let b; try { b = await req.json(); } catch { return json(env, req, { error: 'bad request' }, 400); }
   const prompt = String(b.prompt || '').slice(0, 1000).trim();
   if (!prompt) return json(env, req, { error: 'Describe the image' }, 400);
-  const cap = a.owner ? 1000 : parseInt(env.IMAGE_DAILY || '10', 10);
+  const cap = owners(env).includes(a.email) ? 1000 : parseInt(env.IMAGE_DAILY || '10', 10);
   const day = new Date().toISOString().slice(0, 10), key = 'img:' + a.email + ':' + day;
-  const used = parseInt((await env.AIX.get(key)) || '0', 10);
+  const row = await env.DB.prepare('SELECT v FROM settings WHERE k=?').bind(key).first();
+  const used = parseInt((row && row.v) || '0', 10);
   if (used >= cap) return json(env, req, { error: 'Daily free image limit reached (' + cap + '). Try again tomorrow.' }, 429);
   try {
     const out = await env.AI.run('@cf/black-forest-labs/flux-1-schnell', { prompt, steps: Math.min(8, Math.max(1, +b.steps || 4)) });
-    await env.AIX.put(key, String(used + 1), { expirationTtl: 172800 });
+    await env.DB.prepare('INSERT INTO settings(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v').bind(key, String(used + 1)).run();
     return json(env, req, { image: 'data:image/jpeg;base64,' + out.image, left: cap - used - 1 });
   } catch (e) { return json(env, req, { error: 'Image model error: ' + (e.message || e) }, 502); }
 }
