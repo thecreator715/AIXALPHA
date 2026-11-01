@@ -1905,7 +1905,7 @@ async function chatFlux(c,text){
   const prompt=subj+(/\b(photo|realistic|painting|illustration|cartoon|anime|pixel|sketch|3d|render)\b/i.test(subj)?'':', highly detailed, beautiful lighting');
   const t0=Date.now();let data='',url='',via='';
   try{
-    if(BACKEND()&&store.get(TOKK,'')){try{const r=await fetch(BACKEND()+'/api/image',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+store.get(TOKK,'')},body:JSON.stringify({prompt})});const j=await r.json().catch(()=>({}));if(r.ok&&j.image){data=j.image;via='AIX server'}else if(r.status===429){c.msgs.push({role:'assistant',content:j.error||'Daily free image limit reached.',err:1,ts:Date.now(),dur:Date.now()-t0});return}}catch{}}
+    if(BACKEND()){try{const r=await fetch(BACKEND()+'/api/image',{method:'POST',headers:Object.assign({'content-type':'application/json'},store.get(TOKK,'')?{authorization:'Bearer '+store.get(TOKK,'')}:{}),body:JSON.stringify({prompt})});const j=await r.json().catch(()=>({}));if(r.ok&&j.image){data=j.image;via='AIX server'}else if(r.status===429){c.msgs.push({role:'assistant',content:j.error||'Daily free image limit reached.',err:1,ts:Date.now(),dur:Date.now()-t0});return}}catch{}}
     if(!data){const u='https://image.pollinations.ai/prompt/'+encodeURIComponent(prompt)+'?model=flux&width=1024&height=1024&nologo=true&seed='+Math.floor(Math.random()*1e6);
       try{const r=await fetch(u);if(!r.ok)throw new Error('HTTP '+r.status);data=await readDU(await r.blob());via='Pollinations'}catch{const ok=await new Promise(res=>{const im=new Image();const t=setTimeout(()=>res(false),25000);im.onload=()=>{clearTimeout(t);res(true)};im.onerror=()=>{clearTimeout(t);res(false)};im.src=u});if(!ok){c.msgs.push({role:'assistant',content:'The free public image service is busy or blocked right now. Sign in with a free account to generate images with the AIX server (FLUX, 0 credits, up to 10 a day).',err:1,ts:Date.now(),dur:Date.now()-t0});setTimeout(()=>{try{openAccount('Sign in to generate images with the AIX server')}catch{}},300);return}url=u;via='Pollinations (direct)'}}
     const msg={role:'assistant',content:`Here's your image: **${subj}**\n\nFLUX · free · 0 credits${via?' · '+via:''} · stored on this device`,ts:Date.now(),dur:Date.now()-t0};
@@ -1984,9 +1984,9 @@ setTimeout(function(){const fw=$('#fw'),g=$('#gen');if(!fw||!g)return;const base
 async function fluxGenerate(spec){
   ensureProj();const L=startLog('Free Flux image: '+spec.slice(0,50));let data='',via='';
   try{
-    if(BACKEND()&&store.get(TOKK,'')){L.step('Asking the AIX server for a FLUX.1 image (free, no credits)');
-      const r=await fetch(BACKEND()+'/api/image',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+store.get(TOKK,'')},body:JSON.stringify({prompt:spec})});
-      const j=await r.json().catch(()=>({}));if(r.ok&&j.image){data=j.image;via='AIX server ('+j.left+' free left today)'}else if(r.status===429||r.status===401){L.finish(j.error||'Not available','bad');return}else L.step('Server image mode unavailable ('+(j.error||r.status)+'), trying the public FLUX service','ok')}
+    if(BACKEND()){L.step('Asking the AIX server for a FLUX.1 image (free, no credits)');
+      const r=await fetch(BACKEND()+'/api/image',{method:'POST',headers:Object.assign({'content-type':'application/json'},store.get(TOKK,'')?{authorization:'Bearer '+store.get(TOKK,'')}:{}),body:JSON.stringify({prompt:spec})});
+      const j=await r.json().catch(()=>({}));if(r.ok&&j.image){data=j.image;via='AIX server ('+j.left+' free left today)'}else if(r.status===429){L.finish(j.error||'Not available','bad');return}else L.step('Server image mode unavailable ('+(j.error||r.status)+'), trying the public FLUX service','ok')}
     if(!data){L.step('Requesting FLUX from the public Pollinations service (free, rate limited)');
       const u='https://image.pollinations.ai/prompt/'+encodeURIComponent(spec)+'?model=flux&width=1024&height=1024&nologo=true&seed='+Math.floor(Math.random()*1e6);
       try{const r=await fetch(u);if(!r.ok)throw new Error('HTTP '+r.status);data=await readDU(await r.blob());via='Pollinations FLUX'}
