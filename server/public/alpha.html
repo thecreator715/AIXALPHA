@@ -354,6 +354,7 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
         <b class="lp">↻ LOOP</b>
         <div class="seg" id="modes"><button data-m="auto" title="Reasoning mode: picks the best mode, depth and evaluator for each reply, ignoring credit cost">AUTO</button><button data-m="eco" class="on">ECO</button><button data-m="balanced">BALANCED</button><button data-m="thorough">THOROUGH</button></div>
         <button class="tg" id="evalb" title="One tiny reviewer call on DEEP answers"></button>
+        <button class="tg" id="webb" title="Live web search: the model may search the internet for current info. About 7 credits per search (max 3 per reply). Needs 8+ credits."></button>
         <button class="tg" id="estb" title="Estimated credits per reply for each mode"></button><div class="meter"><div class="track"><div class="fill" id="fill"></div></div><span id="spent">0 / 178 cr</span></div>
       </div><div id="estp"></div><div class="mono" id="estline"></div><div class="mono" id="sub" style="font-size:10px;color:#52525b;padding:3px 4px"></div></div>
       <div id="inp"><div id="attl" class="mono"></div><div id="editban" class="mono" style="display:none"><span>Editing an earlier message — sending replaces it and the replies after it.</span><button type="button" class="btn2" id="editcancel">Cancel</button></div><form id="f"><button type="button" class="btn2" id="att" title="Attach files" aria-label="Attach"></button><button type="button" class="btn2" id="mic" title="Voice input" aria-label="Voice"></button><input type="file" id="fi" multiple hidden><textarea id="q" rows="1" placeholder="Message AIX ALPHA…  (Enter to send · Shift+Enter newline · /help · ⌘K)"></textarea><button class="btn" id="send">SEND ➤</button></form></div>
@@ -424,7 +425,7 @@ const CR=0.0014; // 1 credit = 0.0014 of spend; the UI only ever shows credits
 const capCr=x=>Math.floor(x/CR+1e-9);
 const usd=n=>{const c=n/CR;return c===0?'0 cr':c<0.01?'<0.01 cr':(c<10?c.toFixed(2):c<100?c.toFixed(1):String(Math.round(c)))+' cr'};
 const BREV={MICRO:'Style: reply in at most 4 sentences.',STANDARD:'Style: be concise; use a list only to compare or sequence.',DEEP:'Style: complete but economical. No restating the question, no closing summary unless asked.'};
-const S={auto:store.get('aix3_auto',false),mode:store.get('aix3_mode','eco'),verify:store.get('aix3_verify','local'),caps:store.get('aix3_caps',{req:0.01,ses:0.25,day:2}),
+const S={web:store.get('aix3_web',false),auto:store.get('aix3_auto',false),mode:store.get('aix3_mode','eco'),verify:store.get('aix3_verify','local'),caps:store.get('aix3_caps',{req:0.01,ses:0.25,day:2}),
  chats:store.get('aix3_chats',[]),cur:null,pid:store.get('aix3_pid','aix-alpha-v3'),busy:false,cache:{},ledger:store.get('aix3_ledger',{})};
 const today=()=>new Date().toISOString().slice(0,10);
 const daySpend=()=>S.ledger[today()]||0;
@@ -480,12 +481,12 @@ let BAL=null;
 function backendSample(){
   const f=async(prompt,o)=>{o=o||{};const tok=store.get(TOKK,'');if(!tok)throw new Error('Sign in to use AIX.');
     const images=[];for(const im of(o.images||[])){try{const b=im.blob||im;const data=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(String(fr.result).split(',')[1]);fr.readAsDataURL(b)});images.push({media_type:b.type||'image/png',data})}catch{}}
-    const res=await fetch(BACKEND()+'/api/sample',{method:'POST',signal:o.signal,headers:{'content-type':'application/json',authorization:'Bearer '+tok},body:JSON.stringify({prompt,images,stream:!!o.onText,max_tokens:4096})});
+    const res=await fetch(BACKEND()+'/api/sample',{method:'POST',signal:o.signal,headers:{'content-type':'application/json',authorization:'Bearer '+tok},body:JSON.stringify({prompt,images,stream:!!o.onText,max_tokens:4096,search:!!o.search})});
     if(!res.ok){let m='';try{m=(await res.json()).error}catch{}if(res.status===401){store.set(TOKK,'');store.set('aix3_user','');UNAME='';sampleFn=null;setStatus();setTimeout(()=>openAccount(true),60);throw new Error('Your session expired. Please sign in again.')}if(res.status===402){BAL=0;setStatus();setTimeout(()=>openCredits('out'),60);throw new Error('You are out of credits. Add credits to keep going (a window just opened).')}throw new Error(m||('Server '+res.status))}
     if(!o.onText){const j=await res.json();if(j.credits!=null){BAL=j.credits;setStatus()}return{text:j.text||'',truncated:!!j.truncated}}
     const rd=res.body.getReader(),dec=new TextDecoder();let buf='',text='',trunc=false;
     for(;;){const{done,value}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});const lines=buf.split('\n');buf=lines.pop();
-      for(const ln of lines){if(!ln.startsWith('data:'))continue;try{const e=JSON.parse(ln.slice(5));if(e.type==='content_block_delta'&&e.delta&&e.delta.text){text+=e.delta.text;o.onText({text})}else if(e.type==='message_delta'&&e.delta&&e.delta.stop_reason==='max_tokens')trunc=true;else if(e.type==='aix_balance'){BAL=e.credits;setStatus()}}catch{}}}
+      for(const ln of lines){if(!ln.startsWith('data:'))continue;try{const e=JSON.parse(ln.slice(5));if(e.type==='content_block_delta'&&e.delta&&e.delta.text){text+=e.delta.text;o.onText({text})}else if(e.type==='message_delta'&&e.delta&&e.delta.stop_reason==='max_tokens')trunc=true;else if(e.type==='aix_balance'){BAL=e.credits;setStatus();if(e.searches)toast('Searched the web '+e.searches+'x · '+e.spentCredits+' credits')}}catch{}}}
     return{text,truncated:trunc}};
   f.limits=async()=>({images:true});return f}
 function embKey(){const m=document.querySelector('meta[name=aix-embedded-key]');return m&&/^sk-ant-/.test(m.content)?m.content:''}
@@ -534,7 +535,7 @@ function directSample(){
     const content=[];
     for(const im of(o.images||[])){try{const b=im.blob||im;const data=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(String(fr.result).split(',')[1]);fr.readAsDataURL(b)});content.push({type:'image',source:{type:'base64',media_type:b.type||'image/png',data}})}catch{}}
     content.push({type:'text',text:prompt});
-    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:o.signal,headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:MODELK,max_tokens:4096,stream:!!o.onText,messages:[{role:'user',content}]})});
+    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:o.signal,headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:MODELK,max_tokens:4096,stream:!!o.onText,...(o.search?{tools:[{type:'web_search_20250305',name:'web_search',max_uses:3}]}:{}),messages:[{role:'user',content}]})});
     if(!res.ok){let m='';try{m=(await res.json()).error.message}catch{}if(res.status===401){store.set(KEYK,'');sampleFn=null;setStatus();throw new Error('Anthropic rejected this API key (401). Create a fresh key at console.anthropic.com > API Keys, make sure billing is active, and paste it again.')}throw new Error('API '+res.status+': '+(m||'request failed'))}
     if(!o.onText){const j=await res.json();return{text:(j.content||[]).map(c=>c.text||'').join(''),truncated:j.stop_reason==='max_tokens'}}
     const rd=res.body.getReader(),dec=new TextDecoder();let buf='',text='',trunc=false;
@@ -551,7 +552,8 @@ async function ask(promptStr,onText,signal,images,tools){
   if(!sampleFn)sampleFn=pickEngine();
   if(sampleFn&&BACKEND()&&store.get(TOKK,'')&&!ISOWNER&&BAL!=null&&BAL<=0&&!embKey()){setTimeout(()=>openCredits('out'),60);throw new Error('You are out of credits. Add credits or claim your free credit to continue (a window just opened).')}
   if(!sampleFn){try{openKey()}catch{}throw new Error('AIX is offline. Add your API key (Settings, or tap OFFLINE) to bring it online.')}
-  const o={modelTier:'quick',cache:false,onText,signal};
+  const o={modelTier:'quick',cache:false,onText,signal,search:!!onText&&!!S.web&&(!BACKEND()||ISOWNER||BAL==null||BAL>=8)};
+  if(S.web&&onText&&BACKEND()&&!ISOWNER&&BAL!=null&&BAL<8){try{toast('Live web needs 8+ credits. Answering without it.')}catch{}}
   try{if(images&&images.length&&sampleFn.limits&&(await sampleFn.limits()).images)o.images=images}catch{}
   if(tools&&tools.length)o.tools=tools;
   return sampleFn(promptStr,o);
@@ -716,7 +718,7 @@ function updateMeter(){if($('#estline'))refreshEst(false);const c=curChat(),sp=c
   $('#sub').textContent=c&&c.calls?`${c.calls} model calls · ${free} replies at $0 · today ${usd(daySpend())} (estimates)`:'';
   $('#ps').textContent=(personas().find(p=>p.id===S.pid)||PRESETS[0]).name;
   document.querySelectorAll('#modes button').forEach(b=>b.classList.toggle('on',S.auto?b.dataset.m==='auto':b.dataset.m===S.mode));
-  $('#evalb').classList.toggle('on',S.verify==='llm');$('#evalb').innerHTML=ico('shield')+'<span class="lbl"> EVAL '+(S.verify==='llm'?'ON':'OFF')+'</span>';
+  $('#evalb').classList.toggle('on',S.verify==='llm');$('#webb').classList.toggle('on',!!S.web);$('#webb').innerHTML=ico('sites')+'<span class="lbl"> WEB '+(S.web?'ON':'OFF')+'</span>';$('#evalb').innerHTML=ico('shield')+'<span class="lbl"> EVAL '+(S.verify==='llm'?'ON':'OFF')+'</span>';
 }
 
 /* ============ send ============ */
@@ -772,6 +774,7 @@ $('#persona').onchange=e=>{S.pid=e.target.value;store.set('aix3_pid',S.pid);upda
 $('#newc').onclick=()=>{S.cur=null;renderThreads();renderMsgs();syncStudio();$('#side').classList.remove('open')};
 $('#hub').onclick=openHub;$('#set').onclick=openSettings;$('#about').onclick=openAbout;$('#menu').onclick=()=>$('#side').classList.toggle('open');
 $('#modes').onclick=e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.m==='auto'){S.auto=!S.auto;store.set('aix3_auto',S.auto);updateMeter();refreshEst(true);return}S.auto=false;store.set('aix3_auto',false);S.mode=b.dataset.m;store.set('aix3_mode',S.mode);updateMeter();refreshEst(true)};
+$('#webb').onclick=()=>{S.web=!S.web;store.set('aix3_web',S.web);updateMeter();refreshEst(true);toast(S.web?'Live web search on · about 7 credits per search':'Live web search off')};
 $('#evalb').onclick=()=>{S.verify=S.verify==='llm'?'local':'llm';store.set('aix3_verify',S.verify);updateMeter();refreshEst(true)};
 $('#estb').onclick=()=>$('#estp').classList.toggle('on');
 $('#threads').onclick=e=>{const pn=e.target.closest('[data-pin]');if(pn){const c=S.chats.find(x=>x.id===pn.dataset.pin);c.pin=!c.pin;save();renderThreads();return}
@@ -886,7 +889,8 @@ function measured(mode){
   const by={};S.chats.forEach(c=>c.msgs.forEach(m=>{if(m.t&&m.t.mode===mode&&m.t.calls){(by[m.t.tier]=by[m.t.tier]||[]).push(m.t.cost/CR)}}));
   const o={};for(const k in by)if(by[k].length>=2)o[k]=by[k].reduce((a,b)=>a+b,0)/by[k].length;return o}
 const f1=n=>n<10?n.toFixed(2):n<100?n.toFixed(1):String(Math.round(n));
-function estLine(){if(S.auto){const e=modeEst('thorough',true);return `AUTO · picks the best mode per reply, cost ignored · up to DEEP ~${f1(e.DEEP.typ)} cr (max ${f1(e.DEEP.max)})`}const e=modeEst(S.mode,S.verify==='llm'),m=measured(S.mode);
+function estLine(){return estLine0()+(S.web?' · LIVE WEB +7 cr per search':'')}
+function estLine0(){if(S.auto){const e=modeEst('thorough',true);return `AUTO · picks the best mode per reply, cost ignored · up to DEEP ~${f1(e.DEEP.typ)} cr (max ${f1(e.DEEP.max)})`}const e=modeEst(S.mode,S.verify==='llm'),m=measured(S.mode);
   return `est. per reply · ${S.mode.toUpperCase()}${S.verify==='llm'?' + EVAL':''}: `+['MICRO','STANDARD','DEEP'].map(t=>`${t} ${f1(m[t]??e[t].typ)}${m[t]!=null?'*':''} cr`).join(' · ')+` (DEEP up to ${f1(e.DEEP.max)})`+(Object.keys(m).length?'  * measured':'')}
 function estPanel(){
   const rows=['eco','balanced','thorough'].map(md=>{const a=modeEst(md,false),b=modeEst(md,true);return `<tr class="${md===S.mode?'cur':''}"><td>${md.toUpperCase()}</td>${['MICRO','STANDARD','DEEP'].map(t=>`<td>${f1(a[t].typ)}</td>`).join('')}<td>${f1(a.DEEP.max)}</td><td>+${f1(b.DEEP.typ-a.DEEP.typ)}</td></tr>`}).join('');

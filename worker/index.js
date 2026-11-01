@@ -32,7 +32,9 @@ async function authed(env, req) {
   const th = await sha(t);
   return (await env.DB.prepare('SELECT u.* FROM sessions s JOIN users u ON u.email=s.email WHERE s.token_hash=?').bind(th).first()) || (await env.DB.prepare('SELECT * FROM users WHERE token_hash=?').bind(th).first());
 }
-const costUsd = (u) => ((u.input || 0) * PRICE.in + (u.output || 0) * PRICE.out + (u.cacheRead || 0) * PRICE.cr + (u.cacheWrite || 0) * PRICE.cw) / 1e6;
+const SEARCH_USD = 0.01;            // Anthropic web search: $10 per 1,000 searches (~7 credits each)
+const SEARCH_MIN_CREDITS = 8;       // a user needs at least this balance to allow live search on a reply
+const costUsd = (u) => (u.searches || 0) * SEARCH_USD + ((u.input || 0) * PRICE.in + (u.output || 0) * PRICE.out + (u.cacheRead || 0) * PRICE.cr + (u.cacheWrite || 0) * PRICE.cw) / 1e6;
 
 // Atomic in SQL: no lost updates when requests overlap.
 async function charge(env, a, usage) {
@@ -43,7 +45,7 @@ async function charge(env, a, usage) {
     env.DB.prepare('INSERT INTO usage(email,at,input,output,credits) VALUES(?,?,?,?,?)').bind(a.email, now, usage.input || 0, usage.output || 0, owner ? 0 : cr),
   ]);
   const f = await getUser(env, a.email);
-  return { credits: +Number(f.credits).toFixed(2), spentCredits: +cr.toFixed(3) };
+  return { credits: +Number(f.credits).toFixed(2), spentCredits: +cr.toFixed(3), searches: usage.searches || 0 };
 }
 
 async function sample(env, req) {
@@ -53,16 +55,20 @@ async function sample(env, req) {
   const b = await req.json().catch(() => ({}));
   const prompt = String(b.prompt || ''); if (!prompt) return json(env, req, { error: 'prompt required' }, 400);
   const stream = !!b.stream;
+  const owner = owners(env).includes(a.email);
+  const search = !!b.search && (owner || a.credits >= SEARCH_MIN_CREDITS);
   const content = (Array.isArray(b.images) ? b.images.slice(0, 4) : []).map((i) => ({ type: 'image', source: { type: 'base64', media_type: String(i.media_type || 'image/png'), data: String(i.data || '') } }));
   content.push({ type: 'text', text: prompt });
-  const up = await fetch(env.UPSTREAM_URL || 'https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: MODEL, max_tokens: Math.min(Number(b.max_tokens) || 4096, 8192), stream, messages: [{ role: 'user', content }] }) });
+  const call = (withSearch) => fetch(env.UPSTREAM_URL || 'https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: MODEL, max_tokens: Math.min(Number(b.max_tokens) || 4096, 8192), stream, ...(withSearch ? { tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }] } : {}), messages: [{ role: 'user', content }] }) });
+  let up = await call(search);
+  if (!up.ok && search && up.status === 400) up = await call(false);       // search not available: answer without it
   if (!up.ok) {
     const bad = up.status === 401 || up.status === 403;
     return json(env, req, { error: bad ? 'The owner API key was rejected by Anthropic. The owner must update the ANTHROPIC_API_KEY secret.' : 'Model request failed (' + up.status + ').' }, up.status === 429 ? 429 : 502);
   }
-  const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, searches: 0 };
   if (!stream) {
-    const j = await up.json(); usage.input = j.usage?.input_tokens || 0; usage.output = j.usage?.output_tokens || 0;
+    const j = await up.json(); usage.input = j.usage?.input_tokens || 0; usage.output = j.usage?.output_tokens || 0; usage.searches = j.usage?.server_tool_use?.web_search_requests || 0;
     const bill = await charge(env, a, usage);
     return json(env, req, { text: (j.content || []).map((c) => c.text || '').join(''), truncated: j.stop_reason === 'max_tokens', ...bill });
   }
@@ -71,7 +77,7 @@ async function sample(env, req) {
     transform(chunk, ctl) {
       ctl.enqueue(chunk); buf += dec.decode(chunk, { stream: true });
       const lines = buf.split('\n'); buf = lines.pop();
-      for (const ln of lines) if (ln.startsWith('data:')) { try { const e = JSON.parse(ln.slice(5)); if (e.type === 'message_start') usage.input = e.message?.usage?.input_tokens || 0; if (e.type === 'message_delta') usage.output = e.usage?.output_tokens || usage.output; } catch {} }
+      for (const ln of lines) if (ln.startsWith('data:')) { try { const e = JSON.parse(ln.slice(5)); if (e.type === 'message_start') usage.input = e.message?.usage?.input_tokens || 0; if (e.type === 'message_delta') { usage.output = e.usage?.output_tokens || usage.output; usage.searches = e.usage?.server_tool_use?.web_search_requests || usage.searches; } } catch {} }
     },
     async flush(ctl) { const bill = await charge(env, a, usage); ctl.enqueue(enc.encode('data: ' + JSON.stringify({ type: 'aix_balance', ...bill }) + '\n\n')); },
   });
