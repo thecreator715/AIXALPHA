@@ -283,8 +283,22 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
  #inp form #att,#inp form #mic{width:34px;height:34px;min-height:34px;padding:0;border-radius:50%;flex:0 0 auto;border:0;background:transparent;font-size:17px}
  #q{padding:7px 4px;max-height:140px;line-height:1.35}
  #send{width:36px;height:36px;min-height:36px;padding:0;border-radius:50%;font-size:0;flex:0 0 auto}#send::before{content:"\2191";font-size:19px;font-weight:700}
- #bnav button{padding:5px 0 3px}#bnav button span{font-size:17px}.view{padding-bottom:calc(52px + env(safe-area-inset-bottom))}
+ #bnav button{padding:5px 0 3px}#bnav button span{font-size:17px;display:grid;place-items:center}.view{padding-bottom:calc(52px + env(safe-area-inset-bottom))}
 }
+
+.ic{width:1.15em;height:1.15em;vertical-align:-.2em;flex:none}
+#menu,#att,#mic,#progb .pi{display:inline-grid;place-items:center}
+@media(max-width:900px){
+ #top{position:relative;justify-content:space-between}
+ #top .mlogo{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:auto;height:30px;padding:0 12px 0 4px;display:flex!important;align-items:center;gap:8px;background:none;box-shadow:none;color:var(--t);font-size:14px;letter-spacing:.16em;font-weight:800}
+ #top .mlogo::before{content:"\25C8";width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:linear-gradient(135deg,#fff,var(--ac));color:#000;box-shadow:0 0 14px var(--ac);font-size:15px}
+ #top .mlogo{font-size:0}#top .mlogo::after{content:"AIX ALPHA";font-size:13px;letter-spacing:.16em;font-weight:800;color:var(--t)}
+ #kbar{display:none}
+ #loop .bar{overflow:visible;gap:4px}
+ #loop .seg{flex:1 1 auto;min-width:0;display:flex}#loop .seg button{flex:1 1 auto;padding:5px 3px;font-size:9.5px;letter-spacing:0;min-width:0}
+ #loop .tg{padding:4px 8px;min-width:32px}#loop .tg .lbl{display:none}
+ #loop .meter{margin-left:0}#loop .meter .track{width:34px}#spent{display:none}
+ #pm{font-size:0!important}
 </style>
 </head>
 <body>
@@ -299,19 +313,19 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
   </aside>
 
   <section id="main">
-    <header id="top"><button class="btn2" id="menu">☰</button><div class="logo mlogo">◈</div>
+    <header id="top"><button class="btn2" id="menu" aria-label="Menu"></button><div class="logo mlogo">◈</div>
       <nav id="tabs"></nav>
-      <div id="toprt"><span class="pill mono" id="pm">…</span><button class="btn2 mono" id="progb" title="Progress">⌁<span class="pl"> Progress</span></button><button class="btn2 mono" id="kbar">⌘K</button></div></header>
+      <div id="toprt"><span class="pill mono" id="pm">…</span><button class="btn2 mono" id="progb" title="Progress"><span class="pi"></span><span class="pl"> Progress</span></button><button class="btn2 mono" id="kbar">⌘K</button></div></header>
     <div class="view on" id="vchat">
       <div id="sub2"><b id="ttl">New chat</b><span class="pill mono" id="ps"></span></div>
       <div id="chat"><div class="wrap" id="msgs"></div></div>
       <div id="loop"><div class="bar mono">
         <b class="lp">↻ LOOP</b>
         <div class="seg" id="modes"><button data-m="auto" title="Reasoning mode: picks the best mode, depth and evaluator for each reply, ignoring credit cost">AUTO</button><button data-m="eco" class="on">ECO</button><button data-m="balanced">BALANCED</button><button data-m="thorough">THOROUGH</button></div>
-        <button class="tg" id="evalb" title="One tiny reviewer call on DEEP answers">🛡 EVAL OFF</button>
-        <button class="tg" id="estb" title="Estimated credits per reply for each mode">≈ credits</button><div class="meter"><div class="track"><div class="fill" id="fill"></div></div><span id="spent">0 / 178 cr</span></div>
+        <button class="tg" id="evalb" title="One tiny reviewer call on DEEP answers"></button>
+        <button class="tg" id="estb" title="Estimated credits per reply for each mode"></button><div class="meter"><div class="track"><div class="fill" id="fill"></div></div><span id="spent">0 / 178 cr</span></div>
       </div><div id="estp"></div><div class="mono" id="estline"></div><div class="mono" id="sub" style="font-size:10px;color:#52525b;padding:3px 4px"></div></div>
-      <div id="inp"><div id="attl" class="mono"></div><div id="editban" class="mono" style="display:none"><span>Editing an earlier message — sending replaces it and the replies after it.</span><button type="button" class="btn2" id="editcancel">Cancel</button></div><form id="f"><button type="button" class="btn2" id="att" title="Attach files">📎</button><button type="button" class="btn2" id="mic" title="Voice input">🎤</button><input type="file" id="fi" multiple hidden><textarea id="q" rows="1" placeholder="Message AIX ALPHA…  (Enter to send · Shift+Enter newline · /help · ⌘K)"></textarea><button class="btn" id="send">SEND ➤</button></form></div>
+      <div id="inp"><div id="attl" class="mono"></div><div id="editban" class="mono" style="display:none"><span>Editing an earlier message — sending replaces it and the replies after it.</span><button type="button" class="btn2" id="editcancel">Cancel</button></div><form id="f"><button type="button" class="btn2" id="att" title="Attach files" aria-label="Attach"></button><button type="button" class="btn2" id="mic" title="Voice input" aria-label="Voice"></button><input type="file" id="fi" multiple hidden><textarea id="q" rows="1" placeholder="Message AIX ALPHA…  (Enter to send · Shift+Enter newline · /help · ⌘K)"></textarea><button class="btn" id="send">SEND ➤</button></form></div>
     </div>
     <div class="view" id="vana"><div class="pad" id="anabody"></div></div>
     <div class="view" id="vstudio"><div class="stwrap">
@@ -369,6 +383,8 @@ const PRESETS=[
 ];
 
 /* ============ engine config ============ */
+const ICP={menu:'M4 7h16M4 12h16M4 17h16',chat:'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z',studio:'M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14',tools:'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',more:'M5 12h.01M12 12h.01M19 12h.01',attach:'M21 11.5l-8.6 8.6a5 5 0 0 1-7-7l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7L10 17.8a1.7 1.7 0 0 1-2.4-2.4l7.7-7.7',mic:'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3',shield:'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',coins:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9 12h6M12 9v6',pulse:'M3 12h4l3-8 4 16 3-8h4'};
+const ico=n=>`<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICP[n]}"/></svg>`;
 const MODES={eco:{refines:1,hist:1},balanced:{refines:2,hist:1.5},thorough:{refines:3,hist:2}};
 const RATE={in:0.10,out:0.50};
 const est=s=>Math.ceil((s||'').length/3.2);
@@ -445,20 +461,22 @@ function embKey(){const m=document.querySelector('meta[name=aix-embedded-key]');
 function pickEngine(){if(embKey()){store.set(KEYK,embKey());return directSample()}if(BACKEND()&&store.get(TOKK,''))return backendSample();if(store.get(KEYK,''))return directSample();return null}
 let UNAME=store.get('aix3_user','');
 async function acctCall(path,body){const tok=store.get(TOKK,'');const r=await fetch(BACKEND()+path,{method:'POST',headers:{'content-type':'application/json',...(tok?{authorization:'Bearer '+tok}:{})},body:JSON.stringify(body)});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('Server '+r.status));return j}
-function acctDone(j,msg){store.set(TOKK,j.token);UNAME=j.account.username||'';store.set('aix3_user',UNAME);BAL=j.account.credits;sampleFn=backendSample();setStatus();toast(msg+' · '+BAL+' credits')}
+let FREE=store.get('aix3_free',false);
+async function claimFree(quiet){try{const j=await acctCall('/api/account/claim-free',{});BAL=j.credits;FREE=true;store.set('aix3_free',true);setStatus();toast('1 free credit added to your account');return true}catch(e){if(/already/i.test(e.message)){FREE=true;store.set('aix3_free',true)}else if(!quiet)toast(e.message);return false}}
+function acctDone(j,msg){FREE=!!j.account.free_claimed;store.set('aix3_free',FREE);store.set(TOKK,j.token);UNAME=j.account.username||'';store.set('aix3_user',UNAME);BAL=j.account.credits;sampleFn=backendSample();setStatus();toast(msg+' · '+BAL+' credits')}
 function openAccount(){
   const be=BACKEND();
   if(!be){const d0=dialog(`<h3 style="margin:0 0 8px">AIX account</h3><p style="font-size:12.5px;color:var(--m)">Set the AIX server address to sign in, or use your own API key.</p><label>Server address</label><input id="beu" placeholder="https://your-aix-server.example.com"><div style="display:flex;gap:8px;justify-content:space-between;margin-top:8px"><button class="btn2" id="bkey">Use my own API key</button><span><button class="btn2" data-close>Cancel</button> <button class="btn" id="bset">Connect</button></span></div>`);
     $('#bkey').onclick=()=>{d0.close();openKey(true)};$('#bset').onclick=()=>{const u=$('#beu').value.trim().replace(/\/+$/,'');if(!u)return toast('Enter the server address');store.set(BEK,u);d0.close();location.reload()};return}
   const signed=!!UNAME&&!!store.get(TOKK,'');
-  const d=dialog(signed?`<h3 style="margin:0 0 8px">AIX account</h3><p style="font-size:13px;margin:0 0 4px">Signed in as <b>${esc(UNAME)}</b></p><p style="font-size:12.5px;color:var(--m);margin:0 0 10px">${BAL!=null?(+BAL).toFixed(1)+' credits':''}</p><div style="display:flex;gap:8px;justify-content:space-between"><button class="btn2" id="bout">Sign out</button><button class="btn" data-close>Done</button></div>`
+  const d=dialog(signed?`<h3 style="margin:0 0 8px">AIX account</h3><p style="font-size:13px;margin:0 0 4px">Signed in as <b>${esc(UNAME)}</b></p><p style="font-size:12.5px;color:var(--m);margin:0 0 10px">${BAL!=null?(+BAL).toFixed(1)+' credits':''}</p><div style="display:flex;gap:8px;justify-content:space-between"><button class="btn2" id="bout">Sign out</button>${FREE?'':'<button class="btn2" id="bclaim">Claim 1 free credit</button>'}<button class="btn" data-close>Done</button></div>`
   :`<h3 style="margin:0 0 6px">AIX account</h3><p style="font-size:12.5px;color:var(--m);margin:0 0 8px">Pick a username and password. Your credits follow you to any device.</p>
   <label>Username</label><input id="bun" autocomplete="username" autocapitalize="none" placeholder="yourname"><label>Password</label><input id="bpw" type="password" autocomplete="current-password" placeholder="at least 6 characters">
   <div style="display:flex;gap:8px;margin-top:8px"><button class="btn2" id="bsignin" style="flex:1">Sign in</button><button class="btn" id="breg" style="flex:1">Create account</button></div>
   <details style="margin-top:10px"><summary style="font-size:12px;color:var(--m);cursor:pointer">Advanced</summary><label>Account token (owner / restore)</label><input id="bto" type="password" placeholder="aix_..."><div style="display:flex;gap:8px;margin-top:6px"><button class="btn2" id="btok">Use token</button><button class="btn2" id="bkey">Use my own API key</button></div></details><div style="text-align:right;margin-top:8px"><button class="btn2" data-close>Cancel</button></div>`);
-  if(signed){$('#bout').onclick=()=>{store.set(TOKK,'');store.set('aix3_user','');UNAME='';sampleFn=null;d.close();location.reload()};return}
+  if(signed){const bc=$('#bclaim');if(bc)bc.onclick=async()=>{if(await claimFree(false))d.close()};$('#bout').onclick=()=>{store.set(TOKK,'');store.set('aix3_user','');UNAME='';sampleFn=null;d.close();location.reload()};return}
   const go=async(path,msg)=>{const un=$('#bun').value.trim(),pw=$('#bpw').value;if(!un||!pw)return toast('Enter a username and password');try{const j=await acctCall(path,{username:un,password:pw});acctDone(j,msg);d.close()}catch(e){toast(e.message)}};
-  $("#bsignin").onclick=()=>go('/api/account/login','Signed in');$('#breg').onclick=()=>go('/api/account/register','Account created');
+  $("#bsignin").onclick=()=>go('/api/account/login','Signed in');$('#breg').onclick=async()=>{await go('/api/account/register','Account created');if(UNAME&&!FREE)await claimFree(true)};
   $('#bkey').onclick=()=>{d.close();openKey(true)};
   $('#btok').onclick=async()=>{const t=$('#bto').value.trim();if(!/^aix_[a-f0-9]+$/.test(t))return toast('That is not a valid token');store.set(TOKK,t);try{const m=await fetch(BACKEND()+'/api/account/me',{headers:{authorization:'Bearer '+t}});if(!m.ok)throw new Error('token not accepted');const j=await m.json();UNAME=j.username||'';store.set('aix3_user',UNAME);BAL=j.credits;sampleFn=backendSample();setStatus();toast('Signed in');d.close()}catch(e){store.set(TOKK,'');toast(e.message)}};
 }
@@ -649,7 +667,7 @@ function updateMeter(){if($('#estline'))refreshEst(false);const c=curChat(),sp=c
   $('#sub').textContent=c&&c.calls?`${c.calls} model calls · ${free} replies at $0 · today ${usd(daySpend())} (estimates)`:'';
   $('#ps').textContent=(personas().find(p=>p.id===S.pid)||PRESETS[0]).name;
   document.querySelectorAll('#modes button').forEach(b=>b.classList.toggle('on',S.auto?b.dataset.m==='auto':b.dataset.m===S.mode));
-  $('#evalb').classList.toggle('on',S.verify==='llm');$('#evalb').textContent='🛡 EVAL '+(S.verify==='llm'?'ON':'OFF');
+  $('#evalb').classList.toggle('on',S.verify==='llm');$('#evalb').innerHTML=ico('shield')+'<span class="lbl"> EVAL '+(S.verify==='llm'?'ON':'OFF')+'</span>';
 }
 
 /* ============ send ============ */
@@ -865,7 +883,8 @@ const INJ='<script data-aix>(function(){var send=function(t,d){parent.postMessag
 
 function buildPage(files,page,inject){
   const f=files.find(x=>x.name===page)||files.find(x=>/\.html?$/.test(x.name));let h=f?f.content:'<p style="font-family:sans-serif">Add an index.html</p>';
-  h=h.replace(/<link[^>]*href=["']([^"']+)["'][^>]*>/gi,(m,n)=>{const g=files.find(x=>x.name===n);return g&&/\.css$/i.test(n)?`<style data-aixsrc="${n}">${g.content}</style>`:m});
+  h=h.replace(/<link[^>]*href=["']([^"']+)["'][^>]*>/gi,(m,n)=>{const g=files.find(x=>x.name===n);return g&&/\.css$/i.test(n)?`<style data-aixsrc="${n}">${g.content}}
+</style>`:m});
   h=h.replace(/<script([^>]*?)src=["']([^"']+)["']([^>]*)>\s*<\/script>/gi,(m,a,n,b)=>{const g=files.find(x=>x.name===n);return g?`<script${a}${b} data-aixsrc="${n}">${g.content.replace(/<\/script/gi,'<\\/script')}<\/script>`:m});
   if(!inject)return h.replace(/ data-aixsrc="[^"]*"/g,'');
   const mk='<script data-aix>window.__mocks='+JSON.stringify(proj().mocks||{}).replace(/</g,'\\u003c')+';<\/script>',inj=mk+INJ;
@@ -1582,7 +1601,7 @@ function setView(v){document.querySelectorAll('.view').forEach(x=>x.classList.to
   ({ana:renderAna,studio:renderStudio,personas:renderPersonas,tools:renderTools,connect:async()=>{if(CT==='live')await loadLive();renderConnect()},sites:renderSites,credits:renderCredits,members:renderMembers,users:renderUsers,about:renderAbout}[v]||(()=>{}))();
   $('#side').classList.remove('open');$('#scrim').classList.remove('on');window.scrollTo(0,0)}
 $('#tabs').innerHTML=VIEWS.map(([k,l])=>`<button data-v="${k}" class="${k==='chat'?'on':''}">${l}</button>`).join('');
-$('#bnav').innerHTML=['chat','studio','tools'].map(k=>{const v=VIEWS.find(x=>x[0]===k);return `<button data-v="${k}" class="${k==='chat'?'on':''}"><span>${v[2]}</span>${v[1]}</button>`}).join('')+`<button id="bmore"><span>☰</span>More</button>`;
+$('#bnav').innerHTML=['chat','studio','tools'].map(k=>{const v=VIEWS.find(x=>x[0]===k);return `<button data-v="${k}" class="${k==='chat'?'on':''}"><span>${ico(k)}</span>${v[1]}</button>`}).join('')+`<button id="bmore"><span>${ico('more')}</span>More</button>`;
 $('#bnav').onclick=e=>{const b=e.target.closest('button');if(!b)return;if(b.id==='bmore'){const d=dialog(`<h3 style="margin:0 0 8px">Menu</h3><div class="grid2" style="grid-template-columns:repeat(2,1fr)">${VIEWS.map(([k,l,i])=>`<button class="btn2" data-mv="${k}" style="padding:12px">${i} ${l}</button>`).join('')}</div><div style="text-align:right;margin-top:10px"><button class="btn2" data-close>Close</button></div>`);d.querySelectorAll('[data-mv]').forEach(x=>x.onclick=()=>{d.close();setView(x.dataset.mv)})}else setView(b.dataset.v)};
 $('#scrim').onclick=()=>{$('#side').classList.remove('open');$('#scrim').classList.remove('on')};
 $('#menu').onclick=()=>{$('#side').classList.toggle('open');$('#scrim').classList.toggle('on',$('#side').classList.contains('open'))};
@@ -1624,6 +1643,7 @@ const cardsHtml=a=>`<div class="cards mono">${a.map(([x,y])=>`<div class="card">
 function fitTop(){const t=$('#top');if(!t)return;t.style.paddingLeft=innerWidth>900?($('#toprt').offsetWidth+10)+'px':''}
 addEventListener('resize',fitTop);setTimeout(fitTop,0);
 try{if(matchMedia('(max-width:900px)').matches)$('#q').placeholder='Message AIX ALPHA'}catch{}
+$('#menu').innerHTML=ico('menu');$('#att').innerHTML=ico('attach');$('#mic').innerHTML=ico('mic');$('#estb').innerHTML=ico('coins')+'<span class="lbl"> credits</span>';document.querySelector('#progb .pi').innerHTML=ico('pulse');
 buildPersonaSel();setStatus();if(S.chats.length)S.cur=S.chats[0].id;renderThreads();renderMsgs();
 (async()=>{try{sampleFn=await claude.use('sample')}catch{sampleFn=null}
   if(!sampleFn&&!BACKEND()){try{const mr=await fetch('master.json',{cache:'no-store'});if(mr.ok){const mj=await mr.json();if(mj&&/^https?:\/\//.test(mj.url||''))store.set(BEK,String(mj.url).replace(/\/+$/,''))}}catch{}}
@@ -1631,7 +1651,7 @@ buildPersonaSel();setStatus();if(S.chats.length)S.cur=S.chats[0].id;renderThread
   if(!sampleFn&&BACKEND()&&!store.get(TOKK,'')&&!embKey()){try{const gid='guest-'+Array.from(crypto.getRandomValues(new Uint8Array(8))).map(x=>x.toString(16).padStart(2,'0')).join('')+'@guest.aix';
     const r=await fetch(BACKEND()+'/api/account/signup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:gid})});if(r.ok){const j=await r.json();store.set(TOKK,j.token);BAL=j.account.credits}}catch{}}
   if(!sampleFn)sampleFn=pickEngine();
-  if(BACKEND()&&store.get(TOKK,'')){try{const mr=await fetch(BACKEND()+'/api/account/me',{headers:{authorization:'Bearer '+store.get(TOKK,'')}});if(mr.ok){const mj=await mr.json();BAL=mj.credits;UNAME=mj.username||'';store.set('aix3_user',UNAME)}else if(mr.status===401){store.set(TOKK,'');sampleFn=null}}catch{}}
+  if(BACKEND()&&store.get(TOKK,'')){try{const mr=await fetch(BACKEND()+'/api/account/me',{headers:{authorization:'Bearer '+store.get(TOKK,'')}});if(mr.ok){const mj=await mr.json();BAL=mj.credits;UNAME=mj.username||'';FREE=!!mj.free_claimed;store.set('aix3_free',FREE);store.set('aix3_user',UNAME)}else if(mr.status===401){store.set(TOKK,'');sampleFn=null}}catch{}}
   setStatus();if(!sampleFn){const pm=$('#pm');pm.style.cursor='pointer';pm.onclick=()=>openKey()}initDb();loadLive().then(()=>{try{rerenderConnCards()}catch{}})})();
 </script>
 </body>

@@ -15,7 +15,7 @@ const cors = (env, req) => {
 const json = (env, req, body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...cors(env, req) } });
 const sha = async (s) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(s)))].map((b) => b.toString(16).padStart(2, '0')).join('');
 const owners = (env) => (env.OWNER_EMAILS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
-const view = (a) => ({ username: a.username || null, email: a.email, credits: +Number(a.credits).toFixed(2), tokens: a.tokens, requests: a.requests });
+const view = (a) => ({ free_claimed: !!a.free_claimed, username: a.username || null, email: a.email, credits: +Number(a.credits).toFixed(2), tokens: a.tokens, requests: a.requests });
 const getUser = (env, email) => env.DB.prepare('SELECT * FROM users WHERE email=?').bind(email).first();
 const hex = (u8) => [...u8].map((b) => b.toString(16).padStart(2, '0')).join('');
 const pbk = async (pw, salt) => hex(new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: enc.encode(salt), iterations: 100000 }, await crypto.subtle.importKey('raw', enc.encode(pw), 'PBKDF2', false, ['deriveBits']), 256)));
@@ -124,6 +124,20 @@ export default {
       const ok = u && u.pw_hash && (await pbk(String(b.password || ''), u.pw_salt)) === u.pw_hash;
       if (!ok) return json(env, req, { error: 'Wrong username or password' }, 401);
       return json(env, req, { token: await startSession(env, u.email), account: view(u) });
+    }
+    if (path === '/api/account/claim-free' && req.method === 'POST') {      // 1 free credit per username account, 1 per network
+      const a = await authed(env, req);
+      if (!a) return json(env, req, { error: 'sign in' }, 401);
+      if (!a.username) return json(env, req, { error: 'Create an account first (username + password) to claim your free credit' }, 403);
+      if (a.free_claimed) return json(env, req, { error: 'Free credit already claimed' }, 409);
+      const ip = req.headers.get('cf-connecting-ip') || 'unknown';
+      if (await env.DB.prepare('SELECT 1 AS x FROM claims WHERE ip=?').bind(ip).first()) return json(env, req, { error: 'A free credit was already claimed from this network' }, 429);
+      await env.DB.batch([
+        env.DB.prepare('INSERT INTO claims(ip,email,at) VALUES(?,?,?)').bind(ip, a.email, new Date().toISOString()),
+        env.DB.prepare('UPDATE users SET credits=credits+1, free_claimed=1 WHERE email=? AND free_claimed=0').bind(a.email),
+        env.DB.prepare('INSERT INTO purchases(email,at,usd,credits,ref) VALUES(?,?,0,1,?)').bind(a.email, new Date().toISOString(), 'free-claim-' + a.email),
+      ]);
+      return json(env, req, view(await getUser(env, a.email)));
     }
     if (path === '/api/account/me') { const a = await authed(env, req); return a ? json(env, req, view(a)) : json(env, req, { error: 'sign in' }, 401); }
     if (path === '/api/sample' && req.method === 'POST') return sample(env, req);
