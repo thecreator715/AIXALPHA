@@ -406,8 +406,28 @@ function merge(acc,c){const mx=Math.min(200,acc.length,c.length);for(let k=mx;k>
 
 /* ============ model transport: the artifact "sample" capability, cheapest tier ============ */
 let sampleFn=null;
+const KEYK='aix3_apikey',MODELK='claude-haiku-5-5';
+function directSample(){
+  const f=async(prompt,o)=>{o=o||{};const key=store.get(KEYK,'');if(!key)throw new Error('Add your API key in Settings to bring AIX online.');
+    const content=[];
+    for(const im of(o.images||[])){try{const b=im.blob||im;const data=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(String(fr.result).split(',')[1]);fr.readAsDataURL(b)});content.push({type:'image',source:{type:'base64',media_type:b.type||'image/png',data}})}catch{}}
+    content.push({type:'text',text:prompt});
+    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:o.signal,headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:MODELK,max_tokens:4096,stream:!!o.onText,messages:[{role:'user',content}]})});
+    if(!res.ok){let m='';try{m=(await res.json()).error.message}catch{}if(res.status===401){store.set(KEYK,'');sampleFn=null;setStatus()}throw new Error('API '+res.status+': '+(m||'request failed'))}
+    if(!o.onText){const j=await res.json();return{text:(j.content||[]).map(c=>c.text||'').join(''),truncated:j.stop_reason==='max_tokens'}}
+    const rd=res.body.getReader(),dec=new TextDecoder();let buf='',text='',trunc=false;
+    for(;;){const{done,value}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});const lines=buf.split('\n');buf=lines.pop();
+      for(const ln of lines){if(!ln.startsWith('data:'))continue;try{const e=JSON.parse(ln.slice(5));if(e.type==='content_block_delta'&&e.delta&&e.delta.text){text+=e.delta.text;o.onText({text})}else if(e.type==='message_delta'&&e.delta&&e.delta.stop_reason==='max_tokens')trunc=true}catch{}}}
+    return{text,truncated:trunc}};
+  f.limits=async()=>({images:true});return f}
+function openKey(){
+  const d=dialog(`<h3 style="margin:0 0 8px">Bring AIX online</h3><p style="font-size:12.5px;color:var(--m);margin:0 0 8px">This page runs outside claude.ai, so it connects straight to the model with your own Anthropic API key. The key is saved only in this browser and sent only to api.anthropic.com.</p><label>Anthropic API key</label><input id="akey" type="password" placeholder="sk-ant-..." value="${esc(store.get(KEYK,''))}"><div style="display:flex;gap:8px;justify-content:space-between"><button class="btn2" id="aclr">Remove key</button><span><button class="btn2" data-close>Cancel</button> <button class="btn" id="asave">Save and connect</button></span></div>`);
+  $('#asave').onclick=()=>{const k=$('#akey').value.trim();if(!k)return toast('Paste a key first');store.set(KEYK,k);sampleFn=directSample();setStatus();toast('AIX is online');d.close()};
+  $('#aclr').onclick=()=>{store.set(KEYK,'');if(sampleFn&&!window.claude)sampleFn=null;setStatus();d.close()};
+}
 async function ask(promptStr,onText,signal,images,tools){
-  if(!sampleFn)throw new Error('The AIX engine is unavailable in this view. Open this page from your artifact link while signed in.');
+  if(!sampleFn&&store.get(KEYK,''))sampleFn=directSample();
+  if(!sampleFn){try{openKey()}catch{}throw new Error('AIX is offline. Add your API key (Settings, or tap OFFLINE) to bring it online.')}
   const o={modelTier:'quick',cache:false,onText,signal};
   try{if(images&&images.length&&sampleFn.limits&&(await sampleFn.limits()).images)o.images=images}catch{}
   if(tools&&tools.length)o.tools=tools;
@@ -592,8 +612,9 @@ function openHub(){
 }
 function openSettings(){
   const d=dialog(`<h3 style="margin:0 0 8px">Credit caps</h3><label>Per request (credits)</label><input id="c1" type="number" step="1" value="${capCr(S.caps.req)}"><label>Per chat (credits)</label><input id="c2" type="number" step="1" value="${capCr(S.caps.ses)}"><label>Per day (credits)</label><input id="c3" type="number" step="10" value="${capCr(S.caps.day)}">
-  <div style="display:flex;gap:8px;justify-content:space-between"><button class="btn2" id="wipe">Delete all chats</button><span><button class="btn2" data-close>Cancel</button> <button class="btn" id="ssave">Save</button></span></div>`);
+  <button class="btn2" id="keyb" style="margin:4px 0 8px">API key / go online</button><div style="display:flex;gap:8px;justify-content:space-between"><button class="btn2" id="wipe">Delete all chats</button><span><button class="btn2" data-close>Cancel</button> <button class="btn" id="ssave">Save</button></span></div>`);
   $('#ssave').onclick=()=>{S.caps={req:(+$('#c1').value||7)*CR,ses:(+$('#c2').value||178)*CR,day:(+$('#c3').value||1428)*CR};store.set('aix3_caps',S.caps);updateMeter();d.close()};
+  $('#keyb').onclick=()=>{d.close();openKey()};
   $('#wipe').onclick=()=>{S.chats=[];S.cur=null;save();renderThreads();renderMsgs();d.close()};
 }
 function openAbout(){dialog(`<h3 style="margin:0 0 6px">AIX ALPHA v3.0</h3><div class="body" style="font-size:13px;color:#d4d4d8"><p>The full v2 suite rebuilt around a token-saving loop engine, running inside this page. Usage is shown in <b>credits</b>.</p>
@@ -635,7 +656,7 @@ $('#exp').onclick=async()=>{const c=curChat();if(!c)return;const md_=`# ${c.titl
 
 /* ============ views, palette, analytics, studio ============ */
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.remove('act');t.classList.add('on');clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove('on'),1400)}
-function setStatus(){$('#pm').textContent=sampleFn?'ONLINE':'OFFLINE';$('#pm').style.color=sampleFn?'var(--g)':'var(--r)'}
+function setStatus(){$('#pm').title=sampleFn?'':'Click to add an API key';$('#pm').onclick=sampleFn?null:openKey;$('#pm').textContent=sampleFn?'ONLINE':'OFFLINE';$('#pm').style.color=sampleFn?'var(--g)':'var(--r)'}
 $('#tabs').onclick=e=>{const b=e.target.closest('button');if(b)setView(b.dataset.v)};
 function renderAnaBase(){
   const ms=S.chats.flatMap(c=>c.msgs.filter(m=>m.t)).map(m=>m.t);
@@ -1525,7 +1546,8 @@ function fitTop(){const t=$('#top');if(!t)return;t.style.paddingLeft=innerWidth>
 addEventListener('resize',fitTop);setTimeout(fitTop,0);
 buildPersonaSel();setStatus();if(S.chats.length)S.cur=S.chats[0].id;renderThreads();renderMsgs();
 (async()=>{try{sampleFn=await claude.use('sample')}catch{sampleFn=null}
-  setStatus();initDb();loadLive().then(()=>{try{rerenderConnCards()}catch{}})})();
+  if(!sampleFn&&store.get(KEYK,''))sampleFn=directSample();
+  setStatus();if(!sampleFn){const pm=$('#pm');pm.style.cursor='pointer';pm.onclick=openKey}initDb();loadLive().then(()=>{try{rerenderConnCards()}catch{}})})();
 </script>
 </body>
 </html>
