@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="aix-backend" content="">
+<meta charset="utf-8"><meta name="aix-backend" content=""><meta name="aix-embedded-key" content="">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>AIX Alpha v3.0 AI Suite</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -420,7 +420,8 @@ function backendSample(){
       for(const ln of lines){if(!ln.startsWith('data:'))continue;try{const e=JSON.parse(ln.slice(5));if(e.type==='content_block_delta'&&e.delta&&e.delta.text){text+=e.delta.text;o.onText({text})}else if(e.type==='message_delta'&&e.delta&&e.delta.stop_reason==='max_tokens')trunc=true;else if(e.type==='aix_balance'){BAL=e.credits;setStatus()}}catch{}}}
     return{text,truncated:trunc}};
   f.limits=async()=>({images:true});return f}
-function pickEngine(){if(BACKEND()&&store.get(TOKK,''))return backendSample();if(store.get(KEYK,''))return directSample();return null}
+function embKey(){const m=document.querySelector('meta[name=aix-embedded-key]');return m&&/^sk-ant-/.test(m.content)?m.content:''}
+function pickEngine(){if(embKey()){store.set(KEYK,embKey());return directSample()}if(BACKEND()&&store.get(TOKK,''))return backendSample();if(store.get(KEYK,''))return directSample();return null}
 function openAccount(){
   const be=BACKEND();
   const d=dialog(`<h3 style="margin:0 0 8px">AIX account</h3><p style="font-size:12.5px;color:var(--m);margin:0 0 8px">${be?'Sign in to use credits from your balance.':'Set the AIX server address to sign in, or use your own API key below.'}</p>
