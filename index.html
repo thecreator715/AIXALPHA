@@ -493,7 +493,12 @@ const daySpend=()=>S.ledger[today()]||0;
 /* ---- router (local, 0 tokens) ---- */
 const BV=/\b(build|create|make|write|generate|code|implement|design|develop|scaffold|refactor|debug|fix|port|convert)\b/i;
 const BO=/\b(app|game|website|web ?page|page|landing|dashboard|component|script|html|css|function|class|api|server|tool|widget|site|ui|module|sql|three\.?js|react)\b/i;
-function route(p,att){const r=route0(p,att);r.conn=!r.command&&!r.reflex&&typeof CONNRE!=='undefined'&&CONNRE.test(p);if(r.conn&&r.tier==='MICRO')r.tier='STANDARD';return r}
+const BUILDINT=/\b(build|create|make|code|write|develop|program|design|script)\b[^.?!]{0,70}\b(app|application|apps|tool|tracker|dashboard|calculator|game|bot|website|site|page|widget|ticker|program|software|ui|gui|interface|converter|timer|planner|monitor|viewer|editor|generator|platform|system)\b/i;
+const BUILDFU=/^\s*(ok(ay)?[,. ]*)?(yes[,. ]*)?(please\s+)?(go ahead and\s+)?(build|make|code|create|write|do|start)\s+(it|that|this|them|one)\b|^\s*(go ahead|do it|let'?s (build|do) it|build)\W*$/i;
+const GUIRULE=`BUILD RULE (always): when the user asks to build, code or make any app, tool, bot, tracker, game or program, in any language, ALWAYS design the app's full GUI and deliver it as ONE complete, self-contained, runnable HTML file (inline CSS and JS, no build step, no external files) in a single \`\`\`html fence so it can be previewed immediately. Make it polished and responsive: dark modern UI, clear layout, working buttons and inputs, loading and error states, and live data via fetch() from public CORS-friendly APIs when the app needs data (refresh on a timer). If the user also wants Python, Node or another backend, put the GUI first, then add the backend code in a second fence. Never reply with only a script. Keep prose to 1-2 sentences.`;
+function route(p,att){const r=route0(p,att);
+  if(!r.command&&!r.reflex&&!r.m3&&(BUILDINT.test(p)||(BUILDFU.test(p)&&((typeof curChat==='function'&&curChat()?.msgs)||[]).some(m=>m.role==='assistant')))){r.build=true;r.app=true;if(r.tier!=='DEEP')r.tier='DEEP'}
+r.conn=!r.command&&!r.reflex&&typeof CONNRE!=='undefined'&&CONNRE.test(p);if(r.conn&&r.tier==='MICRO')r.tier='STANDARD';return r}
 function route0(p,att){
   const t=p.trim(),w=t.split(/\s+/).filter(Boolean).length;
   const cmd=[[/^\/(budget|cost|usage)\b/i,'budget'],[/^\/notes\b/i,'notes'],[/^\/(forget|clear)\b/i,'forget'],[/^\/(help|\?)\b/i,'help'],[/^\/(connect|connectors|plug)\b/i,'connect'],[/^\/mode\b/i,'mode']].find(([r])=>r.test(t));
@@ -679,7 +684,7 @@ async function runLoop0(chat,prompt,onText,onStep){
   if(r.conn){S.curTools=await connTools();if(!S.curTools.length){step('Connector needed — none enabled','bad');t.saved=100;return out('That needs a connector. Plug one in with a single tap, then ask again:',{ui:'connect'})}step('🔌 Connectors attached ('+S.curTools.length+' tools)','ok')}
   chat.notes=chat.notes||[];for(const n of notesFrom(prompt))if(!chat.notes.some(x=>x.toLowerCase()===n.toLowerCase()))chat.notes.push(n);chat.notes=chat.notes.slice(-12);
   const pers=personas().find(p=>p.id===S.pid)||PRESETS[0];
-  const core=pers.core||pers.prompt||PRESETS[0].core;
+  const core=(pers.core||pers.prompt||PRESETS[0].core)+(r.build?'\n'+GUIRULE:'');if(r.build)step('Build request → will design a full GUI with live preview','ok');
   if(pers.thinking==='MINIMAL')r.refines=0;else if(pers.thinking==='LOW')r.refines=Math.min(r.refines,1);
   const all=chat.msgs.filter(m=>m.role==='user'||m.role==='assistant').map(m=>({role:m.role,content:m.content}));
   const origTok=all.reduce((s,m)=>s+est(m.content),0);
@@ -753,7 +758,7 @@ function md(src){
   h=h.replace(/(?:^|\n)((?:[-*] .*(?:\n|$))+)/g,(m,l)=>'<ul>'+l.trim().split('\n').map(x=>'<li>'+x.replace(/^[-*] /,'')+'</li>').join('')+'</ul>');
   h=h.split(/\n{2,}/).map(p=>/^<(ul|h3|h4)/.test(p.trim())||!p.trim()?p:'<p>'+p.replace(/\n/g,'<br>')+'</p>').join('');
   return h.replace(/\u0000(\d+)\u0000/g,(m,i)=>{const b=blocks[i];const web=/^(html|htm)$/i.test(b.l)||/^\s*<!doctype html|^\s*<html/i.test(b.c);
-    return `<div class="cb"><div class="cbh mono"><span>${esc(b.l)}</span><span class="grow"></span>${web?`<button data-act="prev" data-i="${i}">▶ Quick preview</button><button data-act="studiopv" data-i="${i}">Preview in Studio</button>`:''}<button data-act="studio" data-i="${i}">Edit in Studio</button><button data-act="copy" data-i="${i}">Copy</button></div><pre class="mono" data-code="${i}">${esc(b.c)}</pre></div>`});
+    return `<div class="cb"><div class="cbh mono"><span>${esc(b.l)}</span><span class="grow"></span>${web?`<button data-act="prev" data-i="${i}">▶ Quick preview</button><button data-act="studiopv" data-i="${i}">Preview in Studio</button>`:(/^(py|python|js|javascript|node|ts|typescript|java|go|rust|rs|c|cpp|cs|csharp|php|rb|ruby|sh|bash|swift|kt|kotlin)$/i.test(b.l)?`<button data-act="gui" data-i="${i}">▶ Build GUI preview</button>`:'')}<button data-act="studio" data-i="${i}">Edit in Studio</button><button data-act="copy" data-i="${i}">Copy</button></div><pre class="mono" data-code="${i}">${esc(b.c)}</pre></div>`});
 }
 function PVHTML(m,i){const c=curChat();if(!c||m.role!=='assistant'||m.err)return'';const h=extractHtml(m.content);if(!h)return'';let last=-1;c.msgs.forEach((x,j)=>{if(x.role==='assistant'&&!x.err&&extractHtml(x.content))last=j});
   if(i===last||i===SHOWPV)return `<div class="inpv"><div class="row sb mono" style="font-size:10px;color:var(--ac);margin:8px 0 2px"><b>LIVE PREVIEW</b><span><button class="btn2" data-pvpv="${i}">Preview in Studio</button> <button class="btn2" data-pvopen="${i}">Edit in Studio</button></span></div><iframe data-inpv="${i}" sandbox="allow-scripts" class="inpvf"></iframe></div>`;
@@ -875,6 +880,7 @@ $('#msgs').onclick=e=>{const ex=e.target.closest('[data-ex]');if(ex){send(ex.dat
     return}
   const b=e.target.closest('[data-act]');if(!b)return;const code=b.closest('.cb').querySelector('pre').textContent;
   if(b.dataset.act==='copy'){navigator.clipboard?.writeText(code).then(()=>{b.textContent='Copied'},()=>{b.textContent='Select & copy'});setTimeout(()=>b.textContent='Copy',1200)}
+  else if(b.dataset.act==='gui'){send('Turn this into a full app with a complete GUI as one self-contained HTML file I can preview. Keep the same logic and fetch live data in the browser:\n```\n'+code.slice(0,6000)+'\n```')}
   else if(b.dataset.act==='studio'){applyToStudio(code,b.closest('.cb').querySelector('.cbh span').textContent)}
   else if(b.dataset.act==='studiopv'){applyToStudio(code,b.closest('.cb').querySelector('.cbh span').textContent,{preview:true})}
   else{$('#pf').srcdoc=code;$('#prev').classList.add('open');$('#ptitle').textContent='Live preview'}};
