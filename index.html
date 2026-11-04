@@ -501,7 +501,7 @@ const BV=/\b(build|create|make|write|generate|code|implement|design|develop|scaf
 const BO=/\b(app|game|website|web ?page|page|landing|dashboard|component|script|html|css|function|class|api|server|tool|widget|site|ui|module|sql|three\.?js|react)\b/i;
 const BUILDINT=/\b(build|create|make|code|write|develop|program|design|script)\b[^.?!]{0,70}\b(app|application|apps|tool|tracker|dashboard|calculator|game|bot|website|site|page|widget|ticker|program|software|ui|gui|interface|converter|timer|planner|monitor|viewer|editor|generator|platform|system)\b/i;
 const BUILDFU=/^\s*(ok(ay)?[,. ]*)?(yes[,. ]*)?(please\s+)?(go ahead and\s+)?(build|make|code|create|write|do|start)\s+(it|that|this|them|one)\b|^\s*(go ahead|do it|let'?s (build|do) it|build)\W*$/i;
-const GUIRULE=`BUILD RULE (always): when the user asks to build, code or make any app, tool, bot, tracker, game or program, in any language, ALWAYS design the app's full GUI and deliver it as ONE complete, self-contained, runnable HTML file (inline CSS and JS, no build step, no external files) in a single \`\`\`html fence so it can be previewed immediately. Make it polished and responsive: dark modern UI, clear layout, working buttons and inputs, loading and error states, and live data via fetch() from public CORS-friendly APIs when the app needs data (refresh on a timer). If the user also wants Python, Node or another backend, put the GUI first, then add the backend code in a second fence. Never reply with only a script. Keep prose to 1-2 sentences.`;
+const GUIRULE=`BUILD RULE (always): when the user asks to build, code or make any app, tool, bot, tracker, game or program, in any language, ALWAYS design the app's full GUI and deliver it as ONE complete, self-contained, runnable HTML file (inline CSS and JS, no build step, no external files) in a single \`\`\`html fence so it can be previewed immediately. Make it polished and responsive: dark modern UI, clear layout, working buttons and inputs, loading and error states, and live data via fetch() from public CORS-friendly APIs when the app needs data (refresh on a timer). If the app needs several pages or files (multiple screens, shared CSS or JS, data), output EACH file as its own fenced block whose fence label carries the file name, like \`\`\`html:index.html, \`\`\`html:about.html, \`\`\`css:style.css, \`\`\`js:app.js, \`\`\`json:data.json. Link pages with relative hrefs, CSS with <link rel="stylesheet" href="style.css">, scripts with <script src="app.js">, and keep index.html the entry page. Small apps stay in ONE html file. If the user also wants Python, Node or another backend, put the GUI first, then add the backend code in a second fence. Never reply with only a script. Keep prose to 1-2 sentences.`;
 function route(p,att){const r=route0(p,att);
   if(!r.command&&!r.reflex&&!r.m3&&(BUILDINT.test(p)||(BUILDFU.test(p)&&((typeof curChat==='function'&&curChat()?.msgs)||[]).some(m=>m.role==='assistant')))){r.build=true;r.app=true;if(r.tier!=='DEEP')r.tier='DEEP'}
 r.conn=!r.command&&!r.reflex&&typeof CONNRE!=='undefined'&&CONNRE.test(p);if(r.conn&&r.tier==='MICRO')r.tier='STANDARD';return r}
@@ -758,12 +758,12 @@ function mountMesh(el,m){
 
 /* ============ rendering ============ */
 function md(src){
-  const blocks=[];src=src.replace(/```([\w+-]*)\n([\s\S]*?)(```|$)/g,(m,l,c)=>{blocks.push({l:l||'code',c:c.replace(/\n$/,'')});return `\u0000${blocks.length-1}\u0000`});
+  const blocks=[];src=src.replace(/```([\w+.:\/-]*)\n([\s\S]*?)(```|$)/g,(m,l,c)=>{blocks.push({l:l||'code',c:c.replace(/\n$/,'')});return `\u0000${blocks.length-1}\u0000`});
   let h=esc(src).replace(/^### (.*)$/gm,'<h4>$1</h4>').replace(/^## (.*)$/gm,'<h3>$1</h3>').replace(/^# (.*)$/gm,'<h3>$1</h3>')
    .replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').replace(/`([^`\n]+)`/g,'<code>$1</code>');
   h=h.replace(/(?:^|\n)((?:[-*] .*(?:\n|$))+)/g,(m,l)=>'<ul>'+l.trim().split('\n').map(x=>'<li>'+x.replace(/^[-*] /,'')+'</li>').join('')+'</ul>');
   h=h.split(/\n{2,}/).map(p=>/^<(ul|h3|h4)/.test(p.trim())||!p.trim()?p:'<p>'+p.replace(/\n/g,'<br>')+'</p>').join('');
-  return h.replace(/\u0000(\d+)\u0000/g,(m,i)=>{const b=blocks[i];const web=/^(html|htm)$/i.test(b.l)||/^\s*<!doctype html|^\s*<html/i.test(b.c);
+  return h.replace(/\u0000(\d+)\u0000/g,(m,i)=>{const b=blocks[i];const web=/^(html|htm)(:|$)/i.test(b.l)||/^\s*<!doctype html|^\s*<html/i.test(b.c);
     return `<div class="cb"><div class="cbh mono"><span>${esc(b.l)}</span><span class="grow"></span>${web?`<button data-act="prev" data-i="${i}">▶ Quick preview</button><button data-act="studiopv" data-i="${i}">Preview in Studio</button>`:(/^(py|python|js|javascript|node|ts|typescript|java|go|rust|rs|c|cpp|cs|csharp|php|rb|ruby|sh|bash|swift|kt|kotlin)$/i.test(b.l)?`<button data-act="gui" data-i="${i}">▶ Build GUI preview</button>`:'')}<button data-act="studio" data-i="${i}">Edit in Studio</button><button data-act="copy" data-i="${i}">Copy</button></div><pre class="mono" data-code="${i}">${esc(b.c)}</pre></div>`});
 }
 function PVHTML(m,i){const c=curChat();if(!c||m.role!=='assistant'||m.err)return'';const h=extractHtml(m.content);if(!h)return'';let last=-1;c.msgs.forEach((x,j)=>{if(x.role==='assistant'&&!x.err&&extractHtml(x.content))last=j});
@@ -1095,17 +1095,17 @@ async function stAsk(text){ensureProj();if(S.stEdit!=null){proj().chat.splice(S.
 async function stGenerate(spec){ensureProj();const fw=$('#fw').value;toast('Generating…');try{const r=await engine(`Build a complete, self-contained single-file HTML web app using ${fw}. Return only the HTML in one code block. Spec: ${spec}`);const m=r.text.match(/```(?:html)?\n([\s\S]*?)```/);if(m){applyToStudio(m[1],'html');bump('studio.generate')}else toast('No code block returned')}catch(e){toast(e.message||'Generation failed')}}
 
 const LEXT={html:'html',htm:'html',css:'css',js:'js',javascript:'js',node:'js',json:'json',ts:'ts',tsx:'tsx',jsx:'jsx',py:'py',python:'py',sh:'sh',bash:'sh',go:'go',rust:'rs',rs:'rs',java:'java',php:'php',rb:'rb',ruby:'rb',swift:'swift',kt:'kt',kotlin:'kt',cs:'cs',csharp:'cs',c:'c',cpp:'cpp'};
-function chatFences(t){const o=[];String(t).replace(/```([\w+-]*)\n([\s\S]*?)(```|$)/g,(m,l,c)=>{o.push({l:(l||'').toLowerCase(),c:c.replace(/\n$/,'')});return m});return o}
+function chatFences(t){const o=[];String(t).replace(/```([\w+.:\/-]*)\n([\s\S]*?)(```|$)/g,(m,l,c)=>{const q=(l||'').split(':');o.push({l:q[0].toLowerCase(),fn:(q[1]||'').replace(/^\/+/,'').replace(/[^\w.\-\/]/g,'_'),c:c.replace(/\n$/,'')});return m});return o}
 function domFences(el){const root=el.closest('.body')||el.closest('.msg')||el.closest('.cb').parentNode;return [...root.querySelectorAll('.cb')].map(cb=>'```'+(cb.querySelector('.cbh span').textContent||'')+'\n'+cb.querySelector('pre').textContent+'\n```').join('\n')}
 /* import every code block of a chat reply into Studio; GUI html becomes the live preview page */
 function importChat(text,opts){opts=opts||{};const bl=chatFences(text).filter(b=>b.c.trim());if(!bl.length)return {n:0,html:false};ensureProj();
   const hasHtml=bl.some(b=>/^(html|htm)$/.test(b.l)||/^\s*<!doctype html|^\s*<html/i.test(b.c));let page=null,pn=0;const names=[];
   for(const b of bl){const isH=/^(html|htm)$/.test(b.l)||/^\s*<!doctype html|^\s*<html/i.test(b.c);const ext=isH?'html':LEXT[b.l];if(!ext)continue;let name;
-    if(isH)name=page===null?'index.html':('page'+(++pn+1)+'.html');
-    else if(ext==='css')name='style.css';else if(ext==='js')name=hasHtml?'backend.js':'script.js';else if(ext==='py')name='server.py';else name='file.'+ext;
+    if(b.fn&&/\.\w+$/.test(b.fn))name=b.fn;else if(isH)name=page===null?'index.html':('page'+(++pn+1)+'.html');
+    else if(ext==='css')name='style.css';else if(ext==='json')name='data.json';else if(ext==='js')name=hasHtml?'backend.js':'script.js';else if(ext==='py')name='server.py';else name='file.'+ext;
     let base=name,k=2;while(names.includes(name))name=base.replace(/(\.\w+)$/,'-'+(k++)+'$1');names.push(name);
     const ex=P.files.find(f=>f.name===name&&!f.bin);if(ex){if(ex.content!==b.c)setContent(ex,b.c,opts.label||'Imported from chat')}else{P.files.push({name,content:b.c})}
-    if(isH&&page===null)page=name}
+    if(isH&&(page===null||name==='index.html'))page=name}
   if(!names.length)return {n:0,html:false};
   P.active=page||names[0];if(page){PAGE=page;HIST=[page];HI=0}projSave();
   if(!opts.silent){if(matchMedia('(max-width:900px)').matches)MCOL=opts.edit?'editor':'prev';else{COLS.prev=1;COLS.editor=COLS.editor||1;store.set('aix3_cols',COLS)}setView('studio');renderStudio();
@@ -1334,7 +1334,7 @@ function openAllApps(){const chatOf=id=>S.chats.find(c=>c.id===id);
 let BLOG=[],LASTCH=null,SHOWPV=null,ERRC=0,FETCHHINT=false,PENDFULL=null;
 const REWRITE=/\b(rewrite|from scratch|start over|regenerate|replace (the )?(whole|entire|all)|redo (it|everything)|completely (new|different))\b/i;
 const EDITRE=/\b(change|add|fix|update|make|remove|delete|rename|move|replace|tweak|adjust|style|improve|swap|increase|decrease|center|align|color|colour|bigger|smaller|hide|show)\b/i;
-function extractHtml(tx){const m=tx.match(/```(?:html)?\n([\s\S]*?)(?:```|$)/i);const c=m?m[1]:tx;return /<!doctype html|<html[\s>]/i.test(c)?c:null}
+function extractHtml(tx){const m=tx.match(/```(?:html(?:[:][\w.\/-]*)?)?\n([\s\S]*?)(?:```|$)/i);const c=m?m[1]:tx;return /<!doctype html|<html[\s>]/i.test(c)?c:null}
 function codeStats(t){const c=extractHtml(t)||t;return {lines:c.split('\n').length,chars:c.length,scripts:(c.match(/<script[\s>]/gi)||[]).length,styles:(c.match(/<style[\s>]/gi)||[]).length,fns:(c.match(/\bfunction\s+\w+|=>\s*[{(]/g)||[]).length}}
 function buildDetails(m){const s=codeStats(m.content);return `<div class="bdet mono"><b>BUILD DETAILS</b><div>Wrote ${s.lines.toLocaleString()} lines (${s.chars.toLocaleString()} chars) · ${s.scripts} script block(s) · ${s.styles} style block(s) · ~${s.fns} functions/handlers</div><div>${m.t.verified?'✓ Passed local checks: complete HTML, closed tags and scripts':'⚠ Some checks failed — see pipeline'} · ${m.t.loops?m.t.loops+' repair pass(es)':'no repairs needed'} · cost ${usd(m.t.cost)}</div></div>`}
 function lineDiff(a,b){const A=a.split('\n'),B=b.split('\n');
