@@ -93,7 +93,7 @@ async function stripe(env, req) {
   if (!env.STRIPE_WEBHOOK_SECRET || mac !== p.v1) return new Response('bad signature', { status: 400 });
   const ev = JSON.parse(raw);
   if (ev.type === 'checkout.session.completed') {
-    const o = ev.data.object, usd = (o.amount_total || 0) / 100, credits = PACKS[usd];
+    const o = ev.data.object, usd = (o.amount_total || 0) / 100, credits = (o.payment_link === 'plink_1UXx949X5nbnHzOgDiBZGcEO' && o.payment_status === 'paid') ? PACKS[usd] : 0;   // only the $9.99 credits link
     const email = String(o.client_reference_id || o.customer_details?.email || '').toLowerCase();
     if (credits && (await getUser(env, email))) {
       const ins = await env.DB.prepare('INSERT OR IGNORE INTO purchases(email,at,usd,credits,ref) VALUES(?,?,?,?,?)').bind(email, new Date().toISOString(), usd, credits, o.id).run();
