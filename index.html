@@ -465,7 +465,7 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
   </div>
   <div class="stbar mono"><select id="fw"><option value="tailwind">Tailwind</option><option value="vanilla">Vanilla</option><option value="canvas">Canvas</option><option value="threejs">Three.js</option><option value="model3d">3D model (STL)</option><option value="flux">Image (FLUX / FLUX.2)</option><option value="clip">Animated clip (WebM)</option><option value="sprite">Sprite sheet (pixel art)</option><option value="image">Image / illustration (SVG)</option><option value="pdfdoc">PDF document</option><option value="textdoc">Text / Markdown</option></select><select id="stl" title="Visual style the AI should design in"><option value="auto">Style: Modern</option><option value="glass">Glass</option><option value="brutal">Brutalist</option><option value="minimal">Minimal</option><option value="neon">Neon / Cyber</option><option value="editorial">Editorial</option><option value="playful">Playful</option><option value="material">Material</option></select><input id="gen" placeholder="Describe an app to generate into index.html…"><button class="btn" id="gengo">⚡ Generate</button></div>
   <div id="stgrid" class="stgrid">
-    <div class="stc" id="c-files"><div class="sth mono"><b>FILES</b><span class="grow"></span><button class="btn2" id="fadd">＋</button></div><div id="flist"></div>
+    <div class="stc" id="c-files"><div class="sth mono"><b>FILES</b><span class="grow"></span><button class="btn2" id="fadd" title="New page or file">＋ New</button></div><div id="flist"></div>
       <div class="sth mono" style="border-top:1px solid var(--b);border-bottom:0;flex-wrap:wrap"><button class="btn2" id="fren">Rename</button><button class="btn2" id="fdel">Delete</button><button class="btn2" id="fzip">⬇ ZIP</button><button class="btn2" id="fhtml">⬇ HTML</button><button class="btn2" id="fimp">⬆ Import</button><button class="btn2" id="fexp">⬇ Export…</button><button class="btn2" id="fanim">🎬 Animate image</button><button class="btn2" id="fvid">🎞 AI video (beta)</button><input type="file" id="fimpi" multiple hidden accept=".html,.htm,.css,.js,.json,.txt,.md,.zip,.stl,.obj,.fbx,.pdf"></div></div>
     <div class="stc" id="c-editor"><div class="sth mono"><b id="fname">index.html</b><span class="grow"></span><button class="btn2" id="hist">🕘 History</button><button class="btn2" id="srun">▶ Run</button><button class="btn2" id="scopy">Copy</button></div>
       <div class="ed"><pre id="gut" class="mono"></pre><textarea id="code" spellcheck="false" class="mono"></textarea></div>
@@ -814,7 +814,7 @@ function curChat(){return S.chats.find(c=>c.id===S.cur)}
 function save(){store.set('aix3_chats',S.chats.slice(0,60));store.set('aix3_ledger',S.ledger)}
 function renderThreads(){
   const qf=($('#srch')?.value||'').toLowerCase();const list=[...S.chats].filter(c=>!qf||c.title.toLowerCase().includes(qf)||c.msgs.some(m=>m.content.toLowerCase().includes(qf))).sort((a,b)=>(b.pin?1:0)-(a.pin?1:0));
-  $('#threads').innerHTML=list.map(c=>`<div class="th ${c.id===S.cur?'on':''}" data-id="${c.id}"><span>${c.pin?'📌 ':''}${esc(c.title)}</span><i data-pin="${c.id}" title="Pin">⚲</i><i data-del="${c.id}" title="Delete">✕</i></div>`).join('')||'<div style="color:#52525b;padding:8px;font-size:12px">No chats yet</div>';
+  $('#threads').innerHTML=list.map(c=>`<div class="th ${c.id===S.cur?'on':''}" data-id="${c.id}"><span>${c.pin?'📌 ':''}${esc(c.title)}</span><i data-ren="${c.id}" title="Rename">✎</i><i data-pin="${c.id}" title="Pin">⚲</i><i data-del="${c.id}" title="Delete">✕</i></div>`).join('')||'<div style="color:#52525b;padding:8px;font-size:12px">No chats yet</div>';
 }
 function renderMsgs(){
   const c=curChat();$('#ttl').textContent=c?c.title:'New chat';
@@ -907,9 +907,10 @@ $('#webb').onclick=()=>{if(S.web)return setWeb(false);
   $('#webyes').onclick=()=>{d.close();setWeb(true)}};
 $('#evalb').onclick=()=>{S.verify=S.verify==='llm'?'local':'llm';store.set('aix3_verify',S.verify);updateMeter();refreshEst(true)};
 $('#estb').onclick=()=>$('#estp').classList.toggle('on');
-$('#threads').onclick=e=>{const pn=e.target.closest('[data-pin]');if(pn){const c=S.chats.find(x=>x.id===pn.dataset.pin);c.pin=!c.pin;save();renderThreads();return}
+function renameChat(id){const c=S.chats.find(x=>x.id===id);if(!c)return;const row=document.querySelector('#threads .th[data-id="'+id+'"] span');if(!row)return;const inp=document.createElement('input');inp.value=c.title;inp.style.cssText='width:100%;min-width:0;background:transparent;color:inherit;border:1px solid var(--ac,#7c9cff);border-radius:6px;padding:2px 6px;font:inherit';row.replaceWith(inp);inp.focus();inp.select();let done=false;const fin=ok=>{if(done)return;done=true;const v=inp.value.trim();if(ok&&v&&v!==c.title){c.title=v.slice(0,80);c.named=1;save();if(S.cur===id&&$('#ttl'))$('#ttl').textContent=c.title;try{if(typeof proj==='function'&&proj().sid===id){}}catch{}}renderThreads()};inp.onkeydown=e=>{e.stopPropagation();if(e.key==='Enter')fin(true);if(e.key==='Escape')fin(false)};inp.onblur=()=>fin(true);inp.onclick=e=>e.stopPropagation()}
+$('#threads').onclick=e=>{if(e.target.closest('input'))return;const rn=e.target.closest('[data-ren]');if(rn){renameChat(rn.dataset.ren);return}const pn=e.target.closest('[data-pin]');if(pn){const c=S.chats.find(x=>x.id===pn.dataset.pin);c.pin=!c.pin;save();renderThreads();return}
   const d=e.target.closest('[data-del]');if(d){S.chats=S.chats.filter(c=>c.id!==d.dataset.del);if(S.cur===d.dataset.del)S.cur=null;save();renderThreads();renderMsgs();return}
-  const t=e.target.closest('[data-id]');if(t){S.cur=t.dataset.id;renderThreads();renderMsgs();syncStudio();$('#side').classList.remove('open')}};
+  const t=e.target.closest('[data-id]');if(t){const now=Date.now(),L=renameChat.last;if(L&&L[0]===t.dataset.id&&now-L[1]<450&&S.cur===t.dataset.id){renameChat.last=null;renameChat(t.dataset.id);return}renameChat.last=[t.dataset.id,now];S.cur=t.dataset.id;renderThreads();renderMsgs();syncStudio();$('#side').classList.remove('open')}};
 $('#msgs').onclick=e=>{const ex=e.target.closest('[data-ex]');if(ex){send(ex.dataset.ex);return}
   const pp=e.target.closest('[data-pvpv]');if(pp){const c=curChat();studioFromChat(c.msgs[+pp.dataset.pvpv].content);return}
   const po=e.target.closest('[data-pvopen]');if(po){const c=curChat();studioFromChat(c.msgs[+po.dataset.pvopen].content,{edit:true});return}
@@ -1205,6 +1206,36 @@ function studioFromChat(text,opts){const r=importChat(text,opts);if(r.n&&!r.html
 function applyToStudio(code,lang,opts){opts=opts||{};ensureProj();const ext={html:'html',htm:'html',css:'css',js:'js',javascript:'js',json:'json',ts:'ts',tsx:'tsx',jsx:'jsx',py:'py',code:'html'}[(lang||'').toLowerCase()]||'html';
   let t=(P.files.find(f=>f.name===P.active&&f.name.endsWith('.'+ext)))||P.files.find(f=>f.name.endsWith('.'+ext));
   if(t){const st=setContent(t,code,'Applied from chat');P.active=t.name;if(opts.preview){MCOL='prev';COLS.prev=1}else MCOL='editor';setView('studio');toastUndo((opts.preview?'Previewing ':'Editing ')+t.name+' in “'+proj().title+'” ('+st+')')}else{t={name:'file.'+ext,content:code};P.files.push(t);P.active=t.name;projSave();if(opts.preview){MCOL='prev';COLS.prev=1}else MCOL='editor';setView('studio');toast('Created '+t.name+' in “'+proj().title+'”')}}
+const escRe=x=>x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+const labelOf=n=>n.replace(/\.[^.]+$/,'').replace(/^index$/,'Home').replace(/[-_]+/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+const isHtml=n=>/\.html?$/i.test(n);
+function hasLink(c,name){return new RegExp('(?:href|src)=["\']\\.?/?'+escRe(name)+'(?:["\'#?])','i').test(c)}
+function addNavLink(f,name){if(f.bin||!isHtml(f.name)||f.name===name)return false;const c=f.content;if(hasLink(c,name))return false;const a='<a href="'+name+'">'+labelOf(name)+'</a>';let n;
+  if(/<\/nav>/i.test(c))n=c.replace(/<\/nav>/i,function(){return '  '+a+'\n</nav>'});
+  else if(/<\/body>/i.test(c))n=c.replace(/<\/body>/i,function(){return '<nav style="padding:18px;display:flex;gap:16px;flex-wrap:wrap;justify-content:center">'+a+'</nav>\n</body>'});
+  else n=c+'\n<nav>'+a+'</nav>';setContent(f,n,'Link to '+name);return true}
+function starterFor(name){const e=(name.split('.').pop()||'').toLowerCase(),L=labelOf(name),has=n=>P.files.some(f=>f.name===n);
+  if(isHtml(name)){const pages=P.files.filter(f=>isHtml(f.name)&&f.name!==name).map(f=>f.name),css=P.files.find(f=>/\.css$/i.test(f.name)),js=P.files.find(f=>/\.js$/i.test(f.name)&&!/^(sw|worker)/i.test(f.name));
+    const nav=[...pages,name].map(n=>'<a href="'+n+'"'+(n===name?' aria-current="page"':'')+'>'+labelOf(n)+'</a>').join('\n    ');
+    return '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width,initial-scale=1">\n<title>'+L+'</title>\n'+(css?'<link rel="stylesheet" href="'+css.name+'">\n':'<style>body{margin:0;font:16px/1.6 system-ui,sans-serif;background:#0b0e16;color:#eef1f8}nav{display:flex;gap:16px;padding:16px 24px;background:rgba(255,255,255,.06);border-bottom:1px solid rgba(255,255,255,.12)}nav a{color:#9db4ff;text-decoration:none}main{max-width:900px;margin:40px auto;padding:0 24px}</style>\n')+'</head>\n<body>\n<nav>\n    '+nav+'\n</nav>\n<main>\n  <h1>'+L+'</h1>\n  <p>New page. Edit me.</p>\n</main>\n'+(js?'<script src="'+js.name+'"><\/script>\n':'')+'</body>\n</html>\n'}
+  if(e==='css')return ':root{--bg:#0b0e16;--tx:#eef1f8;--ac:#7c9cff}\nbody{margin:0;font:16px/1.6 system-ui,sans-serif;background:var(--bg);color:var(--tx)}\n';
+  if(e==='js')return '// '+name+'\ndocument.addEventListener("DOMContentLoaded",function(){\n  \n});\n';
+  if(e==='json')return /list|items|data|users|products|posts/i.test(name)?'[\n  \n]\n':'{\n  \n}\n';
+  if(e==='md')return '# '+L+'\n\n';return ''}
+function createFile(name,opts){opts=opts||{};name=safeName(name);if(!/\.[a-z0-9]+$/i.test(name))name+=opts.ext||'.html';if(P.files.some(f=>f.name===name)){toast('A file named '+name+' already exists');return null}
+  const f={name,content:starterFor(name)};P.files.push(f);let linked=0;
+  if(isHtml(name)&&opts.link!==false)P.files.forEach(o=>{if(o!==f&&addNavLink(o,name))linked++});
+  P.active=name;if(isHtml(name)){PAGE=name;HIST=HIST.slice(0,HI+1);HIST.push(name);HI=HIST.length-1}projSave();renderStudio();
+  toast('Created '+name+(linked?' and linked it from '+linked+' page'+(linked>1?'s':''):''));return f}
+function newFileDialog(){let ty='.html';const T=[['.html','Page'],['.css','Stylesheet'],['.js','Script'],['.json','JSON data'],['.md','Markdown'],['.txt','Text']];
+  const d=dialog('<h3 style="margin:0 0 8px">New file</h3><div class="mktabs" id="nft">'+T.map(([e,l])=>'<button data-e="'+e+'" class="'+(e===ty?'on':'')+'">'+l+'</button>').join('')+'</div><input id="nfn" placeholder="File name, e.g. about" style="width:100%;margin-bottom:8px"><label id="nflw" style="display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:10px"><input type="checkbox" id="nfl" checked style="width:auto"> Link it from my other pages</label><div style="font-size:12px;opacity:.7;margin-bottom:4px">Or describe it and let AI write it and wire it in</div><textarea id="nfa" rows="2" style="width:100%;margin-bottom:10px" placeholder="e.g. a pricing page with three plans that matches this design"></textarea><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn2" data-close>Cancel</button><button class="btn2" id="nfai">✨ Create with AI</button><button class="btn" id="nfok">Create</button></div>');
+  const q=s=>d.querySelector(s),sync=()=>{q('#nflw').style.display=ty==='.html'?'flex':'none';q('#nfn').placeholder='File name, e.g. '+({'.html':'about','.css':'style','.js':'app','.json':'data','.md':'notes','.txt':'notes'}[ty])};sync();
+  q('#nft').onclick=e=>{const b=e.target.closest('[data-e]');if(!b)return;ty=b.dataset.e;q('#nft').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));sync()};
+  const go=()=>{let n=q('#nfn').value.trim();if(!n)return toast('Give the file a name');if(!/\.[a-z0-9]+$/i.test(n))n+=ty;else{const m=n.match(/(\.[a-z0-9]+)$/i);ty=m[1].toLowerCase()}if(createFile(n,{ext:ty,link:q('#nfl').checked}))d.close()};
+  q('#nfok').onclick=go;q('#nfn').onkeydown=e=>{if(e.key==='Enter')go()};
+  q('#nfai').onclick=()=>{const t=q('#nfa').value.trim(),n=q('#nfn').value.trim();if(!t&&!n)return toast('Describe the file or give it a name');d.close();stAsk('Create a new '+(ty==='.html'?'page':'file')+(n?' called '+safeName(/\.[a-z0-9]+$/i.test(n)?n:n+ty):' ('+ty+')')+(t?': '+t:'')+'. Add it to the project files and link it from the other pages (nav links, and a link back), reuse the shared CSS and JS, and add any JSON or data files it needs.')};
+  setTimeout(()=>q('#nfn').focus(),50)}
+function renameRefs(oldN,newN){let c=0;const re=new RegExp('(["\'(=/]\\.?/?)'+escRe(oldN)+'(?=["\')?#\\s>])','g');P.files.forEach(f=>{if(f.bin||f.name===newN)return;const n=f.content.replace(re,function(m,a){c++;return a+newN});if(n!==f.content){snap('Rename link '+oldN+' → '+newN,f.name);f.content=n}});return c}
 function nameDialog(title,val,cb){const d=dialog(`<h3 style="margin:0 0 8px">${title}</h3><input id="nn" value="${esc(val)}"><div style="text-align:right"><button class="btn2" data-close>Cancel</button> <button class="btn" id="nok">OK</button></div>`);$('#nok').onclick=()=>{const v=$('#nn').value.trim();if(v){cb(v);d.close()}}}
 const safeName=v=>v.replace(/[^\w.\-]/g,'_');
 let pvT=null;
@@ -1229,9 +1260,9 @@ function wireStudio(){
   $('#diag').onclick=async e=>{const dg=e.target.closest('.dg[data-l]');if(dg){const ln=+dg.dataset.l,t=$('#code'),lines=t.value.split('\n');let pos=0;for(let i=0;i<ln-1;i++)pos+=lines[i].length+1;t.focus();t.setSelectionRange(pos,pos+(lines[ln-1]||'').length);t.scrollTop=Math.max(0,(ln-4)*18);return}
     if(e.target.id==='dfix'){editWithAI('Fix all of these problems without changing anything else:\n'+allDiag(activeFile()).map(x=>`Line ${x.line}: ${x.message}`).join('\n'))}};
   $('#srun').onclick=()=>refreshPreview(true);$('#scopy').onclick=()=>navigator.clipboard?.writeText($('#code').value).then(()=>toast('Copied'),()=>toast('Select & copy manually'));
-  $('#fadd').onclick=()=>nameDialog('New file','new.js',n=>{n=safeName(n);if(P.files.some(f=>f.name===n))return toast('Name exists');P.files.push({name:n,content:''});P.active=n;projSave();renderStudio()});
-  $('#fren').onclick=()=>nameDialog('Rename file',P.active,n=>{n=safeName(n);if(P.files.some(f=>f.name===n))return toast('Name exists');activeFile().name=n;P.active=n;projSave();renderStudio()});
-  $('#fdel').onclick=()=>{if(P.files.length<2)return toast('Keep at least one file');P.files=P.files.filter(f=>f.name!==P.active);P.active=P.files[0].name;projSave();renderStudio()};
+  $('#fadd').onclick=newFileDialog;
+  $('#fren').onclick=()=>nameDialog('Rename file',P.active,n=>{const old=P.active;n=safeName(n);if(!/\.[a-z0-9]+$/i.test(n))n+=(old.match(/\.[a-z0-9]+$/i)||[''])[0];if(P.files.some(f=>f.name===n))return toast('Name exists');activeFile().name=n;P.active=n;const c=renameRefs(old,n);if(PAGE===old)PAGE=n;HIST=HIST.map(h=>h===old?n:h);projSave();renderStudio();if(c)toast('Renamed and updated '+c+' link'+(c>1?'s':''))});
+  $('#fdel').onclick=()=>{if(P.files.length<2)return toast('Keep at least one file');const gone=P.active;P.files=P.files.filter(f=>f.name!==gone);P.active=P.files[0].name;if(PAGE===gone){PAGE=(P.files.find(f=>isHtml(f.name))||P.files[0]).name;HIST=[PAGE];HI=0}const broken=P.files.filter(f=>!f.bin&&hasLink(f.content,gone)).length;projSave();renderStudio();if(broken)toast('Deleted. '+broken+' file'+(broken>1?'s still link':' still links')+' to '+gone)};
   $('#fzip').onclick=async()=>{if(!window.JSZip)return toast('ZIP library failed to load');const z=new JSZip();P.files.forEach(f=>z.file(f.name,f.content));saveFile((safeName(proj().title)||'project')+'.zip',await z.generateAsync({type:'blob'}))};
   $('#fhtml').onclick=()=>saveFile('site.html',buildPage(P.files,PAGE,false),'text/html');
   $('#fimp').onclick=()=>$('#fimpi').click();
