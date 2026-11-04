@@ -3,7 +3,7 @@ import { market } from './market.js';
 // Holds YOUR Anthropic key as a secret; meters users in credits; Stripe-ready.
 const CREDIT_USD = 0.0014;
 const PRICE = { in: 0.10, out: 0.50, cr: 0.01, cw: 0.125 };           // USD per million tokens (Haiku 5.5)
-const PACKS = { 5: 50, 10: 100, 100: 1000 };
+const PACKS = { 9.99: 100 };   // the only way to get credits: $9.99 = 100 credits via the Stripe Payment Link
 const MODEL = 'claude-haiku-5-5';
 const enc = new TextEncoder();
 
@@ -136,7 +136,8 @@ export default {
       if (!ok) return json(env, req, { error: 'Wrong username or password' }, 401);
       return json(env, req, { token: await startSession(env, u.email), account: vw(env, u) });
     }
-    if (path === '/api/account/claim-free' && req.method === 'POST') {      // 1 free credit per username account, 1 per network
+    if (path === '/api/account/claim-free' && req.method === 'POST') return json(env, req, { error: 'Credits are only available by purchase.' }, 403);
+    if (false) {      // 1 free credit per username account, 1 per network
       const a = await authed(env, req);
       if (!a) return json(env, req, { error: 'sign in' }, 401);
       if (!a.username) return json(env, req, { error: 'Create an account first (username + password) to claim your free credit' }, 403);

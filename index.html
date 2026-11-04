@@ -620,10 +620,9 @@ async function openCredits(reason){
   await loadPayLinks();
   const packs=PLANS.map(pl=>{const u=payUrl(pl.id);return u?`<a class="mbcta" style="display:block;text-align:center;margin:6px 0" href="${esc(u)}" target="_blank" rel="noopener">${esc(pl.name)}: $${pl.usd} for ${pl.credits.toLocaleString()} credits</a>`:''}).join('');
   const d=dialog(`<h3 style="margin:0 0 6px">${reason==='out'?'You are out of credits':'Add credits'}</h3><p style="font-size:12.5px;color:var(--m);margin:0 0 10px">Balance: <b style="color:var(--t)">${BAL!=null?(+BAL).toFixed(1):'0.0'} credits</b>${EMAIL?'':''}</p>
-  ${FREE?'':`<button class="btn" id="cfree" style="width:100%;margin-bottom:8px">${ico('gift')} Claim your 1 free credit</button>`}
   ${packs||`<div class="card2" style="font-size:12.5px;color:var(--m);margin:6px 0">Credit top-ups are being switched on. In the meantime you can use your own API key.</div>`}
   <div style="display:flex;gap:8px;justify-content:space-between;margin-top:10px"><button class="btn2" id="ckey">${ico('key')} Use my own API key</button><button class="btn2" data-close>Close</button></div>`);
-  const cf=$('#cfree');if(cf)cf.onclick=async()=>{if(await claimFree(false))d.close()};
+  
   $('#ckey').onclick=()=>{d.close();openKey(true)}}
 function openAccount(welcome){
   const be=BACKEND();
@@ -635,9 +634,9 @@ function openAccount(welcome){
   <label>Username or email</label><input id="bun" autocomplete="username" autocapitalize="none" placeholder="yourname or you@email.com"><label>Password</label><input id="bpw" type="password" autocomplete="current-password" placeholder="at least 6 characters">
   <div style="display:flex;gap:8px;margin-top:8px"><button class="btn" id="breg" style="flex:1">Create account · 1 free credit</button><button class="btn2" id="bsignin" style="flex:0 0 auto">Sign in</button></div>
   <details style="margin-top:10px"><summary style="font-size:12px;color:var(--m);cursor:pointer">Advanced</summary><label>Account token (owner / restore)</label><input id="bto" type="password" placeholder="aix_..."><div style="display:flex;gap:8px;margin-top:6px"><button class="btn2" id="btok">Use token</button><button class="btn2" id="bkey">Use my own API key</button></div></details><div style="text-align:right;margin-top:8px"><button class="btn2" data-close>Cancel</button></div>`);
-  if(signed){const bc=$('#bclaim');if(bc)bc.onclick=async()=>{if(await claimFree(false))d.close()};$('#bout').onclick=()=>{store.set(TOKK,'');store.set('aix3_user','');UNAME='';sampleFn=null;d.close();location.reload()};return}
+  if(signed){const bc=$('#bclaim');if(bc)bc.onclick=null;$('#bout').onclick=()=>{store.set(TOKK,'');store.set('aix3_user','');UNAME='';sampleFn=null;d.close();location.reload()};return}
   const go=async(path,msg)=>{const un=$('#bun').value.trim(),pw=$('#bpw').value;if(!un||!pw)return toast('Enter a username and password');try{const j=await acctCall(path,{username:un,password:pw});acctDone(j,msg);d.close()}catch(e){toast(e.message)}};
-  $("#bsignin").onclick=()=>go('/api/account/login','Signed in');$('#breg').onclick=async()=>{await go('/api/account/register','Account created');if(UNAME&&!FREE)await claimFree(true)};
+  $("#bsignin").onclick=()=>go('/api/account/login','Signed in');$('#breg').onclick=async()=>{await go('/api/account/register','Account created');};
   $('#bkey').onclick=()=>{d.close();openKey(true)};
   $('#btok').onclick=async()=>{const t=$('#bto').value.trim();if(!/^aix_[a-f0-9]+$/.test(t))return toast('That is not a valid token');store.set(TOKK,t);try{const m=await fetch(BACKEND()+'/api/account/me',{headers:{authorization:'Bearer '+t}});if(!m.ok)throw new Error('token not accepted');const j=await m.json();UNAME=j.username||'';store.set('aix3_user',UNAME);BAL=j.credits;sampleFn=backendSample();setStatus();toast('Signed in');d.close()}catch(e){store.set(TOKK,'');toast(e.message)}};
 }
@@ -1888,19 +1887,18 @@ $('#progbody').onclick=e=>{const g=e.target.closest('[data-pg]');if(g){if(g.data
 
 /* ============ members: plans, balance, expense breakdown ============ */
 const PPC=0.10; // customer price per credit (USD): $10→100, $5→50, $100→1,000
-const PLANS=[{id:'starter',name:'Starter',usd:10,credits:100,tag:'TO GET STARTED',note:'One-time buy-in that opens your account.',perks:['100 credits to begin','Every model and mode included','Studio, debugger and history']},
- {id:'topup',name:'Pay as you go',usd:5,credits:50,tag:'WHENEVER YOU NEED MORE',note:'Top up in 50-credit packs whenever you run low.',perks:['50 credits per top-up','Buy only when you need it','Same models and tools as every pack']},
- {id:'enterprise',name:'Enterprise',usd:100,credits:1000,tag:'PAY AS YOU GO · NO TIES',note:'Bulk 1,000-credit pack with no monthly or yearly commitment.',perks:['1,000 credits in one purchase','No monthly or yearly contract','Pay again only when you need more'],feat:true}];
+const PLANS=[{id:'starter',name:'Credits',usd:9.99,credits:100,tag:'THE ONLY WAY TO GET CREDITS',note:'One simple pack. Buy again whenever you run low.',perks:['100 credits per purchase','Every model and mode included','Studio, marketplace and image tools']}];
 let MEMBER={granted:0},STRIPE={links:{}},MEV=false,MEMS={mode:'balanced',tier:'STANDARD'};
 const usdp=n=>'$'+(n<0.01?n.toFixed(4):n<1?n.toFixed(3):n.toFixed(2));
 const MIX={MICRO:.5,STANDARD:.35,DEEP:.15};
 function mixCr(mode,ev){const e=modeEst(mode,ev);return Object.keys(MIX).reduce((a,t)=>a+MIX[t]*e[t].typ,0)}
 function renderMembers(){
-  const remaining=(MEMBER.granted||0)-(MY.credits||0),isAdmin=ADMIN&&DB,link=id=>STRIPE.links&&STRIPE.links[id];
+  if(!renderMembers.pl){renderMembers.pl=1;loadPayLinks().then(()=>{if($('#vmembers').classList.contains('on'))renderMembers()})}
+  const remaining=(MEMBER.granted||0)-(MY.credits||0),isAdmin=ADMIN&&DB,link=id=>payUrl(id)||(STRIPE.links&&STRIPE.links[id]);
   const modes=['eco','balanced','thorough'],tiers=['MICRO','STANDARD','DEEP'],tl={MICRO:'Short',STANDARD:'Standard',DEEP:'Deep'};
   const ppc=pl=>pl.usd/pl.credits,ps=personas().filter(p=>p.preset);
   const cur=costFor(ABM.model,MEMS.mode,MEV);
-  const buy=pl=>link(pl.id)?`<a class="mbcta" href="${esc(link(pl.id))}" target="_blank" rel="noopener">${pl.id==='starter'?'Get started':pl.id==='enterprise'?'Buy 1,000 credits':'Add 100 credits'} · $${pl.usd}</a>`:`<button class="mbcta off" disabled>Checkout opens soon</button>`;
+  const buy=pl=>link(pl.id)?`<a class="mbcta" href="${esc(link(pl.id))}" target="_blank" rel="noopener">Buy ${pl.credits} credits · $${pl.usd}</a>`:`<button class="mbcta off" disabled>Checkout opens soon</button>`;
   const E=Object.fromEntries(modes.map(m=>[m,modeEst(m,MEV)]));
   const bars=modes.map(m=>{const v=mixCr(m,MEV),mx=mixCr('thorough',MEV);return `<div class="abrow"><span class="mono">${m.toUpperCase()}</span><div class="abpair"><div class="mono tiny">${f1(v)} cr avg / reply · ${usdp(v*PPC)}</div><div class="abbar"><i style="width:${Math.max(3,v/mx*100)}%;background:linear-gradient(90deg,var(--ac),#60a5fa)"></i></div></div></div>`}).join('');
   const seg=(items,curv,key)=>`<div class="ab2seg">${items.map(([v,l])=>`<button data-${key}="${v}" class="${v===curv?'on':''}">${l}</button>`).join('')}</div>`;
@@ -1932,7 +1930,7 @@ function renderMembers(){
    <h4 class="mono" style="margin-top:16px">OWNER — GRANT CREDITS</h4><div class="form"><select id="gu">${ROWS.map(r=>`<option value="${r.id}">${esc(String(r.id).slice(0,8))} · used ${f1(r.credits||0)} cr</option>`).join('')||'<option value="'+(ME||'')+'">You</option>'}</select><input id="ga" type="number" value="100" min="1"></div><button class="btn2" id="ggo">Grant credits</button>`:'<div class="mono" style="font-size:11px;color:var(--m)">Only the owner can edit payment links or grant credits.</div>'}</div>`}
 function wireMembers(){$('#membersbody').onclick=async e=>{const t=e.target;
   if(t.id==='mev'){MEV=!MEV;return renderMembers()}const mm=t.closest('[data-mm]');if(mm){MEMS.mode=mm.dataset.mm;return renderMembers()}const mt=t.closest('[data-mt]');if(mt){MEMS.tier=mt.dataset.mt;return renderMembers()}
-  if(t.id==='slsave'){const links={starter:$('#sl1').value.trim(),topup:$('#sl2').value.trim(),enterprise:$('#sl3').value.trim()};for(const k in links)if(links[k]&&!/^https:\/\/(buy|checkout)\.stripe\.com\//.test(links[k]))return toast('Use a stripe.com payment link');try{await DB.doc('config/stripe').set({links,updated:Date.now()});toast('Payment links saved')}catch{toast('Could not save (owner only)')}}
+  if(t.id==='slsave'){const links={starter:$('#sl1').value.trim()};for(const k in links)if(links[k]&&!/^https:\/\/(buy|checkout)\.stripe\.com\//.test(links[k]))return toast('Use a stripe.com payment link');try{await DB.doc('config/stripe').set({links,updated:Date.now()});toast('Payment links saved')}catch{toast('Could not save (owner only)')}}
   if(t.id==='ggo'){const id=$('#gu').value,amt=Math.max(0,+$('#ga').value||0);if(!id||!amt)return toast('Pick a user and amount');try{const d=await DB.doc('members/'+id).get();const prev=d.exists?(d.data().granted||0):0;await DB.doc('members/'+id).set({granted:prev+amt,updated:Date.now()});toast('Granted '+amt+' credits')}catch{toast('Could not grant (owner only)')}}}}
 
 
