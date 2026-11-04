@@ -1,3 +1,4 @@
+import { market } from './market.js';
 // AIX ALPHA cloud backend (Cloudflare Worker). Always on, no machine needed.
 // Holds YOUR Anthropic key as a secret; meters users in credits; Stripe-ready.
 const CREDIT_USD = 0.0014;
@@ -154,6 +155,7 @@ export default {
       return json(env, req, { links: r ? JSON.parse(r.v) : {} });
     }
     if (path === '/api/account/me') { const a = await authed(env, req); return a ? json(env, req, vw(env, a)) : json(env, req, { error: 'sign in' }, 401); }
+    if (path.startsWith('/api/market/')) return market(env, req, path, { json, authed, owners });
     if (path === '/api/image' && req.method === 'POST') return image(env, req);
     if (path === '/api/video' && req.method === 'POST') return video(env, req);
     if (path === '/api/sample' && req.method === 'POST') return sample(env, req);

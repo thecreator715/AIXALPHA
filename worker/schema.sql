@@ -10,3 +10,9 @@ CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, email TEXT NOT 
 ALTER TABLE users ADD COLUMN free_claimed INTEGER NOT NULL DEFAULT 0;
 CREATE TABLE IF NOT EXISTS claims(ip TEXT PRIMARY KEY, email TEXT, at TEXT);
 CREATE TABLE IF NOT EXISTS settings(k TEXT PRIMARY KEY, v TEXT);
+CREATE TABLE IF NOT EXISTS apps(id TEXT PRIMARY KEY, owner TEXT NOT NULL, title TEXT, description TEXT, icon TEXT, files TEXT, size INTEGER DEFAULT 0, price REAL DEFAULT 0, status TEXT DEFAULT 'draft', downloads INTEGER DEFAULT 0, sales INTEGER DEFAULT 0, earned REAL DEFAULT 0, rating_sum INTEGER DEFAULT 0, rating_n INTEGER DEFAULT 0, created TEXT, updated TEXT);
+CREATE INDEX IF NOT EXISTS apps_owner ON apps(owner);
+CREATE INDEX IF NOT EXISTS apps_status ON apps(status);
+CREATE TABLE IF NOT EXISTS app_sales(id INTEGER PRIMARY KEY AUTOINCREMENT, app_id TEXT NOT NULL, buyer TEXT NOT NULL, seller TEXT NOT NULL, price REAL, fee REAL, at TEXT, rating INTEGER, UNIQUE(app_id,buyer));
+CREATE INDEX IF NOT EXISTS sales_seller ON app_sales(seller);
+CREATE INDEX IF NOT EXISTS sales_buyer ON app_sales(buyer);
