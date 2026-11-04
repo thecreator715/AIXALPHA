@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="aix-backend" content="https://aix-alpha.aixalpha.workers.dev"><meta name="aix-embedded-key" content="">
+<meta charset="utf-8"><meta name="aix-backend" content=""><meta name="aix-embedded-key" content="">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>AIX Alpha v3.0 AI Suite</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -410,7 +410,22 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
 @media(max-width:900px){#loop.imgon #modes{display:none}#loop .bar{gap:4px}#loop .lp{display:none}#loop .tg:not(select){width:32px;height:32px;min-height:32px}#loop .meter{width:32px;height:32px;min-width:32px}#loop select.tg{height:32px;max-width:132px;font-size:10.5px}}
 @media(max-width:400px){#loop .seg button{font-size:7.5px!important;padding:6px 1.5px!important;letter-spacing:-.03em!important}}
 @media(max-width:430px){#loop .bar{gap:3px}#loop .tg:not(select){width:30px;height:30px;min-height:30px}#loop .meter{width:30px;height:30px;min-width:30px}#loop .seg button{padding:6px 3px;font-size:9px}#loop .tg svg{width:15px;height:15px}}
-</style></head>
+</style><style id="marketcss">
+.mktabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}.mktabs button{border:1px solid var(--b,#ddd);background:transparent;color:inherit;border-radius:999px;padding:6px 14px;font:inherit;cursor:pointer}.mktabs button.on{background:#34d399;color:#000;border-color:#34d399;font-weight:600}.mkbar input,.mkbar select,#dlg .mkm+input,#dlg textarea,#dlg input[type=number]{background:rgba(127,127,127,.12);color:inherit;border:1px solid rgba(127,127,127,.35);border-radius:8px;padding:8px 10px;font:inherit}
+.mkbar{display:flex;gap:8px;margin-bottom:10px}.mkbar input{flex:1;min-width:0}
+.mkgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+.mkcard{display:flex;gap:12px;border:1px solid var(--b,#ddd);border-radius:12px;padding:12px;background:var(--c,transparent)}
+.mkic{font-size:30px;width:46px;height:46px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:rgba(127,127,127,.12);flex:none}
+.mkbd{min-width:0;flex:1}.mkt{font-weight:600}.mkd{font-size:13px;opacity:.8;margin:3px 0 6px;overflow-wrap:anywhere}
+.mkm{font-size:11px;opacity:.65}.mkmeta{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}.mkpr{font-size:13px}.mkfree{color:#15803d}.mkst{font-size:12px;color:#b45309}.mkno{color:inherit;opacity:.5}
+.mkbtn{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.mklive{background:#15803d!important;color:#fff!important}
+.mkrate i{font-style:normal;cursor:pointer;opacity:.35;font-size:18px}.mkrate i.on{opacity:1;color:#b45309}
+.mkstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:12px;grid-column:1/-1}.mkstats div{border:1px solid var(--b,#ddd);border-radius:12px;padding:12px}.mkstats b{display:block;font-size:22px}.mkstats span{font-size:11px;opacity:.65}
+.mkrows{grid-column:1/-1}.mkrow{display:grid;grid-template-columns:2fr 1.2fr 1fr 1fr 40px;gap:8px;align-items:center;padding:8px 4px;border-bottom:1px solid var(--b,#eee);font-size:13px}
+.mkerr{grid-column:1/-1;padding:14px;border:1px solid #dc2626;border-radius:10px;color:#dc2626}
+@media(max-width:600px){.mkrow{grid-template-columns:2fr 1fr 1fr}.mkrow span:nth-child(2),.mkrow span:nth-child(5){display:none}}
+</style>
+</head>
 <body>
 <aside id="prog"><div class="pgtop"><b>Progress</b><button class="btn2" id="progx">✕</button></div><div id="progbody"></div></aside><div id="scrim"></div><nav id="bnav"></nav><div id="siteview"></div><div id="pal"><div class="box"><input id="pin" placeholder="Type a command…"><div id="pl"></div></div></div><div id="toast"></div>
 <div id="app">
@@ -444,7 +459,7 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
     <div class="view" id="vana"><div class="pad" id="anabody"></div></div>
     <div class="view" id="vstudio"><div class="stwrap">
   <div class="stbar mono">
-    <select id="pj"></select><button class="btn2" id="stmore" aria-label="Project menu"></button><button class="btn2" id="pjnew">＋ New</button><button class="btn2" id="pjren">Rename</button><button class="btn2" id="pjdel">Delete</button><button class="btn2" id="pjall">All apps</button><span id="stsess" class="badge mono" style="margin-left:6px"></span><span id="stbal" class="badge mono" style="margin-left:6px"></span>
+    <select id="pj"></select><button class="btn2" id="stmore" aria-label="Project menu"></button><button class="btn2" id="pjnew">＋ New</button><button class="btn2" id="pjren">Rename</button><button class="btn2" id="pjdel">Delete</button><button class="btn2" id="pjall">All apps</button><button class="btn2" id="pjcloud">☁ Cloud</button><span id="stsess" class="badge mono" style="margin-left:6px"></span><span id="stbal" class="badge mono" style="margin-left:6px"></span>
     <span class="sp"></span>
     <button class="tg on" data-col="files">Files</button><button class="tg on" data-col="editor">Editor</button><button class="tg on" data-col="prev">Preview</button><button class="tg on" data-col="chat">Chat</button>
   </div>
@@ -465,6 +480,7 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
 <div class="view" id="vpersonas"><div class="pad" id="personasbody"></div></div>
 <div class="view" id="vtools"><div class="pad" id="toolsbody"></div></div>
 <div class="view" id="vconnect"><div class="pad" id="connectbody"></div></div>
+<div class="view" id="vmarket"><div class="pad" id="marketbody"></div></div>
 <div class="view" id="vsites"><div class="pad" id="sitesbody"></div></div>
 <div class="view" id="vcredits"><div class="pad" id="creditsbody"></div></div>
 <div class="view" id="vmembers"><div class="pad" id="membersbody"></div></div>
@@ -1174,7 +1190,7 @@ function wireStudio(){
     $('#pok').onclick=()=>{const pr=PRESETS_P.find(x=>x.id===$('#pt').value);const np={id:'p_'+uid(),sid:SID(),title:$('#pn2').value.trim()||(pr?pr.title:'Untitled'),files:pr?cloneFiles(pr.files):[{name:'index.html',content:'<!DOCTYPE html>\n<html><head><meta charset="utf-8"><title>New</title></head><body></body></html>'}],active:'index.html',chat:[]};PROJECTS.push(np);CURP=np.id;{const _cc=curChat();if(_cc)_cc.projId=np.id;save()}PAGE='index.html';HIST=['index.html'];HI=0;projSave();renderStudio();d.close()}};
   $('#pjren').onclick=()=>nameDialog('Rename project',proj().title,n=>{proj().title=n;projSave();renderStudio()});
   $('#pjdel').onclick=()=>{const id=proj().id;if(!id)return;PROJECTS=PROJECTS.filter(p=>p.id!==id);CURP='';const _cc=curChat();if(_cc)_cc.projId=null;projSave();save();renderStudio();toast('App deleted from this session')};
-  $('#pjall').onclick=openAllApps;
+  $('#pjall').onclick=openAllApps;$('#pjcloud').onclick=studioCloud;
   document.querySelectorAll('[data-col]').forEach(b=>b.onclick=()=>{if(matchMedia('(max-width:900px)').matches)MCOL=b.dataset.col;else{COLS[b.dataset.col]=COLS[b.dataset.col]?0:1;store.set('aix3_cols',COLS)}renderStudio()});
   $('#gengo').onclick=()=>{const v=$('#gen').value.trim();if(!v)return toast('Describe the app first');$('#gen').value='';stGenerate(v)};
   $('#flist').onclick=e=>{const i=e.target.closest('[data-f]');if(i){const cf=activeFile();if(!cf.bin)cf.content=$('#code').value;P.active=i.dataset.f;const nf=activeFile();if(nf.bin||/\.(html?)$/i.test(nf.name))PAGE=nf.name;projSave();renderStudio();if(nf.bin||/\.html?$/i.test(nf.name))refreshPreview()}};
@@ -1946,9 +1962,94 @@ document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest
 $('#editcancel').onclick=()=>{S.editIdx=null;$('#editban').style.display='none';$('#q').value=''};
 
 /* ============ navigation, mobile shell ============ */
-const VIEWS=[['chat','Chat','💬'],['studio','Studio','🛠'],['personas','Personas','🧠'],['tools','Tools','⚙'],['connect','Connect','🔌'],['sites','Sites','🌐'],['ana','Analytics','📊'],['credits','Credits','◈'],['members','Members','★'],['users','Users','👥'],['about','About','ℹ']];
+/* ============ marketplace ============ */
+const MK={tab:'browse',q:'',sort:'new',apps:[],mine:[],lib:[],sales:null,fee:0.15,busy:false,err:''};
+async function mkApi(path,body){const be=BACKEND();if(!be)throw new Error('The marketplace needs the AIX server (use the GitHub site).');
+  const tok=store.get(TOKK,'');const h={authorization:'Bearer '+tok};if(body)h['content-type']='application/json';
+  const r=await fetch(be+'/api/market/'+path,{method:body?'POST':'GET',headers:h,body:body?JSON.stringify(body):undefined});
+  const j=await r.json().catch(()=>({}));
+  if(r.status===401){setTimeout(()=>{try{openAccount('Sign in to use the marketplace.')}catch{}},100);throw new Error('Sign in to use the marketplace.')}
+  if(r.status===402){BAL=Math.max(0,BAL||0);try{setStatus()}catch{}}
+  if(!r.ok)throw Object.assign(new Error(j.error||('Request failed ('+r.status+')')),{status:r.status,data:j});
+  return j}
+const mkStars=r=>r?`<span class="mkst">★ ${r}</span>`:`<span class="mkst mkno">no ratings</span>`;
+const mkPrice=p=>p>0?`<b class="mkpr">${p} cr</b>`:`<b class="mkpr mkfree">Free</b>`;
+function mkCard(a,mode){const own=a.owned||a.mine||mode==='lib'||mode==='mine';
+  let btns='';
+  if(mode==='browse'){btns=`<button class="btn2" data-mk="view" data-id="${a.id}">Details</button>`+(a.mine?`<span class="badge">yours</span>`:a.owned?`<button class="btn" data-mk="open" data-id="${a.id}">Open in Studio</button>`:`<button class="btn" data-mk="buy" data-id="${a.id}">${a.price>0?'Buy · '+a.price+' cr':'Get free'}</button>`)}
+  if(mode==='lib')btns=`<button class="btn" data-mk="open" data-id="${a.id}">Open in Studio</button><button class="btn2" data-mk="prev" data-id="${a.id}">Preview</button><span class="mkrate">${[1,2,3,4,5].map(n=>`<i data-mk="rate" data-id="${a.id}" data-n="${n}" class="${(a.myrating||0)>=n?'on':''}">★</i>`).join('')}</span>`;
+  if(mode==='mine')btns=`<button class="btn2" data-mk="open" data-id="${a.id}">Open in Studio</button><button class="btn2" data-mk="pub" data-id="${a.id}">${a.status==='live'?'Edit listing':'Publish'}</button>`+(a.status==='live'?`<button class="btn2" data-mk="unpub" data-id="${a.id}">Unpublish</button>`:'')+`<button class="btn2" data-mk="del" data-id="${a.id}">Delete</button>`;
+  const meta=mode==='mine'?`<span class="badge ${a.status==='live'?'mklive':''}">${a.status}</span> ${mkPrice(a.price)} <span class="mkm">${a.sales} sales · ${a.downloads} installs · earned ${a.earned} cr</span>`:`${mkPrice(a.price)} ${mkStars(a.rating)}${a.ratings?` <span class="mkm">(${a.ratings})</span>`:''} <span class="mkm">${a.downloads||0} installs</span>`;
+  return `<div class="mkcard"><div class="mkic">${esc(String(a.icon||'🧩'))}</div><div class="mkbd"><div class="mkt">${esc(String(a.title||'Untitled'))}${a.seller&&mode!=='mine'?` <span class="mkm">by ${esc(String(a.seller))}</span>`:''}</div><div class="mkd">${esc(String(a.description||''))}</div><div class="mkmeta">${meta}</div><div class="mkbtn">${btns}</div></div></div>`}
+async function mkLoad(){MK.err='';MK.busy=true;renderMarket(true);
+  try{const t=MK.tab;
+    if(t==='browse'){const j=await mkApi('browse?sort='+MK.sort+'&q='+encodeURIComponent(MK.q));MK.apps=j.apps;MK.fee=j.fee}
+    if(t==='library'){MK.lib=(await mkApi('library')).apps}
+    if(t==='mine'){const j=await mkApi('mine');MK.mine=j.apps;MK.fee=j.fee}
+    if(t==='sales'){MK.sales=await mkApi('sales');MK.fee=MK.sales.fee}
+  }catch(e){MK.err=e.message}
+  MK.busy=false;renderMarket(true)}
+function renderMarket(skip){const el=$('#marketbody');if(!el)return;
+  if(!skip&&!MK.loaded){MK.loaded=1;mkLoad();return}
+  const tabs=[['browse','Browse'],['library','My library'],['mine','My apps'],['sales','Sales']];
+  let body='';
+  if(MK.err)body=`<div class="mkerr">${esc(MK.err)}</div>`;
+  else if(MK.busy)body='<div class="mkm" style="padding:20px">Loading…</div>';
+  else if(MK.tab==='browse')body=(MK.apps.length?MK.apps.map(a=>mkCard(a,'browse')).join(''):`<div class="mkm" style="padding:20px">No apps match yet. Publish yours from Studio with <b>☁ Cloud</b>.</div>`);
+  else if(MK.tab==='library')body=MK.lib.length?MK.lib.map(a=>mkCard(a,'lib')).join(''):`<div class="mkm" style="padding:20px">Apps you buy or get free appear here, and stay yours.</div>`;
+  else if(MK.tab==='mine')body=(MK.mine.length?MK.mine.map(a=>mkCard(a,'mine')).join(''):`<div class="mkm" style="padding:20px">Nothing in the cloud yet. In Studio press <b>☁ Cloud</b> to save the open app, then publish it here.</div>`);
+  else if(MK.tab==='sales'&&MK.sales){const t=MK.sales.totals;body=`<div class="mkstats"><div><b>${t.earned}</b><span>credits earned</span></div><div><b>${t.paidSales}</b><span>paid sales</span></div><div><b>${t.downloads}</b><span>installs</span></div><div><b>${t.fees}</b><span>platform fees (${Math.round(MK.fee*100)}%)</span></div></div>`+(MK.sales.sales.length?`<div class="mkrows">${MK.sales.sales.map(s=>`<div class="mkrow"><span>${esc(String(s.icon||'🧩'))} ${esc(String(s.title))}</span><span class="mkm">${esc(String(s.buyer))}</span><span class="mkm">${new Date(s.at).toLocaleDateString()}</span><b>${s.price>0?'+'+(s.price-s.fee).toFixed(2)+' cr':'free'}</b><span>${s.rating?'★'+s.rating:''}</span></div>`).join('')}</div>`:`<div class="mkm" style="padding:14px">No sales yet.</div>`)}
+  const bar=MK.tab==='browse'?`<div class="mkbar"><input id="mkq" placeholder="Search apps" value="${esc(MK.q)}"><select id="mks"><option value="new">Newest</option><option value="popular">Popular</option><option value="top">Top rated</option><option value="cheap">Cheapest</option></select></div>`:'';
+  el.innerHTML=`<h2 style="margin:0 0 4px">Marketplace</h2><div class="mkm" style="margin-bottom:10px">Buy apps with credits. Sellers keep ${100-Math.round(MK.fee*100)}% of every sale.</div><div class="mktabs">${tabs.map(([k,l])=>`<button class="${MK.tab===k?'on':''}" data-mktab="${k}">${l}</button>`).join('')}</div>${bar}<div class="mkgrid">${body}</div>`;
+  const s=$('#mks');if(s)s.value=MK.sort}
+async function mkFiles(id){const j=await mkApi('get?id='+encodeURIComponent(id));return j}
+function mkInstall(app,files){ensureProj();const np={id:'p_'+uid(),sid:SID(),title:app.title||'Marketplace app',files:files.map(f=>({...f})),active:(files.find(f=>/^index\.html?$/i.test(f.name))||files[0]).name,chat:[],history:[],cloudId:app.id};PROJECTS.push(np);CURP=np.id;const c=curChat();if(c)c.projId=np.id;projSave();save();PAGE=np.active;HIST=[PAGE];HI=0;setView('studio');toast('Installed into Studio')}
+function mkPreview(app,files){const d=dialog(`<h3 style="margin:0 0 8px">${esc(String(app.title))}</h3><iframe sandbox="allow-scripts" style="width:100%;height:60vh;border:1px solid var(--b,#ddd);border-radius:8px;background:#fff"></iframe><div style="margin-top:8px"><button class="btn2" id="mkx">Close</button></div>`);
+  d.querySelector('iframe').srcdoc=buildPage(files,(files.find(f=>/^index\.html?$/i.test(f.name))||files[0]).name,'');d.querySelector('#mkx').onclick=()=>d.close()}
+function mkDetails(a){const d=dialog(`<h3 style="margin:0 0 6px">${esc(String(a.icon||'🧩'))} ${esc(String(a.title))}</h3><div class="mkm">by ${esc(String(a.seller||'?'))} · ${mkPrice(a.price)} ${mkStars(a.rating)} · ${a.downloads||0} installs · ${Math.round((a.size||0)/1000)} KB</div><p style="margin:10px 0">${esc(String(a.description||''))}</p><div style="display:flex;gap:8px;flex-wrap:wrap">${a.price===0||a.owned?'<button class="btn2" id="mkpv">Preview</button>':''}${a.owned?'<button class="btn" id="mkop">Open in Studio</button>':`<button class="btn" id="mkby">${a.price>0?'Buy · '+a.price+' credits':'Get free'}</button>`}<button class="btn2" id="mkx">Close</button></div>`);
+  const q=s=>d.querySelector(s);q('#mkx').onclick=()=>d.close();
+  if(q('#mkpv'))q('#mkpv').onclick=async()=>{try{const j=await mkFiles(a.id);mkPreview(a,j.files)}catch(e){toast(e.message)}};
+  if(q('#mkop'))q('#mkop').onclick=async()=>{try{const j=await mkFiles(a.id);d.close();mkInstall(a,j.files)}catch(e){toast(e.message)}};
+  if(q('#mkby'))q('#mkby').onclick=()=>{d.close();mkBuy(a)}}
+function mkBuy(a){const d=dialog(`<h3 style="margin:0 0 6px">${a.price>0?'Buy':'Get'} “${esc(String(a.title))}”?</h3><p style="margin:6px 0">${a.price>0?`This costs <b>${a.price} credits</b>${BAL!=null?` (you have ${Math.floor(BAL)})`:''}. You keep the app permanently and can open it in Studio. ${Math.round((1-MK.fee)*100)}% goes to the seller.`:'It is free. It will be added to your library.'}</p><div style="display:flex;gap:8px"><button class="btn" id="mkok">Confirm</button><button class="btn2" id="mkno">Cancel</button></div>`);
+  d.querySelector('#mkno').onclick=()=>d.close();
+  d.querySelector('#mkok').onclick=async()=>{const b=d.querySelector('#mkok');b.disabled=true;b.textContent='Working…';
+    try{const j=await mkApi('buy',{id:a.id});if(j.credits!=null){BAL=j.credits;try{setStatus()}catch{}}d.close();toast(j.already?'Already in your library':'Added to your library');MK.tab='library';MK.loaded=0;renderMarket()}
+    catch(e){d.close();if(e.status===402){setTimeout(()=>{try{openCredits('Not enough credits for this app.')}catch{}},100)}toast(e.message)}}}
+function mkPublishDialog(a){const d=dialog(`<h3 style="margin:0 0 8px">${a.status==='live'?'Edit listing':'Publish to marketplace'}</h3><label class="mkm">Title</label><input id="mkti" value="${esc(String(a.title||''))}" maxlength="60" style="width:100%;margin-bottom:8px"><label class="mkm">Description (what it does)</label><textarea id="mkde" maxlength="400" rows="3" style="width:100%;margin-bottom:8px">${esc(String(a.description||''))}</textarea><div style="display:flex;gap:8px;margin-bottom:8px"><div><label class="mkm">Icon</label><br><input id="mkic" value="${esc(String(a.icon||'🧩'))}" maxlength="4" style="width:60px"></div><div><label class="mkm">Price in credits (0 = free)</label><br><input id="mkpr" type="number" min="0" max="10000" value="${a.price||0}" style="width:120px"></div></div><div class="mkm" id="mkhint" style="margin-bottom:8px"></div><div style="display:flex;gap:8px"><button class="btn" id="mkgo">${a.status==='live'?'Save listing':'Publish'}</button><button class="btn2" id="mkx">Cancel</button></div>`);
+  const q=s=>d.querySelector(s),hint=()=>{const p=Math.max(0,Math.round(+q('#mkpr').value||0));q('#mkhint').textContent=p?`You earn ${(p*(1-MK.fee)).toFixed(2)} credits per sale (${Math.round(MK.fee*100)}% platform fee).`:'Free apps are shown to everyone and can be installed instantly.'};hint();q('#mkpr').oninput=hint;q('#mkx').onclick=()=>d.close();
+  q('#mkgo').onclick=async()=>{const b=q('#mkgo');b.disabled=true;try{
+    const cur=PROJECTS.find(p=>p.cloudId===a.id);
+    await mkApi('save',{id:a.id,title:q('#mkti').value.trim(),description:q('#mkde').value.trim(),icon:q('#mkic').value.trim()||'🧩',files:cur?cur.files:(await mkFiles(a.id)).files});
+    await mkApi('publish',{id:a.id,live:true,price:+q('#mkpr').value||0});d.close();toast('Published to the marketplace');MK.loaded=0;MK.tab='mine';if($('#vmarket').classList.contains('on'))renderMarket();else setView('market')}
+   catch(e){b.disabled=false;toast(e.message)}}}
+function studioCloud(){ensureProj();const p=proj();if(!store.get(TOKK,'')){try{openAccount('Sign in to save apps to the cloud.')}catch{}return}
+  const af=activeFile();if(af&&!af.bin&&$('#code'))af.content=$('#code').value;
+  const d=dialog(`<h3 style="margin:0 0 6px">☁ Cloud save</h3><div class="mkm" style="margin-bottom:8px">${p.cloudId?'This app is linked to your cloud copy. Saving updates it.':'Keep a private copy in your account, then publish it to sell or share.'}</div><label class="mkm">Title</label><input id="mkti" value="${esc(String(p.title||''))}" maxlength="60" style="width:100%;margin-bottom:8px"><label class="mkm">Description</label><textarea id="mkde" rows="2" maxlength="400" style="width:100%;margin-bottom:8px">${esc(String(p.desc||''))}</textarea><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="mksv">${p.cloudId?'Update cloud copy':'Save to cloud'}</button><button class="btn2" id="mkpb">Save + publish…</button><button class="btn2" id="mkmk">Open Market</button><button class="btn2" id="mkx">Close</button></div>`);
+  const q=s=>d.querySelector(s);q('#mkx').onclick=()=>d.close();q('#mkmk').onclick=()=>{d.close();setView('market')};
+  const save1=async()=>{p.title=q('#mkti').value.trim()||p.title;p.desc=q('#mkde').value.trim();const j=await mkApi('save',{id:p.cloudId,title:p.title,description:p.desc,files:p.files});p.cloudId=j.app.id;projSave();return j.app};
+  q('#mksv').onclick=async()=>{try{await save1();d.close();toast('Saved to your cloud');MK.loaded=0}catch(e){toast(e.message)}};
+  q('#mkpb').onclick=async()=>{try{const a=await save1();d.close();mkPublishDialog({...a,description:p.desc||a.description})}catch(e){toast(e.message)}}}
+document.addEventListener('click',async e=>{
+  const tb=e.target.closest('[data-mktab]');if(tb){MK.tab=tb.dataset.mktab;MK.loaded=1;mkLoad();return}
+  const b=e.target.closest('[data-mk]');if(!b||!$('#vmarket').contains(b))return;const id=b.dataset.id,act=b.dataset.mk;
+  const find=()=>MK.apps.concat(MK.mine,MK.lib).find(x=>x.id===id);
+  try{
+    if(act==='view')mkDetails(find());
+    if(act==='buy')mkBuy(find());
+    if(act==='open'){const j=await mkFiles(id);mkInstall(find()||j.app,j.files)}
+    if(act==='prev'){const j=await mkFiles(id);mkPreview(j.app,j.files)}
+    if(act==='rate'){await mkApi('rate',{id,rating:+b.dataset.n});toast('Thanks for rating');const a=MK.lib.find(x=>x.id===id);if(a)a.myrating=+b.dataset.n;renderMarket(true)}
+    if(act==='pub')mkPublishDialog(find());
+    if(act==='unpub'){await mkApi('publish',{id,live:false});toast('Unpublished');mkLoad()}
+    if(act==='del'){const a=find();const d=dialog(`<h3 style="margin:0 0 6px">Delete “${esc(String(a.title))}”?</h3><p class="mkm">Apps that have buyers are unlisted instead (buyers keep access).</p><div style="display:flex;gap:8px"><button class="btn" id="mkok">Delete</button><button class="btn2" id="mkno">Cancel</button></div>`);d.querySelector('#mkno').onclick=()=>d.close();d.querySelector('#mkok').onclick=async()=>{d.close();try{const j=await mkApi('delete',{id});toast(j.note||'Deleted');const p=PROJECTS.find(x=>x.cloudId===id);if(p&&!j.unlisted){delete p.cloudId;projSave()}mkLoad()}catch(er){toast(er.message)}}}
+  }catch(er){toast(er.message)}});
+document.addEventListener('input',e=>{if(e.target.id==='mkq'){clearTimeout(mkq_t);mkq_t=setTimeout(()=>{MK.q=e.target.value;mkLoad().then(()=>{const i=$('#mkq');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}})},350)}});
+document.addEventListener('change',e=>{if(e.target.id==='mks'){MK.sort=e.target.value;mkLoad()}});
+let mkq_t=0;
+const VIEWS=[['chat','Chat','💬'],['studio','Studio','🛠'],['market','Market','🛒'],['personas','Personas','🧠'],['tools','Tools','⚙'],['connect','Connect','🔌'],['sites','Sites','🌐'],['ana','Analytics','📊'],['credits','Credits','◈'],['members','Members','★'],['users','Users','👥'],['about','About','ℹ']];
 function setView(v){document.querySelectorAll('.view').forEach(x=>x.classList.toggle('on',x.id==='v'+v));document.querySelectorAll('#tabs button,#bnav button[data-v]').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
-  ({ana:renderAna,studio:renderStudio,personas:renderPersonas,tools:renderTools,connect:async()=>{if(CT==='live')await loadLive();renderConnect()},sites:renderSites,credits:renderCredits,members:renderMembers,users:renderUsers,about:renderAbout}[v]||(()=>{}))();
+  ({ana:renderAna,studio:renderStudio,market:renderMarket,personas:renderPersonas,tools:renderTools,connect:async()=>{if(CT==='live')await loadLive();renderConnect()},sites:renderSites,credits:renderCredits,members:renderMembers,users:renderUsers,about:renderAbout}[v]||(()=>{}))();
   $('#side').classList.remove('open');$('#scrim').classList.remove('on');window.scrollTo(0,0)}
 $('#tabs').innerHTML=VIEWS.map(([k,l])=>`<button data-v="${k}" class="${k==='chat'?'on':''}">${l}</button>`).join('');
 $('#bnav').innerHTML=['chat','studio','tools'].map(k=>{const v=VIEWS.find(x=>x[0]===k);return `<button data-v="${k}" class="${k==='chat'?'on':''}"><span>${ico(k)}</span>${v[1]}</button>`}).join('')+`<button id="bmore"><span>${ico('more')}</span>More</button>`;
