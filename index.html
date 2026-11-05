@@ -487,6 +487,7 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
 <div class="view" id="vmarket"><div class="pad" id="marketbody"></div></div>
 <div class="view" id="vsites"><div class="pad" id="sitesbody"></div></div>
 <div class="view" id="vcredits"><div class="pad" id="creditsbody"></div></div>
+<div class="view" id="vadmin"><div class="pad" id="adminbody"></div></div>
 <div class="view" id="vmembers"><div class="pad" id="membersbody"></div></div>
 <div class="view" id="vabout"><div class="pad" id="aboutbody"></div></div>
 <div class="view" id="vusers"><div class="pad" id="usersbody"></div></div>
@@ -618,8 +619,8 @@ async function acctCall(path,body){const tok=store.get(TOKK,'');const r=await fe
 let FREE=store.get('aix3_free',false);
 async function claimFree(quiet){try{const j=await acctCall('/api/account/claim-free',{});BAL=j.credits;FREE=true;store.set('aix3_free',true);setStatus();toast('1 free credit added to your account');return true}catch(e){if(/already/i.test(e.message)){FREE=true;store.set('aix3_free',true)}else if(!quiet)toast(e.message);return false}}
 function acctDone(j,msg){EMAIL=j.account.email||'';store.set('aix3_email',EMAIL);ISOWNER=!!j.account.owner;store.set('aix3_owner',ISOWNER);FREE=!!j.account.free_claimed;store.set('aix3_free',FREE);store.set(TOKK,j.token);UNAME=j.account.username||'';store.set('aix3_user',UNAME);BAL=j.account.credits;sampleFn=backendSample();setStatus();toast(msg+' · '+BAL+' credits')}
-let PAYLINKS={},EMAIL=store.get('aix3_email',''),ISOWNER=store.get('aix3_owner',false);
-async function loadPayLinks(){try{const r=await fetch(BACKEND()+'/api/config');if(r.ok)PAYLINKS=(await r.json()).links||{}}catch{}}
+const DEFLINK='https://buy.stripe.com/bJecMZ80DejgarU2mhbII0b';let PAYLINKS={starter:DEFLINK},EMAIL=store.get('aix3_email',''),ISOWNER=store.get('aix3_owner',false);
+async function loadPayLinks(){try{const r=await fetch(BACKEND()+'/api/config');if(r.ok){const L=(await r.json()).links||{};PAYLINKS={starter:DEFLINK,...L}}}catch{}}
 function payUrl(id){const u=PAYLINKS[id];if(!u)return '';try{const x=new URL(u);if(EMAIL)x.searchParams.set('client_reference_id',EMAIL);if(UNAME&&UNAME.includes('@'))x.searchParams.set('prefilled_email',UNAME);return x.toString()}catch{return u}}
 function pmClick(){
   if(!BACKEND()||!store.get(TOKK,'')||!UNAME)return openAccount(true);
@@ -2046,9 +2047,7 @@ function renderMembers(){
    ${[['Light · 20 replies',20],['Regular · 60 replies',60],['Heavy · 150 replies',150]].map(([l,n])=>`<tr><td>${l}</td>${modes.map(m=>{const c=mixCr(m,MEV)*n;return `<td>${f1(c)} · ${usdp(c*PPC)}</td>`}).join('')}</tr>`).join('')}
    <tr><td>Days a Starter lasts (60/day)</td>${modes.map(m=>`<td>${(100/(mixCr(m,MEV)*60)).toFixed(1)}</td>`).join('')}</tr><tr><td>Days an Enterprise pack lasts (60/day)</td>${modes.map(m=>`<td>${(1000/(mixCr(m,MEV)*60)).toFixed(1)}</td>`).join('')}</tr></table></div></div>
   <div class="pn"><h4 class="mono">WHERE THE CREDITS GO</h4><div class="row">${['Reflex, commands, 3D, cache hits: 0','Router, context diet, verification: 0','First model draft: the main cost','Continue / repair passes: only when a check fails','Evaluator (optional): ≈ +0.07 per DEEP reply','Connector results add input tokens'].map(x=>`<span class="badge ${x.endsWith(': 0')?'ok':''}">${x}</span>`).join('')}</div></div>
-  <div class="pn"><h4 class="mono">STRIPE — SET UP LATER</h4><p style="font-size:12.5px;color:#a1a1aa;margin:4px 0 8px">Checkout is wired to Stripe Payment Links. When your Stripe account is ready, paste one link per pack and the buttons above go live for every member. Credits are granted by the owner until the Stripe webhook is added in the server build.</p>
-   ${isAdmin?`<div class="form">${PLANS.map((pl,i)=>`<label>${pl.name} payment link ($${pl.usd} · ${pl.credits.toLocaleString()} credits)</label><input id="sl${i+1}" placeholder="https://buy.stripe.com/…" value="${esc(STRIPE.links?.[pl.id]||'')}">`).join('')}</div><button class="btn" id="slsave">Save links</button>
-   <h4 class="mono" style="margin-top:16px">OWNER — GRANT CREDITS</h4><div class="form"><select id="gu">${ROWS.map(r=>`<option value="${r.id}">${esc(String(r.id).slice(0,8))} · used ${f1(r.credits||0)} cr</option>`).join('')||'<option value="'+(ME||'')+'">You</option>'}</select><input id="ga" type="number" value="100" min="1"></div><button class="btn2" id="ggo">Grant credits</button>`:'<div class="mono" style="font-size:11px;color:var(--m)">Only the owner can edit payment links or grant credits.</div>'}</div>`}
+`}
 function wireMembers(){$('#membersbody').onclick=async e=>{const t=e.target;
   if(t.id==='mev'){MEV=!MEV;return renderMembers()}const mm=t.closest('[data-mm]');if(mm){MEMS.mode=mm.dataset.mm;return renderMembers()}const mt=t.closest('[data-mt]');if(mt){MEMS.tier=mt.dataset.mt;return renderMembers()}
   if(t.id==='slsave'){const links={starter:$('#sl1').value.trim()};for(const k in links)if(links[k]&&!/^https:\/\/(buy|checkout)\.stripe\.com\//.test(links[k]))return toast('Use a stripe.com payment link');try{await DB.doc('config/stripe').set({links,updated:Date.now()});toast('Payment links saved')}catch{toast('Could not save (owner only)')}}
@@ -2166,9 +2165,67 @@ document.addEventListener('click',async e=>{
 document.addEventListener('input',e=>{if(e.target.id==='mkq'){clearTimeout(mkq_t);mkq_t=setTimeout(()=>{MK.q=e.target.value;mkLoad().then(()=>{const i=$('#mkq');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}})},350)}});
 document.addEventListener('change',e=>{if(e.target.id==='mks'){MK.sort=e.target.value;mkLoad()}});
 let mkq_t=0;
+
+/* ============ hidden ADMIN console (not in the tab bar) ============ */
+const ADK='aix3_admtok';let ADM={tab:'overview',q:'',data:null,err:''};
+const admTok=()=>{try{return sessionStorage.getItem(ADK)||ADM.t||''}catch{return ADM.t||''}};
+async function admApi(path,body){const r=await fetch(BACKEND()+path,{method:body===undefined?'GET':'POST',headers:{'content-type':'application/json','x-admin-token':admTok()},body:body===undefined?undefined:JSON.stringify(body)});if(r.status===401){try{sessionStorage.removeItem(ADK)}catch{}ADM.t='';throw new Error('Wrong admin token')}const t=await r.text();let j;try{j=JSON.parse(t)}catch{j=t}if(!r.ok)throw new Error((j&&j.error)||('HTTP '+r.status));return j}
+const admSql=q=>admApi('/api/admin/sql',{query:q});
+const admUsd=n=>'$'+(+n||0).toFixed(2);
+function openAdmin(){setView('admin');try{history.replaceState(null,'','#admin')}catch{}}
+async function admLoad(){
+  const d={};
+  [d.users,d.purch,d.apps,d.use,d.tot,d.ref]=await Promise.all([
+    admSql("SELECT email,username,credits,tokens,requests,created,last FROM users ORDER BY last DESC LIMIT 500"),
+    admSql("SELECT id,email,at,usd,credits,ref FROM purchases ORDER BY id DESC LIMIT 200"),
+    admSql("SELECT id,owner,title,price,status,sales,downloads,earned,updated FROM apps ORDER BY updated DESC LIMIT 200"),
+    admSql("SELECT substr(at,1,10) d,COUNT(*) n,SUM(input+output) tok,SUM(credits) cr FROM usage GROUP BY d ORDER BY d DESC LIMIT 14"),
+    admSql("SELECT (SELECT COUNT(*) FROM users) users,(SELECT COALESCE(SUM(credits),0) FROM users) outstanding,(SELECT COALESCE(SUM(usd),0) FROM purchases) revenue,(SELECT COUNT(*) FROM purchases WHERE usd>0) paid,(SELECT COALESCE(SUM(fee),0) FROM app_sales) fees,(SELECT COUNT(*) FROM apps WHERE status='live') live,(SELECT COUNT(*) FROM app_sales) sales,(SELECT COALESCE(SUM(credits),0) FROM usage) spent"),
+    fetch(BACKEND()+'/api/config').then(r=>r.json()).catch(()=>({}))
+  ]);
+  ADM.data=d;
+}
+async function renderAdmin(){
+  const box=$('#adminbody');
+  if(!BACKEND()){box.innerHTML='<div class="pn"><h4 class="mono">ADMIN</h4><p>No backend configured for this build.</p></div>';return}
+  if(!admTok()){
+    box.innerHTML=`<div class="pn" style="max-width:420px;margin:40px auto"><h4 class="mono">ADMIN ACCESS</h4><p style="font-size:12.5px;color:var(--m)">Enter the admin token (the ADMIN_TOKEN secret on your Worker). It is kept for this tab only and never saved to disk.</p><div class="form"><input id="admt" type="password" placeholder="Admin token" autocomplete="off"></div><button class="btn" id="admgo">Unlock</button><div class="mono" id="admerr" style="color:#f87171;font-size:11px;margin-top:8px">${esc(ADM.err||'')}</div></div>`;
+    const go=async()=>{const v=$('#admt').value.trim();if(!v)return;try{sessionStorage.setItem(ADK,v)}catch{}ADM.t=v;ADM.err='';try{await admSql('SELECT 1');await admLoad();renderAdmin()}catch(e){try{sessionStorage.removeItem(ADK)}catch{}ADM.t='';ADM.err=e.message;renderAdmin()}};
+    $('#admgo').onclick=go;$('#admt').onkeydown=e=>{if(e.key==='Enter')go()};return}
+  if(!ADM.data){box.innerHTML='<div class="pn"><p class="mono">Loading admin data…</p></div>';try{await admLoad()}catch(e){ADM.err=e.message;ADM.t='';try{sessionStorage.removeItem(ADK)}catch{}return renderAdmin()}}
+  const d=ADM.data,t=(d.tot&&d.tot[0])||{},TABS=[['overview','Overview'],['users','Users'],['purch','Purchases'],['apps','Marketplace'],['config','Payments'],['sql','SQL'],['sys','System']];
+  const q=ADM.q.toLowerCase();let body='';
+  const tbl=(h,rows)=>`<div style="overflow:auto"><table class="t mono"><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr>${rows.join('')||'<tr><td colspan="9" style="color:var(--m)">Nothing yet</td></tr>'}</table></div>`;
+  if(ADM.tab==='overview')body=cardsHtml([['USERS',t.users||0],['REVENUE',admUsd(t.revenue)],['PAID ORDERS',t.paid||0],['CREDITS OUTSTANDING',(+t.outstanding||0).toFixed(1)],['CREDITS SPENT',(+t.spent||0).toFixed(1)],['LIVE APPS',t.live||0],['APP SALES',t.sales||0],['MARKET FEES (cr)',(+t.fees||0).toFixed(1)]])+`<div class="pn"><h4 class="mono">LAST 14 DAYS</h4>${tbl(['DAY','REPLIES','TOKENS','CREDITS'],(d.use||[]).map(u=>`<tr><td>${u.d}</td><td>${u.n}</td><td>${(u.tok||0).toLocaleString()}</td><td>${(+u.cr||0).toFixed(2)}</td></tr>`))}</div>`;
+  if(ADM.tab==='users'){const us=(d.users||[]).filter(u=>!q||(u.email+' '+(u.username||'')).toLowerCase().includes(q));
+    body=`<div class="form"><input id="admq" placeholder="Search users…" value="${esc(ADM.q)}"></div>`+tbl(['USER','CREDITS','REQUESTS','TOKENS','LAST','ACTIONS'],us.map(u=>`<tr><td>${esc(u.username||'')}<br><span style="color:var(--m)">${esc(u.email)}</span></td><td>${(+u.credits).toFixed(1)}</td><td>${u.requests}</td><td>${(u.tokens||0).toLocaleString()}</td><td>${u.last?new Date(u.last).toLocaleString():'—'}</td><td style="white-space:nowrap"><button class="btn2" data-adj="${esc(u.email)}" data-n="100">+100</button> <button class="btn2" data-adj="${esc(u.email)}" data-n="-100">−100</button> <button class="btn2" data-adjc="${esc(u.email)}">Custom</button></td></tr>`))+`<div style="display:flex;gap:8px;margin-top:10px"><button class="btn" id="admcsv">⬇ Export users CSV</button></div>`}
+  if(ADM.tab==='purch')body=tbl(['WHEN','USER','USD','CREDITS','REF'],(d.purch||[]).map(p=>`<tr><td>${esc((p.at||'').replace('T',' ').slice(0,16))}</td><td>${esc(p.email)}</td><td>${admUsd(p.usd)}</td><td>${p.credits}</td><td style="color:var(--m)">${esc(String(p.ref||'').slice(0,28))}</td></tr>`))+`<div style="margin-top:10px"><button class="btn" id="admpcsv">⬇ Export purchases CSV</button></div>`;
+  if(ADM.tab==='apps')body=tbl(['APP','OWNER','PRICE','STATUS','SALES','EARNED','ACTIONS'],(d.apps||[]).map(a=>`<tr><td>${esc(a.title||a.id)}</td><td>${esc(a.owner)}</td><td>${a.price}</td><td>${a.status}</td><td>${a.sales}</td><td>${(+a.earned||0).toFixed(1)}</td><td style="white-space:nowrap">${a.status==='live'?`<button class="btn2" data-unp="${a.id}">Unpublish</button> `:''}<button class="btn2" data-delapp="${a.id}">Delete</button></td></tr>`));
+  if(ADM.tab==='config'){const L=(d.ref&&d.ref.links)||{};body=`<div class="pn"><h4 class="mono">STRIPE PAYMENT LINK ($9.99 · 100 credits)</h4><div class="form"><input id="admlink" placeholder="https://buy.stripe.com/…" value="${esc(L.starter||DEFLINK)}"></div><button class="btn" id="admlsave">Save link</button><p style="font-size:12px;color:var(--m)">Credits are delivered automatically by the Stripe webhook. Grant or remove credits by hand in the Users tab.</p></div>`}
+  if(ADM.tab==='sql')body=`<div class="pn"><h4 class="mono">READ-ONLY SQL (single SELECT)</h4><div class="form"><textarea id="admsql" rows="4" style="width:100%;font-family:monospace">SELECT * FROM users LIMIT 20</textarea></div><button class="btn" id="admrun">Run</button><pre id="admout" class="mono" style="max-height:340px;overflow:auto;font-size:11px;margin-top:10px"></pre></div>`;
+  if(ADM.tab==='sys')body=`<div class="pn"><h4 class="mono">SYSTEM</h4><div id="admsys" class="mono" style="font-size:12px;line-height:1.8">Checking…</div><div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn2" id="admrefresh">↻ Refresh data</button><button class="btn2" id="admlock">🔒 Lock admin</button></div></div>`;
+  box.innerHTML=`<div class="row sb" style="margin-bottom:10px"><h3 class="mono" style="margin:0">ADMIN CONSOLE</h3><span class="mono" style="font-size:11px;color:var(--m)">${esc(BACKEND().replace('https://',''))}</span></div><div class="seg" id="admtabs" style="margin-bottom:12px;flex-wrap:wrap">${TABS.map(([k,l])=>`<button data-at="${k}" class="${k===ADM.tab?'on':''}">${l}</button>`).join('')}</div>${body}`;
+  $('#admtabs').onclick=e=>{const b=e.target.closest('[data-at]');if(b){ADM.tab=b.dataset.at;renderAdmin()}};
+  const csv=(rows,name)=>{const ks=rows.length?Object.keys(rows[0]):[];saveFile(name,[ks.join(',')].concat(rows.map(r=>ks.map(k=>'"'+String(r[k]??'').replace(/"/g,'""')+'"').join(','))).join('\n'),'text/csv')};
+  const act=async(fn,msg)=>{try{await fn();toast(msg);await admLoad();renderAdmin()}catch(e){toast(e.message)}};
+  box.onclick=async e=>{const t=e.target;
+    if(t.dataset.adj)return act(()=>admApi('/api/admin/adjust',{email:t.dataset.adj,credits:+t.dataset.n}),(+t.dataset.n>0?'Granted ':'Removed ')+Math.abs(t.dataset.n)+' credits');
+    if(t.dataset.adjc){const n=+(await new Promise(r=>{const dd=dialog('<h3 style="margin:0 0 10px">Adjust credits</h3><div class="form"><input id="adjn" type="number" value="100"></div><div class="row" style="margin-top:10px"><button class="btn" id="adjok">Apply</button><button class="btn2" data-close>Cancel</button></div>');dd.querySelector('#adjok').onclick=()=>{const v=dd.querySelector('#adjn').value;dd.close();r(v)};dd.addEventListener('close',()=>r(0),{once:true})}));if(!n)return;return act(()=>admApi('/api/admin/adjust',{email:t.dataset.adjc,credits:n}),'Adjusted '+n)}
+    if(t.dataset.unp)return act(()=>admApi('/api/admin/app',{id:t.dataset.unp,action:'unpublish'}),'Unpublished');
+    if(t.dataset.delapp){return act(()=>admApi('/api/admin/app',{id:t.dataset.delapp,action:'delete'}),'Deleted')}
+    if(t.id==='admcsv')return csv(d.users,'users.csv');if(t.id==='admpcsv')return csv(d.purch,'purchases.csv');
+    if(t.id==='admlsave'){const u=$('#admlink').value.trim();return act(()=>admApi('/api/admin/config',{links:{starter:u}}),'Payment link saved')}
+    if(t.id==='admrun'){const o=$('#admout');o.textContent='…';try{const r=await admSql($('#admsql').value);o.textContent=JSON.stringify(r,null,1)}catch(er){o.textContent=er.message}}
+    if(t.id==='admrefresh'){ADM.data=null;renderAdmin()}
+    if(t.id==='admlock'){try{sessionStorage.removeItem(ADK)}catch{}ADM.t='';ADM.data=null;renderAdmin()}};
+  const qi=$('#admq');if(qi)qi.oninput=()=>{ADM.q=qi.value;const pos=qi.selectionStart;renderAdmin();const n=$('#admq');n.focus();n.setSelectionRange(pos,pos)};
+  if(ADM.tab==='sys'){const s=$('#admsys');try{const h=await fetch(BACKEND()+'/api/health').then(r=>r.json());s.innerHTML=`Backend: <b style="color:#34d399">${esc(h.status)}</b> · engine ${esc(h.engine||'')} · model ${esc(h.model||'')}<br>Anthropic key set: ${h.hasApiKey?'yes':'<b style="color:#f87171">no</b>'}<br>Users: ${t.users||0} · Live apps: ${t.live||0} · Revenue ${admUsd(t.revenue)}`}catch(er){s.textContent='Backend unreachable: '+er.message}}
+}
+addEventListener('keydown',e=>{if(e.ctrlKey&&e.shiftKey&&e.key.toLowerCase()==='a'){e.preventDefault();openAdmin()}});
+if(location.hash==='#admin')setTimeout(openAdmin,400);
 const VIEWS=[['chat','Chat','💬'],['studio','Studio','🛠'],['market','Market','🛒'],['personas','Personas','🧠'],['tools','Tools','⚙'],['connect','Connect','🔌'],['sites','Sites','🌐'],['ana','Analytics','📊'],['credits','Credits','◈'],['members','Members','★'],['users','Users','👥'],['about','About','ℹ']];
 function setView(v){document.querySelectorAll('.view').forEach(x=>x.classList.toggle('on',x.id==='v'+v));document.querySelectorAll('#tabs button,#bnav button[data-v]').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
-  ({ana:renderAna,studio:renderStudio,market:renderMarket,personas:renderPersonas,tools:renderTools,connect:async()=>{if(CT==='live')await loadLive();renderConnect()},sites:renderSites,credits:renderCredits,members:renderMembers,users:renderUsers,about:renderAbout}[v]||(()=>{}))();
+  ({ana:renderAna,studio:renderStudio,market:renderMarket,personas:renderPersonas,tools:renderTools,connect:async()=>{if(CT==='live')await loadLive();renderConnect()},sites:renderSites,credits:renderCredits,members:renderMembers,admin:renderAdmin,users:renderUsers,about:renderAbout}[v]||(()=>{}))();
   $('#side').classList.remove('open');$('#scrim').classList.remove('on');window.scrollTo(0,0)}
 $('#tabs').innerHTML=VIEWS.map(([k,l])=>`<button data-v="${k}" class="${k==='chat'?'on':''}">${l}</button>`).join('');
 $('#bnav').innerHTML=['chat','studio','tools'].map(k=>{const v=VIEWS.find(x=>x[0]===k);return `<button data-v="${k}" class="${k==='chat'?'on':''}"><span>${ico(k)}</span>${v[1]}</button>`}).join('')+`<button id="bmore"><span>${ico('more')}</span>More</button>`;

@@ -180,6 +180,21 @@ export default {
         const rows = results.map((a) => `| ${a.username || a.email} | ${Number(a.credits).toFixed(1)} | ${a.tokens} | ${a.requests} | ${a.last || '-'} |`);
         return new Response(`# AIX ALPHA users\n\n| Email | Credits | Tokens | Requests | Last active |\n|---|---|---|---|---|\n${rows.join('\n')}\n`, { headers: { 'content-type': 'text/markdown', ...cors(env, req) } });
       }
+      if (path === '/api/admin/adjust' && req.method === 'POST') {       // add or remove credits (negative n deducts, floor 0)
+        const b = await req.json().catch(() => ({})); const q0 = String(b.email || '').toLowerCase(); const n = Number(b.credits);
+        const row = await env.DB.prepare('SELECT email FROM users WHERE email=? OR username=?').bind(q0, q0).first();
+        if (!row || !isFinite(n) || n === 0) return json(env, req, { error: 'email + nonzero credits required' }, 400);
+        await env.DB.prepare('UPDATE users SET credits=MAX(0,credits+?) WHERE email=?').bind(n, row.email).run();
+        if (n > 0) await env.DB.prepare('INSERT INTO purchases(email,at,usd,credits,ref) VALUES(?,?,0,?,?)').bind(row.email, new Date().toISOString(), n, 'admin-grant-' + Date.now()).run();
+        return json(env, req, vw(env, await getUser(env, row.email)));
+      }
+      if (path === '/api/admin/app' && req.method === 'POST') {          // moderate marketplace apps
+        const b = await req.json().catch(() => ({})); const id = String(b.id || '');
+        if (b.action === 'unpublish') await env.DB.prepare("UPDATE apps SET status='draft' WHERE id=?").bind(id).run();
+        else if (b.action === 'delete') await env.DB.prepare('DELETE FROM apps WHERE id=?').bind(id).run();
+        else return json(env, req, { error: 'action must be unpublish or delete' }, 400);
+        return json(env, req, { ok: true });
+      }
       if (path === '/api/admin/sql' && req.method === 'POST') {          // owner-only read queries
         const b = await req.json().catch(() => ({})); const q = String(b.query || '');
         if (!/^\s*select\b/i.test(q) || /;\s*\S/.test(q)) return json(env, req, { error: 'single SELECT only' }, 400);
