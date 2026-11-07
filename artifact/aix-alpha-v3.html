@@ -619,6 +619,31 @@ function route(p,att){const r=route0(p,att);
 {const tg=targetMode();if(!r.command&&!r.reflex&&!r.m3){if(tg==='site'||tg==='app'){r.build=true;r.app=true;r.tier='DEEP'}else if(tg==='chat'){r.build=false}}}
 r.intent=intentOf(p,r);if(r.intent==='chat'&&!r.command&&!r.reflex&&!r.m3&&!r.build){r.app=false;r.code=false;if(r.tier==='DEEP'&&p.length<500&&!/\b(essay|report|analy[sz]e|compare|in depth|deep dive|comprehensive|audit|detailed|long)\b/i.test(p))r.tier='STANDARD'}
 r.conn=!r.command&&!r.reflex&&typeof CONNRE!=='undefined'&&CONNRE.test(p);if(r.conn&&r.tier==='MICRO')r.tier='STANDARD';return r}
+
+function plainText(md){return String(md).replace(/```[\w+.:\/-]*\n([\s\S]*?)```/g,'$1').replace(/^#{1,6}\s*/gm,'').replace(/\*\*(.*?)\*\*/g,'$1').replace(/\*(.*?)\*/g,'$1').replace(/`([^`]+)`/g,'$1').replace(/^\s*[-*]\s+/gm,'- ').trim()}
+function docTitle(md){const h=String(md).match(/^#{1,3}\s*(.+)$/m);const l=h?h[1]:String(md).split('\n').find(x=>x.trim())||'AIX Alpha document';return l.replace(/[*_`#]/g,'').trim().slice(0,70)}
+function dlBlob(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},4000)}
+function loadJsPdf(){return new Promise((res,rej)=>{if(window.jspdf)return res(window.jspdf);const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';s.onload=()=>res(window.jspdf);s.onerror=()=>rej(new Error('could not load the PDF library (check your connection)'));document.head.appendChild(s)})}
+async function exportDoc(md,fmt){const title=docTitle(md),slug=title.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40)||'document';
+  if(fmt==='txt'){const name=slug+'.txt';dlBlob(new Blob([title+'\n'+'='.repeat(Math.min(title.length,60))+'\n\n'+plainText(md)+'\n'],{type:'text/plain;charset=utf-8'}),name);return name}
+  const {jsPDF}=await loadJsPdf();const doc=new jsPDF({unit:'pt',format:'a4'});const PW=doc.internal.pageSize.getWidth(),PH=doc.internal.pageSize.getHeight(),M=64,CW=PW-2*M;let y=0,pg=1;
+  const footer=()=>{doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(140,140,150);doc.text('AIX Alpha',M,PH-34);doc.text(String(pg),PW-M,PH-34,{align:'right'});doc.setDrawColor(52,211,153);doc.setLineWidth(1.2);doc.line(M,PH-48,PW-M,PH-48)};
+  const newPage=()=>{footer();doc.addPage();pg++;y=M+10};
+  doc.setFillColor(9,9,11);doc.rect(0,0,PW,190,'F');doc.setFillColor(52,211,153);doc.rect(0,190,PW,5,'F');
+  doc.setTextColor(52,211,153);doc.setFont('courier','bold');doc.setFontSize(10);doc.text('AIX ALPHA  /  DOCUMENT',M,64);
+  doc.setTextColor(244,244,245);doc.setFont('times','bold');doc.setFontSize(30);const tl=doc.splitTextToSize(title,CW);doc.text(tl.slice(0,3),M,102);
+  doc.setTextColor(161,161,170);doc.setFont('helvetica','normal');doc.setFontSize(10);doc.text(new Date().toLocaleDateString(undefined,{year:'numeric',month:'long',day:'numeric'}),M,172);
+  y=240;const lines=String(md).replace(/\r/g,'').split('\n');let inCode=false;
+  for(let raw of lines){let ln=raw;
+    if(/^```/.test(ln)){inCode=!inCode;y+=4;continue}
+    if(inCode){doc.setFont('courier','normal');doc.setFontSize(9);doc.setTextColor(40,40,48);const w=doc.splitTextToSize(ln||' ',CW-16);for(const x of w){if(y>PH-80)newPage();doc.setFillColor(244,244,246);doc.rect(M-6,y-10,CW+12,14,'F');doc.text(x,M,y);y+=13}continue}
+    if(!ln.trim()){y+=8;continue}
+    const h=ln.match(/^(#{1,6})\s*(.+)$/);
+    if(h){const lv=h[1].length,sz=lv===1?22:lv===2?17:14;if(y>PH-120)newPage();y+=lv===1?10:6;doc.setFont('times','bold');doc.setFontSize(sz);doc.setTextColor(9,9,11);const w=doc.splitTextToSize(h[2].replace(/[*_`]/g,''),CW);for(const x of w){doc.text(x,M,y);y+=sz*1.25}if(lv<=2){doc.setDrawColor(52,211,153);doc.setLineWidth(1.5);doc.line(M,y-sz*0.6,M+46,y-sz*0.6);y+=6}y+=4;continue}
+    const b=ln.match(/^\s*([-*]|\d+\.)\s+(.+)$/);let txt=(b?b[2]:ln).replace(/\*\*(.*?)\*\*/g,'$1').replace(/\*(.*?)\*/g,'$1').replace(/`([^`]+)`/g,'$1');
+    doc.setFont('times','normal');doc.setFontSize(12);doc.setTextColor(38,38,46);const indent=b?18:0;const w=doc.splitTextToSize(txt,CW-indent);
+    w.forEach((x,i)=>{if(y>PH-80)newPage();if(b&&i===0){doc.setFillColor(52,211,153);doc.circle(M+5,y-4,2,'F')}doc.text(x,M+indent,y);y+=17});y+=5}
+  footer();const name=slug+'.pdf';doc.save(name);return name}
 let REMT=[];function startReminders(){REMT.forEach(clearInterval);REMT=[];(store.get('aix3_remind',[])||[]).forEach(x=>REMT.push(setInterval(()=>{try{toast(x.tx);if(window.Notification&&Notification.permission==='granted')new Notification('AIX Alpha',{body:x.tx})}catch(e){}},x.ms)))}
 setTimeout(()=>{try{startReminders()}catch(e){}},800);
 function route0(p,att){
@@ -626,6 +651,7 @@ function route0(p,att){
   const cmd=[[/^\/(budget|cost|usage)\b/i,'budget'],[/^\/notes\b/i,'notes'],[/^\/(forget|clear)\b/i,'forget'],[/^\/(help|\?)\b/i,'help'],[/^\/(connect|connectors|plug)\b/i,'connect'],[/^\/mode\b/i,'mode'],[/^\/memory\b/i,'memory'],[/^\/tasks?\b/i,'tasks']].find(([r])=>r.test(t));
   if(cmd)return{tier:'NANO',command:cmd[1]};
   if(/^\s*(stop|clear|cancel)\s+(all\s+)?(my\s+)?(reminders?|timers?)\b/i.test(t)){store.set('aix3_remind',[]);startReminders();return{tier:'NANO',reflex:'All reminders cleared.'}}
+  {const fm=t.match(/\b(pdf|\.txt|txt|text file|plain text|word doc|docx|markdown|\.md)\b/i);if(fm&&/\b(create|make|generate|export|save|turn|convert|give|download|put|produce|build)\b/i.test(t)&&!/\b(script|python|javascript|function|code|app|website|api|library|tool)\b/i.test(t)){const c=(typeof curChat==='function'&&curChat()?.msgs)||[];const src=[...c].reverse().find(m=>m.role==='assistant'&&!m.err&&!m.mesh&&m.content&&m.content.length>200&&!/^__DOCDONE__/.test(m.content));if(src){const f=/pdf/i.test(fm[1])?'pdf':'txt';return{tier:'NANO',reflex:'__DOC__'+f}}}}
   {const rm=t.match(/\bevery\s+(\d+|a|an|one)?\s*(second|sec|minute|min|hour|hr)s?\b/i);if(rm&&/\b(say|remind|tell|ping|notify|show|greet|message|alert)\b/i.test(t)&&!/\b(code|script|python|javascript|function|app|website|html)\b/i.test(t)){const n=/^\d+$/.test(rm[1]||'')?+rm[1]:1,u=/^s/i.test(rm[2])?1e3:/^m/i.test(rm[2])?6e4:36e5;let tx=(t.match(/\bsay\s+(.+?)(?:\s+to\s+me)?\s*$/i)||[])[1]||(/hello|hi\b/i.test(t)?'Hello!':'Reminder from AIX Alpha');tx=tx.replace(/^["']|["']$/g,'').replace(/^(hello|hi)$/i,'Hello!');return{tier:'NANO',reflex:'__REM__'+(n*u)+'|'+tx}}}
   if(w<=12&&!/\b(write|script|code|program|python|javascript|function|build|make|create|generate|format)\b/i.test(t)&&/\b(what(?:'s| is) (?:the |today'?s )?(?:date|time|day)|what (?:time|day|date) is (?:it|today)|what day is it|today'?s date|current (?:date|time)|do you know what (?:today'?s |the )?(?:date|time|day))/i.test(t)){const n=new Date();return{tier:'NANO',reflex:'It is **'+n.toLocaleDateString([],{weekday:'long',year:'numeric',month:'long',day:'numeric'})+'**, '+n.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+' ('+Intl.DateTimeFormat().resolvedOptions().timeZone+').'}}
   const rf=[[/^(hi|hey|hello|yo|sup|hola|gm)\b[\s.!?]*$/i,'AIX Alpha v3 online. What are we building?'],[/^(thanks|thank you|thx|ty)\b[\s.!?]*$/i,'Anytime. Send the next task when ready.'],[/^(ok|okay|cool|nice|great|got it|perfect|k)[\s.!?]*$/i,'Acknowledged. Standing by.']].find(([r])=>t.length<=24&&r.test(t));
@@ -859,6 +885,7 @@ async function runLoop0(chat,prompt,onText,onStep){
     if(r.command==='mode')return out(`Loop mode is **${S.mode.toUpperCase()}**. Change it in the LOOP bar.`);
     return out('**Local commands (0 tokens):**\n- `/budget` spend\n- `/notes` remembered notes\n- `/forget` clear notes\n- `/mode` current mode\n- `/connect` plug in connectors\n- `/memory` shared memory (add, del, learn, clear)\n- `/tasks` task list (add, done, plan, clear)');
   }
+  if(r.reflex&&r.reflex.startsWith('__DOC__')){const fmt=r.reflex.slice(7);const c=chat.msgs;const src=[...c].reverse().find(m=>m.role==='assistant'&&!m.err&&!m.mesh&&m.content&&m.content.length>200);step('Building '+fmt.toUpperCase()+' file locally (0 tokens)','ok');t.saved=100;try{const nm=await exportDoc(src.content,fmt);return out('Done. **'+nm+'** was created from the last answer and downloaded to your device. If your browser blocked it, tap the download prompt or allow downloads for this site.')}catch(e){return out('I could not build the file: '+(e&&e.message||e)+'. Try again, or copy the text with the copy button on the answer.')}}
   if(r.reflex&&r.reflex.startsWith('__REM__')){const [ms,tx]=[+r.reflex.slice(7).split('|')[0],r.reflex.slice(7).split('|').slice(1).join('|')];const L=store.get('aix3_remind',[])||[];L.push({id:'r'+Date.now(),ms,tx});store.set('aix3_remind',L);startReminders();try{if(window.Notification&&Notification.permission==='default')Notification.requestPermission()}catch(e){}const every=ms>=36e5?(ms/36e5)+' hour(s)':ms>=6e4?(ms/6e4)+' minute(s)':(ms/1e3)+' second(s)';step('Reminder created locally (0 tokens)','ok');t.saved=100;return out('Done. I will say **'+tx+'** every '+every+' while this page is open. Say "stop reminders" to clear them.')}
   if(r.reflex){step('Reflex reply (0 tokens)','ok');t.saved=100;return out(r.reflex)}
   if(r.m3){step('Local 3D generator (0 tokens)','ok');t.saved=100;return out('3D mesh generated locally — drag to rotate.',{mesh:meshFrom(prompt)})}
