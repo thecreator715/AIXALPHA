@@ -968,6 +968,7 @@ async function send(text,opts={}){
   for(const a of ATT){if(a.type==='text')full+=`\n\n[Attached file: ${a.name}]\n\`\`\`\n${a.text.slice(0,20000)}\n\`\`\``;else if(a.type==='image')imgs.push(a.blob)}
   S.curImages=imgs;ATT=[];renderAtt();text=full;
   c.msgs.push({role:'user',content:text,ts:Date.now()});S.busy=true;$('#send').disabled=true;renderThreads();renderMsgs();
+  {const sj=imgs.length?null:parseSchedule(text);if(sj){let msg;try{msg=await scheduleJob(sj)}finally{S.busy=false;$('#send').disabled=false}c.msgs.push({role:'assistant',content:msg,ts:Date.now()});save();renderThreads();renderMsgs();return}}
   if(askOn()&&!opts.clarified&&!imgs.length&&!S.vid&&!S.img&&askWorth(text)&&!VIDINTENT.test(text)&&!IMGINTENT.test(text)){const lv=document.createElement('div');lv.className='msg';lv.id='asklive';lv.innerHTML='<div class="who mono"><b>AIX ALPHA</b><span class="typing"><i></i><i></i><i></i></span></div><div class="mono" style="font-size:11px;color:var(--m)">checking whether I need any details…</div>';$('#msgs').appendChild(lv);$('#chat').scrollTop=1e9;const qs=await clarify(c.msgs.slice(0,-1),text);const lvn=$('#asklive');if(lvn)lvn.remove();if(qs){c.msgs.push({role:'assistant',content:'Questions: '+qs.map(q=>q.q).join(' | '),ask:{qs,ans:{},other:{},orig:text},ts:Date.now()});S.busy=false;$('#send').disabled=false;save();renderThreads();renderMsgs();return}}
   if(S.vid||VIDINTENT.test(text)){const blob=imgs[0]||null;try{await chatVideo(c,text,blob)}finally{S.busy=false;$('#send').disabled=false;save();renderThreads();renderMsgs()}return}
   if((S.img||IMGINTENT.test(text))&&!imgs.length){try{await chatFlux(c,text)}finally{S.busy=false;$('#send').disabled=false;save();renderThreads();renderMsgs()}return}
@@ -2286,6 +2287,42 @@ if(location.hash==='#admin')setTimeout(openAdmin,400);
 const MEMK='aix3_memory',TSKK='aix3_tasks';
 const pgCss='background:var(--p2);border:1px solid var(--b);border-radius:8px;color:var(--t);padding:8px 10px;font:inherit;font-size:13px;outline:0';
 function nodeNote(){return NODEUP&&(S.mode==='eco'||S.mode==='balanced')?'Model actions run on your Mac node.':'Model actions use the current engine (ECO or BALANCED mode uses your Mac node when it is online).'}
+
+/* ============ Scheduled tasks (run on time in the cloud, even with this page closed) ============ */
+const jobHdr=()=>({'content-type':'application/json',authorization:'Bearer '+store.get(TOKK,'')});
+const jobOn=()=>!!(BACKEND()&&store.get(TOKK,''));
+async function jobApi(path,body){const r=await fetch(BACKEND()+path,body===undefined?{headers:jobHdr()}:{method:'POST',headers:jobHdr(),body:JSON.stringify(body)});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Request failed ('+r.status+')');return j}
+const repLabel=r=>r==='hourly'?'every hour':r==='daily'?'every day':r==='weekly'?'every week':/^every:\d+$/.test(r||'')?'every '+r.slice(6)+' min':'once';
+function parseSchedule(text){
+  let s=text.trim().replace(/^\/tasks?\s+(schedule\s+)?/i,'');
+  if(!/^(create|write|make|generate|post|publish|send|check|summari[sz]e|find|remind|draft|run|monitor|give|tell|email|scan|update|research|build|compile|collect|review)\b/i.test(s))return null;
+  let rep='none',due=null,m,now=Date.now();const cut=x=>{s=s.replace(x,' ')};
+  if(m=s.match(/\bevery\s+(\d+)\s*(min(?:ute)?s?|hours?|hrs?|h)\b/i)){const n=+m[1],mins=/^h/i.test(m[2])?n*60:n;rep=mins===60?'hourly':mins===1440?'daily':'every:'+Math.max(15,mins);cut(m[0])}
+  else if(m=s.match(/\b(every\s+(?:hour|hr)|hourly)\b/i)){rep='hourly';cut(m[0])}
+  else if(m=s.match(/\b(every\s+(?:day|morning|night|evening)|each\s+day|daily)\b/i)){rep='daily';cut(m[0]);if(/morning/i.test(m[0]))s+=' at 9am';else if(/evening|night/i.test(m[0]))s+=' at 8pm'}
+  else if(m=s.match(/\b(every\s+week|each\s+week|weekly)\b/i)){rep='weekly';cut(m[0])}
+  if(m=s.match(/\bin\s+(\d+)\s*(min(?:ute)?s?|hours?|hrs?)\b/i)){due=now+(+m[1])*(/^h/i.test(m[2])?3600e3:60e3);cut(m[0])}
+  else if(m=s.match(/\bat\s+(\d{1,2})(?::(\d\d))?\s*(am|pm)?\b/i)){let h=+m[1];const mi=+(m[2]||0),ap=(m[3]||'').toLowerCase();if(ap==='pm'&&h<12)h+=12;if(ap==='am'&&h===12)h=0;if(h<24){const d=new Date();d.setHours(h,mi,0,0);if(d.getTime()<=now)d.setDate(d.getDate()+1);due=d.getTime();cut(m[0])}}
+  if(rep==='none'&&due==null)return null;
+  if(due==null)due=now+30e3;
+  s=s.replace(/\s+/g,' ').replace(/[\s,.;-]+$/,'').trim();if(!s)return null;
+  const remind=/^remind\b/i.test(s);
+  return{title:s.slice(0,80),prompt:remind?'':s+(rep!=='none'?'\n\n(This is a scheduled recurring task. Do it now and reply with only the finished result. Make each run fresh and different from earlier runs.)':''),due,repeat:rep};
+}
+async function scheduleJob(sj){
+  if(!jobOn())return 'Sign in first (menu, AIX account) so I can run this on time in the cloud, then say it again.';
+  try{await jobApi('/api/jobs',sj);const when=new Date(sj.due).toLocaleString([], {weekday:'short',hour:'numeric',minute:'2-digit'});return `**Scheduled:** ${sj.title}\n\n- First run: ${when} (the cloud checks every 5 minutes)\n- Repeat: ${repLabel(sj.repeat)}\n- ${sj.prompt?'Each result is saved on the **Tasks** page. ECO/BALANCED runs use your Mac node when it is online.':'Plain reminder, it will show on the **Tasks** page.'}`}catch(e){return 'Could not schedule: '+e.message}
+}
+let JOBSEEN=store.get('aix3_jobseen',{})||{};
+async function pollJobs(first){
+  if(!jobOn())return;try{const j=await jobApi('/api/jobs');for(const x of j.jobs){if(x.last&&JOBSEEN[x.id]!==x.last){const was=JOBSEEN[x.id]!==undefined;JOBSEEN[x.id]=x.last;if(was||!first){toast('Task ran: '+x.title);try{if(window.Notification&&Notification.permission==='granted')new Notification('AIX task done',{body:x.title})}catch{}}}}store.set('aix3_jobseen',JOBSEEN);if($('#vtasks')&&$('#vtasks').classList.contains('on')&&!document.activeElement?.closest?.('#sched'))loadSched()}catch{}
+}
+setInterval(()=>pollJobs(false),60000);setTimeout(()=>pollJobs(true),4000);
+async function loadSched(){
+  const box=$('#sched');if(!box)return;
+  if(!jobOn()){box.innerHTML='<div class="mono" style="color:var(--m);font-size:12px">Sign in (menu, AIX account) to schedule tasks that run on time in the cloud.</div>';return}
+  try{const j=await jobApi('/api/jobs');box.innerHTML=j.jobs.length?j.jobs.map(x=>`<div class="sj" data-id="${x.id}" style="padding:10px 0;border-bottom:1px solid var(--b)"><div style="display:flex;gap:8px;align-items:center"><div style="flex:1"><b style="font-size:13px">${esc(x.title)}</b><div class="mono" style="font-size:11px;color:var(--m)">${x.status==='done'?'finished':'next: '+new Date(x.due).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})} · ${repLabel(x.repeat)} · ${x.prompt?'AI task':'reminder'}${x.last?' · last run '+new Date(x.last).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}):''}</div></div><button class="btn2" data-act="run">Run now</button><button class="btn2" data-act="runs">Results</button><button class="btn2" data-act="del">✕</button></div><div class="sjr" style="display:none;margin-top:8px"></div></div>`).join(''):'<div class="mono" style="color:var(--m);font-size:12px">Nothing scheduled. Add one above, or just tell the chat: <i>write a blog post every hour</i>.</div>'}catch(e){box.innerHTML='<div class="mono" style="color:var(--bad);font-size:12px">'+esc(e.message)+'</div>'}
+}
 function renderMemory(){
   const el=$('#membody'),L=store.get(MEMK,[])||[];
   el.innerHTML=`<div class="ab" style="max-width:760px;margin:0 auto"><h2 class="mono" style="margin:0 0 4px">MEMORY</h2><div class="mono" style="font-size:11px;color:var(--m);margin-bottom:12px">Facts every chat can see. Also editable in chat with <b>/memory</b>. ${esc(nodeNote())}</div>
@@ -2304,12 +2341,25 @@ function renderTasks(){
   el.innerHTML=`<div class="ab" style="max-width:760px;margin:0 auto"><h2 class="mono" style="margin:0 0 4px">TASKS</h2><div class="mono" style="font-size:11px;color:var(--m);margin-bottom:12px">${open} open · ${L.length-open} done. Open tasks are shared with every chat. Also editable with <b>/tasks</b>. ${esc(nodeNote())}</div>
   <div style="display:flex;gap:8px;margin-bottom:10px"><input id="tnew" placeholder="Add a task…" style="flex:1;${pgCss}"><button class="btn" id="tadd">Add</button></div>
   <div style="display:flex;gap:8px;margin-bottom:12px"><input id="tgoal" placeholder="Or describe a goal and let the model plan it…" style="flex:1;${pgCss}"><button class="btn2" id="tplan">Plan</button></div>
+  <h3 class="mono" style="margin:22px 0 4px;font-size:13px">SCHEDULED (runs on time, even when this page is closed)</h3>
+  <div class="mono" style="font-size:11px;color:var(--m);margin-bottom:8px">Example: <i>write a blog post every hour</i> typed in chat does this for you.</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"><input id="sprompt" placeholder="What should AIX do? (leave empty for a plain reminder)" style="flex:1;min-width:220px;${pgCss}"><input id="stitle" placeholder="Name" style="width:150px;${pgCss}"></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><input id="sdue" type="datetime-local" style="${pgCss}"><select id="srep" style="${pgCss}"><option value="none">Once</option><option value="every:15">Every 15 min</option><option value="every:30">Every 30 min</option><option value="hourly">Every hour</option><option value="daily">Every day</option><option value="weekly">Every week</option></select><button class="btn" id="sadd">Schedule</button></div>
+  <div id="sched" style="margin-bottom:18px"></div>
+  <h3 class="mono" style="margin:6px 0 8px;font-size:13px">TO-DO</h3>
   <div style="margin-bottom:8px"><button class="btn2" id="tclear"${L.length-open?'':' disabled'}>Clear finished</button></div>
   <div id="tlist">${L.length?L.map((x,i)=>`<div style="display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--b)"><input type="checkbox" data-c="${i}" ${x.d?'checked':''} style="width:18px;height:18px;flex:none"><div contenteditable="true" spellcheck="false" data-e="${i}" style="flex:1;outline:0;font-size:13px;line-height:1.45;${x.d?'text-decoration:line-through;color:var(--m)':''}">${esc(x.t)}</div><button class="btn2" data-d="${i}" title="Delete">✕</button></div>`).join(''):'<div class="mono" style="color:var(--m);font-size:12px">No tasks yet.</div>'}</div></div>`;
   const add=()=>{const v=$('#tnew').value.trim();if(!v)return;const a=store.get(TSKK,[])||[];a.push({t:v,d:0});store.set(TSKK,a);renderTasks()};
   $('#tadd').onclick=add;$('#tnew').onkeydown=e=>{if(e.key==='Enter')add()};
   $('#tclear').onclick=()=>{store.set(TSKK,(store.get(TSKK,[])||[]).filter(x=>!x.d));renderTasks()};
   $('#tplan').onclick=async()=>{const g=$('#tgoal').value.trim();if(!g)return;const b=$('#tplan');b.disabled=true;b.textContent='Planning…';try{const x=await ask('Break this goal into 4 to 8 concrete, ordered tasks. One short imperative line each, no commentary.\n\nGoal: '+g,null,null);const n=(x.text||'').split(/\n/).map(l=>l.replace(/^\s*(?:[-*•]|\d+[.)])\s*/,'').replace(/^\[.?\]\s*/,'').trim()).filter(l=>l.length>2&&l.length<200).slice(0,8);const a=store.get(TSKK,[])||[];for(const l of n)a.push({t:l,d:0});store.set(TSKK,a);toast(n.length?'Added '+n.length+' tasks':'Could not plan that')}catch(e){toast(e.message||'Failed')}renderTasks()};
+  {const d0=new Date(Date.now()+3600e3);d0.setMinutes(0,0,0);const z=n=>String(n).padStart(2,'0');$('#sdue').value=d0.getFullYear()+'-'+z(d0.getMonth()+1)+'-'+z(d0.getDate())+'T'+z(d0.getHours())+':00'}
+  $('#sadd').onclick=async()=>{const pr=$('#sprompt').value.trim(),ti=($('#stitle').value.trim()||pr).slice(0,80),du=new Date($('#sdue').value).getTime();if(!ti||!du){toast('Enter what to do and a time');return}const b=$('#sadd');b.disabled=true;try{await jobApi('/api/jobs',{title:ti,prompt:pr,due:du,repeat:$('#srep').value});$('#sprompt').value='';$('#stitle').value='';toast('Scheduled')}catch(e){toast(e.message)}b.disabled=false;loadSched()};
+  $('#sched').onclick=async e=>{const bt=e.target.closest('[data-act]');if(!bt)return;const row=bt.closest('.sj'),id=row.dataset.id,box=row.querySelector('.sjr');
+    try{if(bt.dataset.act==='del'){if(confirm('Delete this scheduled task?')){await jobApi('/api/jobs/delete',{id});loadSched()}}
+    else if(bt.dataset.act==='run'){bt.disabled=true;bt.textContent='Running…';await jobApi('/api/jobs/run',{id});toast('Done. See Results');loadSched()}
+    else{if(box.style.display==='block'){box.style.display='none';return}const r=await jobApi('/api/jobs/runs',{id});box.style.display='block';box.innerHTML=r.runs.length?r.runs.map(x=>`<details style="margin-bottom:6px"><summary class="mono" style="font-size:11px;cursor:pointer">${new Date(x.at).toLocaleString()} · ${esc(x.engine||'')}</summary><div style="font-size:13px;line-height:1.5;padding:6px 0">${md(x.result||'')}</div></details>`).join(''):'<div class="mono" style="font-size:11px;color:var(--m)">No runs yet. Next check is within 5 minutes of the due time.</div>'}}catch(er){toast(er.message)}};
+  loadSched();
   $('#tlist').onclick=e=>{const d=e.target.closest('[data-d]');if(d){const a=store.get(TSKK,[])||[];a.splice(+d.dataset.d,1);store.set(TSKK,a);renderTasks()}};
   $('#tlist').onchange=e=>{const c=e.target.closest('[data-c]');if(!c)return;const a=store.get(TSKK,[])||[];a[+c.dataset.c].d=c.checked?1:0;store.set(TSKK,a);renderTasks()};
   $('#tlist').addEventListener('focusout',e=>{const t=e.target.closest('[data-e]');if(!t)return;const a=store.get(TSKK,[])||[],v=t.textContent.trim(),i=+t.dataset.e;if(!a[i])return;if(!v)a.splice(i,1);else a[i].t=v;store.set(TSKK,a);if(!v)renderTasks()});

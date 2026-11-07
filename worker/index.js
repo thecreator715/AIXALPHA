@@ -137,10 +137,90 @@ async function stripe(env, req) {
   return new Response('{"received":true}', { headers: { 'content-type': 'application/json' } });
 }
 
+// ---- Scheduled tasks: run on time via a Cron Trigger even when no page is open ----
+let JOBS_READY = false;
+async function ensureJobs(env) {
+  if (JOBS_READY) return;
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY, email TEXT NOT NULL, title TEXT, prompt TEXT, due INTEGER, repeat TEXT DEFAULT \'none\', status TEXT DEFAULT \'pending\', last INTEGER, result TEXT, engine TEXT, created INTEGER)').run();
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS job_runs(id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT NOT NULL, at INTEGER, result TEXT, engine TEXT)').run();
+  JOBS_READY = true;
+}
+const JOB_STEP = { hourly: 3600e3, daily: 86400e3, weekly: 604800e3 };
+const stepOf = (r) => JOB_STEP[r] || (/^every:\d+$/.test(r || '') ? Math.max(15, Math.min(+r.slice(6), 10080)) * 60e3 : 0);
+async function runPrompt(env, a, prompt) {
+  const nd = await nodeGet(env);
+  if (nd) {
+    try {
+      const up = await fetch(nd.url.replace(/\/+$/, '') + '/v1/chat/completions', { method: 'POST', signal: AbortSignal.timeout(90000), headers: { 'content-type': 'application/json', authorization: 'Bearer ' + nd.token }, body: JSON.stringify({ model: nd.model, stream: false, max_tokens: 2048, messages: [{ role: 'user', content: prompt }] }) });
+      if (up.ok) { const j = await up.json(); const t = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || ''; if (t) { await charge(env, a, { input: (j.usage && j.usage.prompt_tokens) || Math.ceil(prompt.length / 4), output: (j.usage && j.usage.completion_tokens) || Math.ceil(t.length / 4) }); return { text: t, engine: 'node' }; } }
+    } catch (e) { /* fall through to cloud */ }
+  }
+  const r = await fetch(env.UPSTREAM_URL || 'https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: MODEL, max_tokens: 2048, messages: [{ role: 'user', content: prompt }] }) });
+  if (!r.ok) throw new Error('model error ' + r.status);
+  const j = await r.json(); const t = (j.content || []).map((c) => c.text || '').join('');
+  await charge(env, a, { input: (j.usage && j.usage.input_tokens) || 0, output: (j.usage && j.usage.output_tokens) || 0 });
+  return { text: t, engine: 'cloud' };
+}
+async function runJob(env, j) {
+  const now = Date.now(); let result = '', engine = '';
+  try {
+    if (!j.prompt) { result = 'Reminder: ' + (j.title || ''); engine = 'reminder'; }
+    else {
+      const a = await getUser(env, j.email);
+      if (!a) result = 'Skipped: account not found.';
+      else if (a.credits <= 0 && !owners(env).includes(a.email)) result = 'Skipped: out of credits. Top up and run it again.';
+      else { const r = await runPrompt(env, a, j.prompt); result = r.text; engine = r.engine; }
+    }
+  } catch (e) { result = 'Failed: ' + (e && e.message ? e.message : e); }
+  const step = stepOf(j.repeat);
+  let nextDue = j.due, status = 'done';
+  if (step) { nextDue = j.due + step; while (nextDue <= now) nextDue += step; status = 'pending'; }
+  await env.DB.prepare('INSERT INTO job_runs(job_id,at,result,engine) VALUES(?,?,?,?)').bind(j.id, now, String(result).slice(0, 8000), engine).run();
+  await env.DB.prepare('DELETE FROM job_runs WHERE job_id=? AND id NOT IN (SELECT id FROM job_runs WHERE job_id=? ORDER BY id DESC LIMIT 30)').bind(j.id, j.id).run();
+  await env.DB.prepare('UPDATE jobs SET status=?, due=?, last=?, result=?, engine=? WHERE id=?').bind(status, nextDue, now, String(result).slice(0, 6000), engine, j.id).run();
+}
+async function runDueJobs(env) {
+  await ensureJobs(env);
+  const rows = (await env.DB.prepare("SELECT * FROM jobs WHERE status='pending' AND due<=? ORDER BY due LIMIT 5").bind(Date.now()).all()).results || [];
+  for (const j of rows) { await env.DB.prepare("UPDATE jobs SET status='running' WHERE id=? AND status='pending'").bind(j.id).run(); await runJob(env, j); }
+  // un-stick anything left 'running' for over 10 minutes
+  await env.DB.prepare("UPDATE jobs SET status='pending' WHERE status='running' AND (last IS NULL OR last<?)").bind(Date.now() - 600e3).run();
+}
+async function jobsApi(env, req, path) {
+  const a = await authed(env, req);
+  if (!a) return json(env, req, { error: 'Sign in to schedule tasks.' }, 401);
+  await ensureJobs(env);
+  const view = (r) => ({ id: r.id, title: r.title, prompt: r.prompt, due: r.due, repeat: r.repeat, status: r.status, last: r.last, result: r.result, engine: r.engine });
+  if (path === '/api/jobs' && req.method === 'GET') {
+    const rows = (await env.DB.prepare('SELECT * FROM jobs WHERE email=? ORDER BY due LIMIT 100').bind(a.email).all()).results || [];
+    return json(env, req, { jobs: rows.map(view), cron: true });
+  }
+  const b = await req.json().catch(() => ({}));
+  if (path === '/api/jobs' && req.method === 'POST') {
+    const title = String(b.title || '').trim().slice(0, 200), prompt = String(b.prompt || '').trim().slice(0, 4000), due = Number(b.due) || 0;
+    if (!title || !due) return json(env, req, { error: 'title and due time required' }, 400);
+    const repeat = stepOf(b.repeat) ? b.repeat : 'none';
+    const n = (await env.DB.prepare('SELECT COUNT(*) AS n FROM jobs WHERE email=?').bind(a.email).first()).n;
+    if (n >= 50) return json(env, req, { error: 'Limit of 50 scheduled tasks. Delete some first.' }, 400);
+    const id = 'j_' + [...crypto.getRandomValues(new Uint8Array(8))].map((x) => x.toString(16).padStart(2, '0')).join('');
+    await env.DB.prepare('INSERT INTO jobs(id,email,title,prompt,due,repeat,status,created) VALUES(?,?,?,?,?,?,?,?)').bind(id, a.email, title, prompt, due, repeat, 'pending', Date.now()).run();
+    return json(env, req, { id });
+  }
+  const id = String(b.id || '');
+  const j = await env.DB.prepare('SELECT * FROM jobs WHERE id=? AND email=?').bind(id, a.email).first();
+  if (!j) return json(env, req, { error: 'not found' }, 404);
+  if (path === '/api/jobs/runs') { const rr = (await env.DB.prepare('SELECT at,result,engine FROM job_runs WHERE job_id=? ORDER BY id DESC LIMIT 30').bind(id).all()).results || []; return json(env, req, { runs: rr }); }
+  if (path === '/api/jobs/delete') { await env.DB.prepare('DELETE FROM jobs WHERE id=?').bind(id).run(); await env.DB.prepare('DELETE FROM job_runs WHERE job_id=?').bind(id).run(); return json(env, req, { ok: true }); }
+  if (path === '/api/jobs/run') { await env.DB.prepare("UPDATE jobs SET status='running', last=? WHERE id=?").bind(Date.now(), id).run(); await runJob(env, { ...j, due: Date.now() }); const r = await env.DB.prepare('SELECT * FROM jobs WHERE id=?').bind(id).first(); return json(env, req, { job: view(r) }); }
+  return json(env, req, { error: 'unknown' }, 404);
+}
+
 export default {
+  async scheduled(ev, env, ctx) { ctx.waitUntil(runDueJobs(env)); },
   async fetch(req, env) {
     const url = new URL(req.url), path = url.pathname;
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(env, req) });
+    if (path.startsWith('/api/jobs')) return jobsApi(env, req, path);
     if (path === '/api/health') return json(env, req, { status: 'ok', engine: 'aix-alpha-cloud', model: MODEL, hasApiKey: !!env.ANTHROPIC_API_KEY });
     if (path === '/api/account/signup' && req.method === 'POST') {
       const b = await req.json().catch(() => ({})); const email = String(b.email || '').trim().toLowerCase();

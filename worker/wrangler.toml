@@ -13,3 +13,6 @@ OWNER_EMAILS = ""
 
 [ai]
 binding = "AI"
+
+[triggers]
+crons = ["*/5 * * * *"]
