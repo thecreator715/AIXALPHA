@@ -489,7 +489,7 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
   <aside id="side">
     <div class="brand sbrand"><div class="logo">◈</div><b class="bt">AIX ALPHA</b><span class="pill mono">v3.0</span></div>
     <div class="sec"><button class="btn" id="newc">＋ NEW CHAT</button><div style="display:flex;gap:6px"><button class="btn2" id="hub" style="flex:1">Persona Hub</button><button class="btn2" id="set" style="flex:1">Settings</button></div></div>
-    <div class="sec" style="padding-bottom:0"><input id="srch" placeholder="Search chats…"></div><div id="threads"></div>
+    <div class="sec" style="padding-bottom:0"><input id="srch" placeholder="Search chats…"></div><div class="sec" style="padding-bottom:0"><select id="wssel" title="Workspace"></select><div id="wsed" style="display:none;margin-top:6px"><input id="wsn" placeholder="Workspace name"><textarea id="wsi" rows="4" placeholder="Instructions every chat in this workspace follows (tone, audience, project facts)…" style="width:100%;margin-top:6px"></textarea><div style="display:flex;gap:6px;margin-top:6px"><button class="btn" id="wss" style="flex:1">Save</button><button class="btn2" id="wsd">Delete</button></div></div></div><div id="threads"></div>
     <div class="pbox"><label class="mono" style="font-size:10px;color:var(--m)">ACTIVE PERSONA</label><select id="persona"></select>
       <div style="display:flex;gap:6px;margin-top:8px"><button class="btn2" id="exp" style="flex:1">Export chat</button><button class="btn2" id="about" style="flex:1">About</button></div><div style="display:flex;gap:6px;margin-top:6px"><button class="btn2" id="voice" style="flex:1">🔊 Voice</button><button class="btn2" id="bk" style="flex:1">Backup</button></div></div>
   </aside>
@@ -587,7 +587,7 @@ const capCr=x=>Math.floor(x/CR+1e-9);
 const usd=n=>{const c=n/CR;return c===0?'0 cr':c<0.01?'<0.01 cr':(c<10?c.toFixed(2):c<100?c.toFixed(1):String(Math.round(c)))+' cr'};
 const BREV={MICRO:'Style: reply in at most 4 sentences.',STANDARD:'Style: be concise; use a list only to compare or sequence.',DEEP:'Style: complete but economical. No restating the question, no closing summary unless asked.'};
 const S={vid:store.get('aix3_vid',false),imgm:store.get('aix3_imgm','flux'),img:store.get('aix3_img',false),web:store.get('aix3_web',false),auto:store.get('aix3_auto',false),mode:store.get('aix3_mode','eco'),verify:store.get('aix3_verify','local'),caps:store.get('aix3_caps',{req:0.01,ses:0.25,day:2}),
- chats:store.get('aix3_chats',[]),cur:null,pid:store.get('aix3_pid','aix-alpha-v3'),busy:false,cache:{},ledger:store.get('aix3_ledger',{})};
+ chats:store.get('aix3_chats',[]),cur:null,pid:store.get('aix3_pid','aix-alpha-v3'),busy:false,ws:store.get('aix3_wsa',''),cache:{},ledger:store.get('aix3_ledger',{})};
 const today=()=>new Date().toISOString().slice(0,10);
 const daySpend=()=>S.ledger[today()]||0;
 
@@ -916,7 +916,7 @@ async function runLoop0(chat,prompt,onText,onStep){
   if(r.conn&&!(r.plug&&S.curTools&&S.curTools.length)){S.curTools=await connTools();if(!S.curTools.length){step('Connector needed — none enabled','bad');t.saved=100;return out('That needs a connector. Plug one in with a single tap, then ask again:',{ui:'connect'})}step('🔌 Connectors attached ('+S.curTools.length+' tools)','ok')}
   chat.notes=chat.notes||[];for(const n of notesFrom(prompt))if(!chat.notes.some(x=>x.toLowerCase()===n.toLowerCase()))chat.notes.push(n);chat.notes=chat.notes.slice(-12);
   const pers=personas().find(p=>p.id===S.pid)||PRESETS[0];
-  const core=(pers.core||pers.prompt||PRESETS[0].core)+'\n'+todayLine()+(r.intent==='chat'&&!r.build?'\n'+CHATRULE:'')+(r.build?'\n'+GUIRULE:'')+(TARGETRULE[targetMode()]?'\n'+TARGETRULE[targetMode()]:'');if(TARGETRULE[targetMode()])step('Mode: '+targetMode().toUpperCase()+' — chat knows what it is making from the start','ok');if(r.build)step('Build request → will design a full GUI with live preview','ok');
+  const wsx=(typeof WSLIST!=='undefined'&&WSLIST().find(w=>w.id===(chat&&chat.ws)))||null;const core=(pers.core||pers.prompt||PRESETS[0].core)+(wsx&&wsx.inst?'\nWORKSPACE "'+wsx.name+'" INSTRUCTIONS (always follow):\n'+wsx.inst.slice(0,3000):'')+'\n'+todayLine()+(r.intent==='chat'&&!r.build?'\n'+CHATRULE:'')+(r.build?'\n'+GUIRULE:'')+(TARGETRULE[targetMode()]?'\n'+TARGETRULE[targetMode()]:'');if(TARGETRULE[targetMode()])step('Mode: '+targetMode().toUpperCase()+' — chat knows what it is making from the start','ok');if(r.build)step('Build request → will design a full GUI with live preview','ok');
   if(pers.thinking==='MINIMAL')r.refines=0;else if(pers.thinking==='LOW')r.refines=Math.min(r.refines,1);
   const all=chat.msgs.filter(m=>m.role==='user'||m.role==='assistant').map(m=>({role:m.role,content:m.content}));
   const origTok=all.reduce((s,m)=>s+est(m.content),0);
@@ -1011,8 +1011,14 @@ function chipsHtml(t){
 }
 function curChat(){return S.chats.find(c=>c.id===S.cur)}
 function save(){store.set('aix3_chats',S.chats.slice(0,60));store.set('aix3_ledger',S.ledger)}
-function renderThreads(){
-  const qf=($('#srch')?.value||'').toLowerCase();const list=[...S.chats].filter(c=>!qf||c.title.toLowerCase().includes(qf)||c.msgs.some(m=>m.content.toLowerCase().includes(qf))).sort((a,b)=>(b.pin?1:0)-(a.pin?1:0));
+const WSLIST=()=>store.get('aix3_ws',[]);
+function renderWs(){const sel=$('#wssel');if(!sel)return;sel.innerHTML='<option value="">All chats</option>'+WSLIST().map(w=>`<option value="${w.id}" ${S.ws===w.id?'selected':''}>${esc(w.name)}</option>`).join('')+'<option value="__new">＋ New workspace…</option>'+(S.ws?'<option value="__edit">✎ Edit this workspace…</option>':'')}
+function wsOpen(w){$('#wsed').style.display='block';$('#wsn').value=w?w.name:'';$('#wsi').value=w?w.inst||'':'';$('#wsed').dataset.id=w?w.id:'';$('#wsd').style.display=w?'':'none'}
+document.addEventListener('change',e=>{if(e.target.id!=='wssel')return;const v=e.target.value;if(v==='__new'){wsOpen(null);renderWs();return}if(v==='__edit'){wsOpen(WSLIST().find(w=>w.id===S.ws));renderWs();return}$('#wsed').style.display='none';S.ws=v;store.set('aix3_wsa',v);S.cur=null;renderThreads();renderMsgs()});
+document.addEventListener('click',e=>{const id=e.target.id;if(id==='wss'){const n=$('#wsn').value.trim();if(!n)return;const l=WSLIST(),eid=$('#wsed').dataset.id;let w=l.find(x=>x.id===eid);if(w){w.name=n;w.inst=$('#wsi').value}else{w={id:'w_'+uid(),name:n,inst:$('#wsi').value};l.push(w)}store.set('aix3_ws',l);S.ws=w.id;store.set('aix3_wsa',w.id);$('#wsed').style.display='none';renderWs();renderThreads()}
+ if(id==='wsd'){const eid=$('#wsed').dataset.id;store.set('aix3_ws',WSLIST().filter(x=>x.id!==eid));S.chats.forEach(c=>{if(c.ws===eid)delete c.ws});save();S.ws='';store.set('aix3_wsa','');$('#wsed').style.display='none';renderWs();renderThreads()}});
+function renderThreads(){renderWs();
+  const qf=($('#srch')?.value||'').toLowerCase();const list=[...S.chats].filter(c=>(!S.ws||c.ws===S.ws)&&(!qf||c.title.toLowerCase().includes(qf)||c.msgs.some(m=>m.content.toLowerCase().includes(qf)))).sort((a,b)=>(b.pin?1:0)-(a.pin?1:0));
   $('#threads').innerHTML=list.map(c=>`<div class="th ${c.id===S.cur?'on':''}" data-id="${c.id}"><span>${c.pin?'📌 ':''}${esc(c.title)}</span><i data-ren="${c.id}" title="Rename">✎</i><i data-pin="${c.id}" title="Pin">⚲</i><i data-del="${c.id}" title="Delete">✕</i></div>`).join('')||'<div style="color:#52525b;padding:8px;font-size:12px">No chats yet</div>';
 }
 function docCard(d){const n=esc(d.name),u=DOCS[d.name];let pv;
@@ -1099,7 +1105,7 @@ function recallCtx(text,exId){
 }
 async function send(text,opts={}){
   text=text.trim();if(!text||S.busy)return;S.nocache=!!opts.nocache;setView('chat');
-  let c=curChat();if(!c){c={id:uid(),title:text.slice(0,36),msgs:[],cost:0,calls:0,notes:[],pid:S.pid};S.chats.unshift(c);S.cur=c.id}
+  let c=curChat();if(!c){c={id:uid(),title:text.slice(0,36),msgs:[],cost:0,calls:0,notes:[],pid:S.pid,ws:S.ws||undefined};S.chats.unshift(c);S.cur=c.id}
   if(!c.msgs.length)c.title=text.slice(0,36)+(text.length>36?'…':'');
   if(S.editIdx!=null&&c){c.msgs.splice(S.editIdx);S.editIdx=null;$('#editban').style.display='none'}
   let full=text;const imgs=[];
@@ -1234,11 +1240,16 @@ addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()===
 let ATT=[];
 function renderAtt(){$('#attl').innerHTML=ATT.map((a,i)=>`<span class="ach">${a.type==='image'?'🖼':'📄'} ${esc(a.name)}<i data-r="${i}">✕</i></span>`).join('')}
 $('#attl').onclick=e=>{const r=e.target.closest('[data-r]');if(r){ATT.splice(+r.dataset.r,1);renderAtt()}};
+async function docToText(f){const n=f.name.toLowerCase(),buf=await f.arrayBuffer();
+  if(n.endsWith('.pdf')){const P=await loadLib('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js','pdfjsLib');P.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';const d=await P.getDocument({data:buf}).promise;let o='';for(let i=1;i<=Math.min(d.numPages,60);i++){const p=await d.getPage(i);const tc=await p.getTextContent();o+='\n--- page '+i+' ---\n'+tc.items.map(x=>x.str).join(' ')}return o.trim()||'(no selectable text; this PDF may be scanned)'}
+  if(n.endsWith('.docx')){const Z=await loadLib('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js','JSZip');const z=await Z.loadAsync(buf);const x=await z.file('word/document.xml').async('string');return x.replace(/<\/w:p>/g,'\n').replace(/<w:tab\/>/g,'\t').replace(/<[^>]+>/g,'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&amp;/g,'&').trim()}
+  const X=await loadLib('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js','XLSX');const wb=X.read(buf,{type:'array'});return wb.SheetNames.map(s=>'--- sheet '+s+' ---\n'+X.utils.sheet_to_csv(wb.Sheets[s])).join('\n')}
 $('#att').onclick=()=>$('#fi').click();
 $('#fi').onchange=async e=>{for(const f of e.target.files){
   if(/^image\//.test(f.type)){let ok=false;try{ok=sampleFn&&sampleFn.limits&&(await sampleFn.limits()).images}catch{}if(ok)ATT.push({type:'image',name:f.name,blob:f});else toast('Images are not available in this view')}
   else if(f.size<=300000&&(/^text\//.test(f.type)||/\.(md|txt|json|csv|js|ts|jsx|tsx|html|css|py|java|c|cpp|go|rs|sql|xml|yml|yaml|sh|log)$/i.test(f.name)))ATT.push({type:'text',name:f.name,text:await f.text()});
-  else toast(f.name+': unsupported (text/code ≤300 KB or images only)')}
+  else if(f.size<=15e6&&/\.(pdf|docx|xlsx|xls)$/i.test(f.name)){try{toast('Reading '+f.name+'…');ATT.push({type:'text',name:f.name,text:await docToText(f)})}catch(er){toast(f.name+': '+(er.message||er))}}
+  else toast(f.name+': unsupported (text, code, PDF, DOCX, XLSX or images)')}
   e.target.value='';renderAtt()};
 
 /* ============ voice ============ */
