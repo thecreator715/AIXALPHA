@@ -355,6 +355,7 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
  #vstudio .stc{height:100%!important;min-height:0!important;margin:0;display:flex;flex-direction:column}
  #vstudio .stc .sth{padding:6px 8px;gap:4px;flex-wrap:nowrap}
  #vstudio .stc .sth .btn2{height:32px;min-width:32px;padding:0 8px;display:inline-flex;align-items:center;justify-content:center;gap:4px;font-size:12px}
+ #vstudio .stc .sth{overflow-x:auto;-webkit-overflow-scrolling:touch}#vstudio .stc .sth .btn2{white-space:nowrap;flex:0 0 auto;line-height:1}#vstudio .stc .sth>*{flex-shrink:0}
  #vstudio .stc .sth .lbl{display:none}#vstudio .stc .sth .seg,#purl{display:none!important}
  #c-editor .ed{flex:1;min-height:0}
  #code,#gut{font-size:13px!important;line-height:1.55!important}
@@ -551,7 +552,7 @@ function route(p,att){const r=route0(p,att);
 r.conn=!r.command&&!r.reflex&&typeof CONNRE!=='undefined'&&CONNRE.test(p);if(r.conn&&r.tier==='MICRO')r.tier='STANDARD';return r}
 function route0(p,att){
   const t=p.trim(),w=t.split(/\s+/).filter(Boolean).length;
-  const cmd=[[/^\/(budget|cost|usage)\b/i,'budget'],[/^\/notes\b/i,'notes'],[/^\/(forget|clear)\b/i,'forget'],[/^\/(help|\?)\b/i,'help'],[/^\/(connect|connectors|plug)\b/i,'connect'],[/^\/mode\b/i,'mode']].find(([r])=>r.test(t));
+  const cmd=[[/^\/(budget|cost|usage)\b/i,'budget'],[/^\/notes\b/i,'notes'],[/^\/(forget|clear)\b/i,'forget'],[/^\/(help|\?)\b/i,'help'],[/^\/(connect|connectors|plug)\b/i,'connect'],[/^\/mode\b/i,'mode'],[/^\/memory\b/i,'memory'],[/^\/tasks?\b/i,'tasks']].find(([r])=>r.test(t));
   if(cmd)return{tier:'NANO',command:cmd[1]};
   const rf=[[/^(hi|hey|hello|yo|sup|hola|gm)\b[\s.!?]*$/i,'AIX Alpha v3 online. What are we building?'],[/^(thanks|thank you|thx|ty)\b[\s.!?]*$/i,'Anytime. Send the next task when ready.'],[/^(ok|okay|cool|nice|great|got it|perfect|k)[\s.!?]*$/i,'Acknowledged. Standing by.']].find(([r])=>t.length<=24&&r.test(t));
   if(rf)return{tier:'NANO',reflex:rf[1]};
@@ -759,8 +760,27 @@ async function runLoop0(chat,prompt,onText,onStep){
     if(r.command==='budget')return out(`**Session usage (est.):** ${usd(chat.cost||0)} of ${capCr(S.caps.ses)} cr · ${chat.calls||0} model calls\n**Today:** ${usd(daySpend())} of ${capCr(S.caps.day)} cr\n**Mode:** ${S.mode.toUpperCase()} · engine: AIX Alpha v3.0\nToken counts here are estimates (chars ÷ 3.2); the sample capability does not return billed usage.`);
     if(r.command==='notes')return out(chat.notes?.length?'**Session notes:**\n'+chat.notes.map(n=>'- '+n).join('\n'):'No notes yet. Say "remember …", "always …" or "use …".');
     if(r.command==='forget'){chat.notes=[];return out('Session notes cleared.')}
+    if(r.command==='memory'||r.command==='tasks'){
+      const arg=prompt.trim().replace(/^\/\w+\s*/,''),verb=(arg.split(/\s+/)[0]||'').toLowerCase(),rest=arg.slice(verb.length).trim();
+      const MK='aix3_memory',TK='aix3_tasks';const mem=store.get(MK,[]),tk=store.get(TK,[]);
+      const askNode=async q=>{step('Running on the node (ECO/BALANCED use your Mac when online)','ok');const x=await ask(q,null,null);t.calls++;t.node=t.node||!!x.node;return x.text||''};
+      const lines=txt=>txt.split(/\n/).map(l=>l.replace(/^\s*(?:[-*•]|\d+[.)])\s*/,'').replace(/^\[.?\]\s*/,'').trim()).filter(l=>l.length>2&&l.length<200);
+      if(r.command==='memory'){
+        if(verb==='add'&&rest){mem.push(rest);store.set(MK,mem.slice(-60));return out('Saved to memory (shared by every chat): '+rest)}
+        if((verb==='del'||verb==='rm')&&+rest>0&&mem[+rest-1]){const g=mem.splice(+rest-1,1);store.set(MK,mem);return out('Removed: '+g[0])}
+        if(verb==='clear'){store.set(MK,[]);return out('Memory cleared.')}
+        if(verb==='learn'){const tr=chat.msgs.slice(-12).map(m=>m.role+': '+m.content.replace(/\s+/g,' ').slice(0,500)).join('\n');const tx=await askNode('From this conversation, list up to 6 durable facts or preferences about the user or their project worth remembering in future chats. One short line each, no commentary.\n\n'+tr);const L=lines(tx).slice(0,6);const m2=store.get(MK,[]);for(const l of L)if(!m2.some(x=>x.toLowerCase()===l.toLowerCase()))m2.push(l);store.set(MK,m2.slice(-60));return out(L.length?'**Learned and saved to memory:**\n'+L.map(l=>'- '+l).join('\n'):'Nothing worth saving yet.')}
+        return out(mem.length?'**Memory** (used in every chat):\n'+mem.map((m,i)=>(i+1)+'. '+m).join('\n')+'\n\n`/memory add …` · `/memory del N` · `/memory learn` (extract from this chat) · `/memory clear`':'Memory is empty. `/memory add I build on Cloudflare` or `/memory learn` to extract facts from this chat. Everything saved here is shared by all chats.');
+      }
+      if(verb==='add'&&rest){tk.push({t:rest,d:0});store.set(TK,tk);return out('Task added: '+rest)}
+      if((verb==='done'||verb==='x')&&+rest>0&&tk[+rest-1]){tk[+rest-1].d=!tk[+rest-1].d;store.set(TK,tk);return out((tk[+rest-1].d?'Done: ':'Reopened: ')+tk[+rest-1].t)}
+      if((verb==='del'||verb==='rm')&&+rest>0&&tk[+rest-1]){const g=tk.splice(+rest-1,1);store.set(TK,tk);return out('Removed: '+g[0].t)}
+      if(verb==='clear'){store.set(TK,tk.filter(x=>!x.d));return out('Cleared finished tasks.')}
+      if(verb==='plan'&&rest){const tx=await askNode('Break this goal into 4 to 8 concrete, ordered tasks. One short imperative line each, no commentary.\n\nGoal: '+rest);const L=lines(tx).slice(0,8);for(const l of L)tk.push({t:l,d:0});store.set(TK,tk);return out(L.length?'**Planned '+L.length+' tasks:**\n'+L.map((l,i)=>(i+1)+'. '+l).join('\n'):'Could not plan that. Try rephrasing the goal.')}
+      return out(tk.length?'**Tasks:**\n'+tk.map((x,i)=>(i+1)+'. '+(x.d?'✅ ~~'+x.t+'~~':'⬜ '+x.t)).join('\n')+'\n\n`/tasks add …` · `/tasks done N` · `/tasks del N` · `/tasks plan <goal>` · `/tasks clear`':'No tasks. `/tasks add write the landing page` or `/tasks plan launch my store` (the model breaks the goal into tasks).');
+    }
     if(r.command==='mode')return out(`Loop mode is **${S.mode.toUpperCase()}**. Change it in the LOOP bar.`);
-    return out('**Local commands (0 tokens):**\n- `/budget` spend\n- `/notes` remembered notes\n- `/forget` clear notes\n- `/mode` current mode\n- `/connect` plug in connectors');
+    return out('**Local commands (0 tokens):**\n- `/budget` spend\n- `/notes` remembered notes\n- `/forget` clear notes\n- `/mode` current mode\n- `/connect` plug in connectors\n- `/memory` shared memory (add, del, learn, clear)\n- `/tasks` task list (add, done, plan, clear)');
   }
   if(r.reflex){step('Reflex reply (0 tokens)','ok');t.saved=100;return out(r.reflex)}
   if(r.m3){step('Local 3D generator (0 tokens)','ok');t.saved=100;return out('3D mesh generated locally — drag to rotate.',{mesh:meshFrom(prompt)})}
@@ -776,7 +796,7 @@ async function runLoop0(chat,prompt,onText,onStep){
   const origTok=all.reduce((s,m)=>s+est(m.content),0);
   const st=windowStart(all.length,r.hist);const kept=all.slice(st).map((m,i,a)=>({role:m.role,content:i>=a.length-2?m.content:stub(m.content)}));
   const dropped=all.slice(0,st);if(dropped.length)step(`Context trimmed (−${dropped.length} msgs, digest kept)`);
-  const memory=[chat.notes.length?'Session notes:\n'+chat.notes.map(n=>'- '+n).join('\n'):'',dropped.length?'Earlier in this chat (digest):\n'+digest(dropped):''].filter(Boolean).join('\n\n');
+  const memory=[(store.get('aix3_memory',[])||[]).length?'Persistent memory (all chats):\n'+store.get('aix3_memory',[]).map(n=>'- '+n).join('\n'):'',(store.get('aix3_tasks',[])||[]).some(x=>!x.d)?'Open tasks:\n'+store.get('aix3_tasks',[]).filter(x=>!x.d).map(x=>'- '+x.t).join('\n'):'',chat.notes.length?'Session notes:\n'+chat.notes.map(n=>'- '+n).join('\n'):'',dropped.length?'Earlier in this chat (digest):\n'+digest(dropped):''].filter(Boolean).join('\n\n');
   const prompt1=compose(core,BREV[r.tier],memory,kept);
   const ckey=pers.id+'|'+r.tier+'|'+S.mode+'|'+prompt1;
   const naiveIn=est(core)+origTok;
