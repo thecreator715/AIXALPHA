@@ -146,7 +146,7 @@ async function ensureJobs(env) {
   JOBS_READY = true;
 }
 const JOB_STEP = { hourly: 3600e3, daily: 86400e3, weekly: 604800e3 };
-const stepOf = (r) => JOB_STEP[r] || (/^every:\d+$/.test(r || '') ? Math.max(15, Math.min(+r.slice(6), 10080)) * 60e3 : 0);
+const stepOf = (r) => JOB_STEP[r] || (/^every:\d+$/.test(r || '') ? Math.max(5, Math.min(+r.slice(6), 10080)) * 60e3 : 0);
 async function runPrompt(env, a, prompt) {
   const nd = await nodeGet(env);
   if (nd) {
