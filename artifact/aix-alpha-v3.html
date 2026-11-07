@@ -367,6 +367,11 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
  #c-files .sth[style*="border-top"]{display:grid!important;grid-template-columns:repeat(3,1fr);gap:6px}
  #stchat{flex:1;min-height:0;overflow:auto}
  #pstat{display:none}
+ #vstudio .stwrap{overflow-y:auto!important;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;touch-action:pan-y}
+ #vstudio .stgrid{flex:none!important;height:max(440px,calc(100dvh - var(--topH,56px) - var(--navH,56px) - 175px - env(safe-area-inset-bottom,0px)))!important}
+ #c-files{overflow-y:auto!important;-webkit-overflow-scrolling:touch}
+ #c-files #flist{flex:1 0 150px!important}
+ #stchat,#flist,.ed,#code,#diag{-webkit-overflow-scrolling:touch;touch-action:pan-y}
 }
 
 </style>
