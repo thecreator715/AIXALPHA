@@ -702,6 +702,18 @@ export default {
       const b = await req.json().catch(() => ({})); const inp = Math.min(400000, Math.max(0, Number(b.input) || 0)), out = Math.min(200000, Math.max(0, Number(b.output) || 0));
       return json(env, req, await charge(env, a, { input: inp, output: out }));
     }
+    if (path === '/api/account/host-charge' && req.method === 'POST') {   // site hosting: 50 credits ($5.00) per 30 days; owners host free
+      const a = await authed(env, req); if (!a) return json(env, req, { error: 'sign in' }, 401);
+      const HOST_CR = 50, owner = owners(env).includes(a.email) && !a.meter; const f0 = await getUser(env, a.email);
+      if (!owner && Number(f0.credits) < HOST_CR) return json(env, req, { error: 'Not enough credits: hosting is ' + HOST_CR + ' credits per 30 days', credits: +Number(f0.credits).toFixed(2) }, 402);
+      const now = new Date().toISOString();
+      await env.DB.batch([
+        env.DB.prepare('UPDATE users SET credits=' + (owner ? 'credits' : 'MAX(0,credits-?)') + ', last=? WHERE email=?').bind(...(owner ? [now, a.email] : [HOST_CR, now, a.email])),
+        env.DB.prepare('INSERT INTO usage(email,at,input,output,credits) VALUES(?,?,?,?,?)').bind(a.email, now, 0, 0, owner ? 0 : HOST_CR),
+      ]);
+      const f = await getUser(env, a.email);
+      return json(env, req, { ok: true, charged: owner ? 0 : HOST_CR, credits: +Number(f.credits).toFixed(2) });
+    }
     if (path === '/api/image' && req.method === 'POST') return image(env, req);
     if (path === '/api/video' && req.method === 'POST') return video(env, req);
     if (path === '/api/sample' && req.method === 'POST') return sample(env, req);

@@ -491,6 +491,13 @@ html{scroll-behavior:smooth}
 .gl-meta{padding:8px 10px}.gl-meta b{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.gl-meta span{display:block;font-size:10px;color:var(--m);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
 .gl-list .gl-card{display:flex;align-items:center;gap:12px;border-radius:12px;padding:6px}.gl-list .gl-th{width:84px;aspect-ratio:4/3;flex:none;border-radius:8px}.gl-list .gl-meta{flex:1;min-width:0;padding:0}.gl-list .gl-meta b{font-size:13px}
 .gl-list{display:flex;flex-direction:column;gap:8px}
+
+.ap-tw{overflow-x:auto;border:1px solid rgba(255,255,255,.1);border-radius:20px;background:rgba(255,255,255,.03);margin-top:18px}
+.ap-tw table{width:100%;border-collapse:collapse;min-width:640px;font-size:13.5px}.ap-tw th{position:sticky;top:0;text-align:left;font:600 11px/1 ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:#a1a1aa;padding:14px 14px;background:rgba(255,255,255,.05);white-space:nowrap}
+.ap-tw td{padding:12px 14px;border-top:1px solid rgba(255,255,255,.07);vertical-align:top;color:#d4d4d8;line-height:1.45}.ap-tw td:first-child{font-weight:700;color:#fff;white-space:nowrap}.ap-tw tr:hover td{background:rgba(255,255,255,.03)}
+.ap-sub{font-size:13px;color:#a1a1aa;margin:26px 0 0;font-weight:700;letter-spacing:.02em;color:#e4e4e7}
+.ap-price{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:18px}.ap-price>div{border:1px solid rgba(52,211,153,.35);background:linear-gradient(160deg,rgba(52,211,153,.12),transparent);border-radius:20px;padding:16px}.ap-price b{display:block;font-size:26px;letter-spacing:-.02em}.ap-price span{font-size:12px;color:#a1a1aa}
+.ap-faq details{border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:14px 16px;margin:10px 0;background:rgba(255,255,255,.03)}.ap-faq summary{cursor:pointer;font-weight:700;font-size:15px}.ap-faq p{margin:10px 0 0;color:#a1a1aa;font-size:14px;line-height:1.55}
 #entgrid{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}.entsp,.entlay{display:none}
 @media(min-width:1150px){#venterprise>.pad{overflow:hidden;padding:10px}#entbody,#entdyn,#entgrid{height:100%;min-height:0}#entgrid{grid-template-columns:var(--cl,30%) 8px minmax(0,1fr) 8px var(--cr,24%);gap:0;align-items:stretch}
 #entlp,#entrp,#entmid{height:100%;min-height:0!important;overflow:hidden}#entmid{display:flex;flex-direction:column;padding:0 4px}#entmid>*{flex-shrink:0}#entmid #entview{flex:1;min-height:0;overflow:auto;padding-right:4px}#entrp{display:flex;flex-direction:column;gap:10px}#entrp>.pn{margin:0!important;min-height:0}#entrp>.pn.fx{flex:1;display:flex;flex-direction:column;overflow:hidden}#entrp .scr{overflow:auto;flex:1;min-height:0}
@@ -2153,7 +2160,7 @@ document.addEventListener('click',async e=>{const t=e.target;
 let SITES=store.get('aix3_sites',[]);const sitesSave=()=>store.set('aix3_sites',SITES);
 const THEMES={monochrome:['#000','#e4e4e7','#fff'],'dark-luxury':['#0b0906','#f1e6cf','#d4af37'],emerald:['#02130d','#d1fae5','#34d399'],'cyan-glow':['#020b12','#cffafe','#22d3ee']};
 const slugify=s=>s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40)||'site';
-function renderSites(){
+function renderSitesOld(){
   const live=SITES.filter(s=>s.status==='live').length,visits=SITES.reduce((a,s)=>a+(s.views||0),0);
   $('#sitesbody').innerHTML=`<div class="row sb" style="margin-bottom:12px"><div><b style="font-size:16px">Hosted Sites</b><div class="mono" style="font-size:11px;color:var(--m)">Deploy web apps and AI chat portals from your Studio projects and personas</div></div><button class="btn" id="snew">＋ New site</button></div>
   <div class="cards mono">${[['LIVE SITES',live],['TOTAL VISITS',visits],['WEB APPS',SITES.filter(s=>s.type==='app').length],['AI CHAT PORTALS',SITES.filter(s=>s.type==='chat').length]].map(([a,b])=>`<div class="card"><small>${a}</small><div>${b}</div></div>`).join('')}</div>
@@ -2165,14 +2172,14 @@ function siteDialog(s){const nw=!s;s=s||{type:'app',theme:'monochrome',status:'l
    <label>Instance name</label><input id="sn" value="${esc(s.name||'')}"><label>Custom URL slug</label><input id="ss" value="${esc(s.slug||'')}"><label>Description</label><input id="sd" value="${esc(s.desc||'')}">
    <div id="s-app" style="display:${s.type==='chat'?'none':'block'}"><div class="mono" style="font-size:11px;color:var(--m)">Bundles project “${esc(proj().title)}” (${P.files.length} files)${s.files?' — updating re-snapshots the files':''}.</div></div>
    <div id="s-chat" style="display:${s.type==='chat'?'block':'none'}"><label>AI persona</label><select id="sp">${ps.map(p=>`<option value="${p.id}" ${p.id===s.personaId?'selected':''}>${esc(p.name)}</option>`).join('')}</select><label>Welcome message</label><input id="sw" value="${esc(s.welcome||'')}"></div>
-   <label>Theme</label><select id="sth">${Object.keys(THEMES).map(k=>`<option ${k===s.theme?'selected':''}>${k}</option>`).join('')}</select><label>Access password (optional)</label><input id="spw" value="${esc(s.password||'')}"></div>
+   <label>Theme</label><select id="sth">${Object.keys(THEMES).map(k=>`<option ${k===s.theme?'selected':''}>${k}</option>`).join('')}</select><label>Access password (optional)</label><input id="spw" value="${esc(s.password||'')}"><div class="mono" style="font-size:11px;color:#34d399;margin-top:8px">Hosting: ${HOST_CR} credits per ${HOST_DAYS} days ($${(HOST_CR*0.1).toFixed(2)}). ${nw?'Charged when you deploy.':'Already paid until '+(s.paidUntil?new Date(s.paidUntil).toLocaleDateString():'—')+'.'}</div></div>
    <div class="row" style="justify-content:flex-end"><button class="btn2" data-close>Cancel</button><button class="btn" id="ssv">${nw?'Deploy':'Update & re-post'}</button></div>`);
   $('#st').onchange=e=>{$('#s-app').style.display=e.target.value==='app'?'block':'none';$('#s-chat').style.display=e.target.value==='chat'?'block':'none'};
   $('#ssv').onclick=()=>{const name=$('#sn').value.trim();if(!name)return toast('Name required');const type=$('#st').value;const o={...s,id:s.id||'s_'+uid(),name,slug:slugify($('#ss').value||name),desc:$('#sd').value.trim(),type,theme:$('#sth').value,password:$('#spw').value,welcome:$('#sw').value,personaId:$('#sp').value,updated:Date.now(),created:s.created||Date.now(),views:s.views||0,interactions:s.interactions||0,status:s.status||'live'};
-    if(type==='app'){o.files=cloneFiles(P.files);o.entry=PAGE}const i=SITES.findIndex(x=>x.id===o.id);if(i>=0)SITES[i]=o;else SITES.push(o);sitesSave();d.close();renderSites();toast('Site '+(nw?'deployed':'updated'));bump('site.deploy')}}
+    if(type==='app'){o.files=cloneFiles(P.files);o.entry=PAGE}const i=SITES.findIndex(x=>x.id===o.id);if(i>=0)SITES[i]=o;else SITES.push(o);sitesSave();d.close();renderSites();toast('Site '+(nw?'deployed':'updated'));bump('site.deploy');try{hostSweep(true)}catch{}}}
 function chatPortalHtml(s){const [bg,fg,ac]=THEMES[s.theme]||THEMES.monochrome;return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(s.name)}</title></head><body style="margin:0;background:${bg};color:${fg};font:15px system-ui;padding:24px"><h2 style="color:${ac}">${esc(s.name)}</h2><p>${esc(s.welcome||'')}</p><p style="opacity:.6">This exported page is a static shell. Chat portals run inside AIX Alpha (needs the engine) or on the server build.</p></body></html>`}
 function openSite(s){if(s.status!=='live')return toast('Site is paused');if(s.password){const d=dialog(`<h3 style="margin:0 0 8px">🔒 ${esc(s.name)}</h3><div class="form"><input id="pw" type="password" placeholder="Password"></div><div class="row" style="justify-content:flex-end"><button class="btn2" data-close>Cancel</button><button class="btn" id="pwok">Enter</button></div>`);$('#pwok').onclick=()=>{if($('#pw').value===s.password){d.close();showSite(s)}else toast('Wrong password')};return}showSite(s)}
-function showSite(s){s.views=(s.views||0)+1;sitesSave();const [bg,fg,ac]=THEMES[s.theme]||THEMES.monochrome;const sv=$('#siteview');sv.classList.add('on');
+function showSiteOld(s){s.views=(s.views||0)+1;sitesSave();const [bg,fg,ac]=THEMES[s.theme]||THEMES.monochrome;const sv=$('#siteview');sv.classList.add('on');
   if(s.type==='app'){sv.innerHTML=`<div class="box"><div class="sth mono"><b>${esc(s.name)}</b><span class="grow"></span><button class="btn2" id="sclose">✕ Close</button></div><iframe sandbox="allow-scripts" id="sviframe"></iframe></div>`;$('#sviframe').srcdoc=buildPage(s.files,s.entry||'index.html',false)}
   else{s._chat=s._chat||[{role:'assistant',content:s.welcome||'Hello!'}];sv.innerHTML=`<div class="box" style="background:${bg};color:${fg}"><div class="sth mono" style="color:${ac}"><b>${esc(s.name)}</b><span class="grow"></span><button class="btn2" id="sclose">✕ Close</button></div><div id="schat" style="flex:1;overflow:auto;padding:14px"></div><div class="sth mono"><input id="sq" placeholder="Message…"><button class="btn" id="ssend" style="background:${ac}">➤</button></div></div>`;
     const draw=()=>{$('#schat').innerHTML=s._chat.map(m=>`<div style="margin-bottom:12px"><div class="mono" style="font-size:10px;opacity:.6">${m.role==='user'?'YOU':esc(s.name)}</div><div class="body">${md(m.content)}</div></div>`).join('');$('#schat').scrollTop=1e9};draw();
@@ -2180,11 +2187,87 @@ function showSite(s){s.views=(s.views||0)+1;sitesSave();const [bg,fg,ac]=THEMES[
       try{const chat={msgs:s._chat.map(m=>({...m})),notes:[],cost:0,calls:0};const r=await runLoop(chat,q,null,null);S.ledger[today()]=daySpend()+r.t.cost;trackUsage(r.t);save();s._chat.push({role:'assistant',content:r.text})}catch(e){s._chat.push({role:'assistant',content:'⚠️ '+(e.message||e.code)})}finally{S.pid=keep}draw()};
     $('#ssend').onclick=go;$('#sq').onkeydown=e=>{if(e.key==='Enter')go()}}
   $('#sclose').onclick=()=>{sv.classList.remove('on');sv.innerHTML='';renderSites()}}
-function wireSites(){$('#sitesbody').onclick=async e=>{const t=e.target;if(t.id==='snew')return siteDialog();const g=a=>{const el=t.closest('['+a+']');return el&&SITES.find(s=>s.id===el.getAttribute(a))};
+function wireSitesOld(){$('#sitesbody').onclick=async e=>{const t=e.target;if(t.id==='snew')return siteDialog();const g=a=>{const el=t.closest('['+a+']');return el&&SITES.find(s=>s.id===el.getAttribute(a))};
   let s;if(s=g('data-sopen'))return openSite(s);if(s=g('data-sedit'))return siteDialog(s);if(s=g('data-stog')){s.status=s.status==='live'?'paused':'live';sitesSave();return renderSites()}
   if(s=g('data-sdel')){SITES=SITES.filter(x=>x!==s);sitesSave();return renderSites()}
   if(s=g('data-sexp')){if(s.type==='app'){if(window.JSZip&&s.files.length>1){const z=new JSZip();s.files.forEach(f=>z.file(f.name,f.content));return saveFile(s.slug+'.zip',await z.generateAsync({type:'blob'}))}return saveFile(s.slug+'.html',buildPage(s.files,s.entry||'index.html',false),'text/html')}
     return saveFile(s.slug+'.json',JSON.stringify({name:s.name,slug:s.slug,persona:s.personaId,welcome:s.welcome,theme:s.theme},null,2),'application/json')}}}
+
+
+/* ============ Sites v2: hosting billing + 10 upgrades ============ */
+const HOST_CR=50,HOST_DAYS=30,BILL_START=1794059473000;
+const slog=(s,t)=>{(s.log=s.log||[]).unshift({ts:Date.now(),t});s.log=s.log.slice(0,30)};
+async function hostPay(s){
+ if(ISOWNER){s.paidUntil=Math.max(Date.now(),s.paidUntil||0)+HOST_DAYS*864e5;slog(s,'Hosting renewed (owner, free)');return true}
+ const tok=store.get(TOKK,'');
+ if(tok&&BACKEND()){try{const r=await fetch(BACKEND()+'/api/account/host-charge',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+tok},body:JSON.stringify({site:s.name,credits:HOST_CR})});
+  if(r.ok){const j=await r.json();if(j.credits!=null){BAL=j.credits;try{setStatus()}catch{}}s.paidUntil=Math.max(Date.now(),s.paidUntil||0)+HOST_DAYS*864e5;(s.pays=s.pays||[]).push({ts:Date.now(),cr:HOST_CR});slog(s,'Hosting paid · '+HOST_CR+' credits');return true}
+  if(r.status===402){s.hold='credits';return false}}catch{}}
+ const rem=(MEMBER.granted||0)-(MY.credits||0);
+ if(MEMBER.granted&&rem>=HOST_CR){MY.credits+=HOST_CR;store.set('aix3_my',MY);s.paidUntil=Math.max(Date.now(),s.paidUntil||0)+HOST_DAYS*864e5;(s.pays=s.pays||[]).push({ts:Date.now(),cr:HOST_CR});slog(s,'Hosting paid · '+HOST_CR+' credits');return true}
+ s.hold='credits';return false}
+let SWEEPING=false;
+async function hostSweep(announce){if(SWEEPING)return;SWEEPING=true;let ch=false;try{const now=Date.now();
+ for(const s of SITES){
+  if(s.goLive&&now>=s.goLive&&s.status==='scheduled'){s.status='live';slog(s,'Went live on schedule');ch=true}
+  if(s.expires&&now>s.expires&&s.status==='live'){s.status='paused';s.hold='expired';slog(s,'Paused: expiry date reached');ch=true;toast(s.name+' reached its expiry date and was paused')}
+  if(s.status==='live'&&(!s.paidUntil||s.paidUntil<now)){
+   if(!s.paidUntil&&(s.created||0)<BILL_START){s.paidUntil=now+HOST_DAYS*864e5;slog(s,'First 30 days free (existing site)');ch=true;continue}
+   if(s.autoRenew===false&&s.paidUntil){s.status='paused';s.hold='unpaid';slog(s,'Paused: not renewed');ch=true;continue}
+   const ok=await hostPay(s);ch=true;
+   if(ok){if(announce||true)toast('Hosting for '+s.name+': '+(ISOWNER?'free (owner)':HOST_CR+' credits charged'))}
+   else{s.status='paused';slog(s,'Paused: not enough credits for hosting');toast(s.name+' paused: needs '+HOST_CR+' credits to host')}}}
+ if(ch){sitesSave();if($('#vsites')&&$('#vsites').classList.contains('on'))renderSites()}}finally{SWEEPING=false}}
+setTimeout(()=>hostSweep(),3500);setInterval(()=>hostSweep(),6e5);
+function siteHealth(s){const f=(s.files||[]).find(x=>x.name===(s.entry||'index.html'))||{};const h=s.type==='app'?String(f.content||''):'<title>x</title><meta name="description" content="x"><meta name="viewport" content="x"><html lang="en"><h1>x</h1>';
+ const C=[['Page title',/<title>[^<]{3,}/i.test(h),'Add a descriptive <title>.'],['Meta description',/<meta[^>]+name=["']description/i.test(h)||!!(s.brand&&s.brand.desc),'Add a meta description (or set it in Branding).'],['Mobile viewport',/name=["']viewport/i.test(h),'Add <meta name="viewport" content="width=device-width,initial-scale=1">.'],['Language set',/<html[^>]+lang=/i.test(h),'Add lang="en" to <html>.'],['Main heading',/<h1\b/i.test(h),'Add one <h1>.'],['Image alt text',!/<img\b(?![^>]*\balt\s*=)/i.test(h),'Give every <img> an alt.'],['Light page',h.length<500000,'Page is over 500 KB. Trim inline data.'],['Secure resources',!/(src|href)=["']http:\/\//i.test(h),'Use https:// for all resources.']];
+ return{score:Math.round(C.filter(x=>x[1]).length/C.length*100),C}}
+function siteHtml(s){let h=s.type==='app'?buildPage(s.files,s.entry||'index.html',false):chatPortalHtml(s);const b=s.brand||{},[bg,fg,ac]=THEMES[s.theme]||THEMES.monochrome,acc=b.accent||ac;
+ const head=`<meta name="theme-color" content="${esc(acc)}">${b.title?`<meta property="og:title" content="${esc(b.title)}">`:''}${b.desc?`<meta name="description" content="${esc(b.desc)}"><meta property="og:description" content="${esc(b.desc)}">`:''}${b.icon?`<link rel="icon" href="data:image/svg+xml,${encodeURIComponent('<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>'+b.icon+'</text></svg>').replace(/%25/g,'%')}">`:''}`;
+ h=/<head[^>]*>/i.test(h)?h.replace(/<head[^>]*>/i,m=>m+head):head+h;
+ if(b.splash){const sp=`<style>#aixsp{position:fixed;inset:0;display:grid;place-items:center;align-content:center;gap:10px;background:${bg};color:${acc};font:600 26px system-ui;z-index:2147483647;animation:aixsp 1.3s forwards;pointer-events:none}#aixsp i{font-style:normal;font-size:56px}@keyframes aixsp{0%,55%{opacity:1}100%{opacity:0;visibility:hidden}}</style><div id="aixsp"><i>${esc(b.icon||'✦')}</i>${esc(s.name)}</div>`;h=/<\/body>/i.test(h)?h.replace(/<\/body>/i,m=>sp+m):h+sp}
+ return h}
+function siteThumb(s){return `<iframe sandbox="" loading="lazy" tabindex="-1" srcdoc="${esc(s.status==='live'&&s.maint?'<body style=background:#111;color:#fff;font:40px system-ui;display:grid;place-items:center;height:100vh>🛠</body>':siteHtml(s))}"></iframe>`}
+function siteSpark(s){const vh=s.vh||{};const d=Array.from({length:14},(_,i)=>vh[new Date(Date.now()-(13-i)*864e5).toISOString().slice(0,10)]||0);const m=Math.max(1,...d);return `<svg viewBox="0 0 70 18" style="width:100%;height:22px"><title>Visits, last 14 days: ${d.reduce((a,b)=>a+b,0)}</title>${d.map((v,i)=>`<rect x="${i*5}" y="${18-Math.max(1.5,v/m*17)}" width="3.4" height="${Math.max(1.5,v/m*17)}" rx="1" fill="#34d399" opacity="${v?1:.3}"/>`).join('')}</svg>`}
+function renderSites(){const live=SITES.filter(s=>s.status==='live'),visits=SITES.reduce((a,s)=>a+(s.views||0),0),mo=live.length*HOST_CR,rem=(MEMBER.granted||0)-(MY.credits||0);
+ const next=live.map(s=>s.paidUntil).filter(Boolean).sort()[0];
+ $('#sitesbody').innerHTML=`<div class="row sb" style="margin-bottom:12px;flex-wrap:wrap;gap:8px"><div><b style="font-size:16px">Hosted Sites</b><div class="mono" style="font-size:11px;color:var(--m)">Deploy web apps and AI chat portals. Hosting is ${HOST_CR} credits ($${(HOST_CR*0.1).toFixed(2)}) per site per ${HOST_DAYS} days.</div></div><button class="btn" id="snew">＋ New site</button></div>
+ <div class="cards mono">${[['LIVE SITES',live.length],['TOTAL VISITS',visits],['HOSTING / MONTH',mo+' cr · $'+(mo*0.1).toFixed(2)],['NEXT RENEWAL',next?new Date(next).toLocaleDateString():'—'],['YOUR CREDITS',ISOWNER?'∞ (owner)':(BAL!=null?(+BAL).toFixed(1):f1(Math.max(0,rem)))]].map(([a,b])=>`<div class="card"><small>${a}</small><div style="font-size:17px">${b}</div></div>`).join('')}</div>
+ <div class="card2" style="margin-bottom:12px;font-size:12px;color:var(--m)">Sites run <b>inside this artifact</b> (open, test, export). Each live site is billed <b>${HOST_CR} credits every ${HOST_DAYS} days</b>. If credits run out, the site pauses and nothing is deleted; add credits and press Go live. Turn auto-renew off per site in Pro settings.</div>
+ ${SITES.length?`<div class="grid2">${SITES.map(s=>{const h=siteHealth(s),left=s.paidUntil?Math.ceil((s.paidUntil-Date.now())/864e5):null,b=s.brand||{};return `<div class="card2" data-sid="${s.id}"><div class="gl-th" style="border-radius:10px;margin-bottom:8px;aspect-ratio:16/8">${siteThumb(s)}<span class="gl-tag mono">${s.maint?'MAINTENANCE':s.status.toUpperCase()}</span></div>
+  <div class="row sb"><b>${esc(b.icon?b.icon+' ':'')}${esc(s.name)}</b><span class="badge ${s.status==='live'?'ok':'warn'}">${s.status.toUpperCase()}</span></div>
+  <div class="mono" style="font-size:10px;color:var(--ac)">${s.type==='app'?'WEB APP':'AI CHAT PORTAL'} · /${esc(s.slug)} · ${s.theme}${s.password?' · 🔒':''}</div>
+  <p style="font-size:12px;color:var(--m);margin:6px 0">${esc(s.desc||'')}</p>
+  <div class="row mono" style="font-size:10px;gap:10px;color:var(--m);flex-wrap:wrap"><span>👁 ${s.views||0}</span><span>💬 ${s.interactions||0}</span><span title="Site health">❤ ${h.score}/100</span><span>${left==null?'unbilled':left>=0?'🧾 '+left+'d left':'🧾 overdue'}${s.autoRenew===false?' · manual':''}</span></div>${siteSpark(s)}
+  <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:6px"><button class="btn" data-sopen="${s.id}">Open</button><button class="btn2" data-sedit="${s.id}">Edit</button><button class="btn2" data-stog="${s.id}">${s.status==='live'?'Pause':'Go live'}</button><button class="btn2" data-sexp="${s.id}">Export</button><button class="btn2" data-sdel="${s.id}">Delete</button></div>
+  <div class="row" style="margin-top:6px;flex-wrap:wrap;gap:6px"><button class="btn2" data-sx="pro" data-id="${s.id}">⚙ Pro settings</button><button class="btn2" data-sx="health" data-id="${s.id}">❤ Health</button><button class="btn2" data-sx="ai" data-id="${s.id}">✨ AI tune-up</button><button class="btn2" data-sx="vers" data-id="${s.id}">🕘 Versions</button><button class="btn2" data-sx="log" data-id="${s.id}">📜 Activity</button><button class="btn2" data-sx="pay" data-id="${s.id}">🧾 Billing</button></div></div>`}).join('')}</div>`:'<div class="empty"><h2>No hosted sites yet</h2>Deploy a web app or custom AI chat portal to get started.</div>'}`;
+ document.querySelectorAll('#sitesbody .gl-th iframe').forEach(f=>{const w=f.parentElement.clientWidth||240;f.style.transform='scale('+(w/1280)+')';f.style.height='640px';f.style.width='1280px'})}
+function showSite(s){if(s.maint){return dialog(`<h3 style="margin:0 0 8px">🛠 ${esc(s.name)}</h3><p style="font-size:13px">${esc(s.maintMsg||'This site is under maintenance. Please check back soon.')}</p><div style="text-align:right"><button class="btn2" data-close>Close</button></div>`)}
+ const k=new Date().toISOString().slice(0,10);s.vh=s.vh||{};s.vh[k]=(s.vh[k]||0)+1;showSiteOld(s);
+ const f=$('#sviframe');if(f&&s.type==='app')f.srcdoc=siteHtml(s)}
+function proDialog(s){const b=s.brand||{};const dt=t=>t?new Date(t-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,16):'';
+ const d=dialog(`<h3 style="margin:0 0 8px">⚙ Pro settings · ${esc(s.name)}</h3><div class="form" style="max-height:62vh;overflow:auto"><div class="mono" style="font-size:11px;color:#34d399">BRANDING</div><label>Icon (emoji)</label><input id="sp_pi" value="${esc(b.icon||'')}" maxlength="4"><label>Accent colour</label><input id="sp_pa" type="color" value="${b.accent||(THEMES[s.theme]||THEMES.monochrome)[2]}"><label>Share title</label><input id="sp_pt" value="${esc(b.title||'')}"><label>Share description</label><input id="sp_pds" value="${esc(b.desc||'')}">
+ <label><input type="checkbox" id="sp_psp" ${b.splash?'checked':''}> Futuristic splash screen when the site opens</label>
+ <div class="mono" style="font-size:11px;color:#34d399;margin-top:10px">AVAILABILITY</div><label><input type="checkbox" id="sp_pm" ${s.maint?'checked':''}> Maintenance mode (visitors see a notice)</label><input id="sp_pmm" placeholder="Maintenance message" value="${esc(s.maintMsg||'')}"><label>Go live at (site stays scheduled until then)</label><input id="sp_pgl" type="datetime-local" value="${dt(s.goLive)}"><label>Auto-pause at</label><input id="sp_pex" type="datetime-local" value="${dt(s.expires)}">
+ <div class="mono" style="font-size:11px;color:#34d399;margin-top:10px">BILLING</div><label><input type="checkbox" id="sp_par" ${s.autoRenew!==false?'checked':''}> Auto-renew hosting (${HOST_CR} credits / ${HOST_DAYS} days)</label></div>
+ <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn2" data-close>Cancel</button><button class="btn" id="sp_psv">Save</button></div>`);
+ $('#sp_psv').onclick=()=>{s.brand={icon:$('#sp_pi').value.trim(),accent:$('#sp_pa').value,title:$('#sp_pt').value.trim(),desc:$('#sp_pds').value.trim(),splash:$('#sp_psp').checked};s.maint=$('#sp_pm').checked;s.maintMsg=$('#sp_pmm').value.trim();const g=$('#sp_pgl').value?new Date($('#sp_pgl').value).getTime():0,x=$('#sp_pex').value?new Date($('#sp_pex').value).getTime():0;s.goLive=g||0;s.expires=x||0;if(g&&g>Date.now()&&s.status==='live'){s.status='scheduled'}s.autoRenew=$('#sp_par').checked;slog(s,'Pro settings saved');sitesSave();d.close();renderSites();toast('Saved');hostSweep()}}
+function healthDialog(s){const h=siteHealth(s);const d=dialog(`<h3 style="margin:0 0 4px">❤ Site health · ${h.score}/100</h3><div class="mono" style="font-size:11px;color:var(--m);margin-bottom:10px">${esc(s.name)}</div>${h.C.map(([n,ok,tip])=>`<div class="row" style="gap:8px;margin:5px 0;font-size:13px"><span>${ok?'✅':'⚠️'}</span><div><b>${n}</b>${ok?'':`<div style="font-size:11px;color:var(--m)">${tip}</div>`}</div></div>`).join('')}<div style="text-align:right;margin-top:10px"><button class="btn2" data-close>Close</button></div>`)}
+async function aiTune(s,btn){const f=(s.files||[]).find(x=>x.name===(s.entry||'index.html'));if(s.type!=='app'||!f)return toast('AI tune-up works on web app sites');toast('AI tune-up running…');
+ try{const r=await ask('You are a web SEO and UX reviewer. Reply with ONLY JSON: {"title":"<=60 chars","description":"<=155 chars","tips":["3 to 5 short fixes"]}. Site name: '+s.name+'. HTML (truncated):\n'+String(f.content).slice(0,6000),null,null,[],null);
+  const m=String(r.text||'').match(/\{[\s\S]*\}/);if(!m)throw new Error('No result');const j=JSON.parse(m[0]);s.brand=Object.assign({},s.brand,{title:j.title||'',desc:j.description||''});s.tips=(j.tips||[]).slice(0,5);slog(s,'AI tune-up applied');sitesSave();renderSites();
+  dialog(`<h3 style="margin:0 0 8px">✨ AI tune-up applied</h3><p style="font-size:13px"><b>Title:</b> ${esc(j.title||'')}<br><b>Description:</b> ${esc(j.description||'')}</p><b style="font-size:12px">Suggested fixes</b><ul style="font-size:13px">${(j.tips||[]).map(t=>`<li>${esc(t)}</li>`).join('')}</ul><div style="text-align:right"><button class="btn2" data-close>Close</button></div>`)}catch(e){toast('AI tune-up failed: '+(e.message||e.code||'error'))}}
+function versDialog(s){const v=s.vers||[];const d=dialog(`<h3 style="margin:0 0 8px">🕘 Versions · ${esc(s.name)}</h3><div class="row" style="margin-bottom:8px"><button class="btn" id="sp_vsnap">↻ Snapshot current Studio project now</button></div>${v.length?v.map((x,i)=>`<div class="row sb" style="margin:6px 0;font-size:12px"><span>${new Date(x.ts).toLocaleString()} · ${x.files.length} files</span><button class="btn2" data-vr="${i}">Restore</button></div>`).join(''):'<div class="mono" style="color:var(--m);font-size:12px">No earlier versions yet. Snapshotting saves the live files first, then updates the site from your current Studio project.</div>'}<div style="text-align:right;margin-top:10px"><button class="btn2" data-close>Close</button></div>`);
+ $('#sp_vsnap').onclick=()=>{if(s.type!=='app')return toast('Only web app sites have files');s.vers=[{ts:Date.now(),files:cloneFiles(s.files||[]),entry:s.entry},...(s.vers||[])].slice(0,5);s.files=cloneFiles(P.files);s.entry=PAGE;slog(s,'Updated from Studio, previous version saved');sitesSave();d.close();renderSites();toast('Site updated, previous version kept')};
+ d.querySelectorAll('[data-vr]').forEach(b=>b.onclick=()=>{const x=s.vers[+b.dataset.vr];s.vers=[{ts:Date.now(),files:cloneFiles(s.files||[]),entry:s.entry},...s.vers.filter(y=>y!==x)].slice(0,5);s.files=cloneFiles(x.files);s.entry=x.entry||s.entry;slog(s,'Restored version from '+new Date(x.ts).toLocaleString());sitesSave();d.close();renderSites();toast('Restored')})}
+function logDialog(s){dialog(`<h3 style="margin:0 0 8px">📜 Activity · ${esc(s.name)}</h3><div style="max-height:50vh;overflow:auto">${(s.log||[]).length?(s.log||[]).map(l=>`<div class="mono" style="font-size:12px;margin:5px 0"><span style="color:var(--m)">${new Date(l.ts).toLocaleString()}</span> · ${esc(l.t)}</div>`).join(''):'<div class="mono" style="color:var(--m)">No activity yet.</div>'}</div><div style="text-align:right;margin-top:10px"><button class="btn2" data-close>Close</button></div>`)}
+function payDialog(s){const left=s.paidUntil?Math.ceil((s.paidUntil-Date.now())/864e5):null;const pays=(s.pays||[]);const d=dialog(`<h3 style="margin:0 0 8px">🧾 Billing · ${esc(s.name)}</h3><div class="cards mono" style="margin:0 0 10px">${[['PLAN',HOST_CR+' cr / '+HOST_DAYS+' days'],['PRICE','$'+(HOST_CR*0.1).toFixed(2)],['PAID UNTIL',s.paidUntil?new Date(s.paidUntil).toLocaleDateString():'—'],['AUTO-RENEW',s.autoRenew===false?'OFF':'ON']].map(([a,b])=>`<div class="card"><small>${a}</small><div style="font-size:14px">${b}</div></div>`).join('')}</div><div style="font-size:12px;color:var(--m);margin-bottom:8px">${left!=null&&left>0?left+' days left. Paying now adds '+HOST_DAYS+' days on top.':'Hosting is due.'}${ISOWNER?' Owner accounts host for free.':''}</div>${pays.length?pays.slice(-6).reverse().map(x=>`<div class="mono" style="font-size:12px">${new Date(x.ts).toLocaleString()} · ${x.cr} credits</div>`).join(''):''}<div class="row" style="justify-content:flex-end;gap:8px;margin-top:12px"><button class="btn2" data-close>Close</button><button class="btn" id="sp_ppay">Pay ${HOST_CR} credits now</button></div>`);
+ $('#sp_ppay').onclick=async()=>{const ok=await hostPay(s);if(ok){if(s.status!=='live'&&s.hold){s.status='live';s.hold=''}sitesSave();d.close();renderSites();toast('Hosting paid for '+HOST_DAYS+' more days')}else toast('Not enough credits. Add credits on the Credits page.')}}
+function wireSites(){wireSitesOld();const old=$('#sitesbody').onclick;
+ $('#sitesbody').onclick=async e=>{const t=e.target;const x=t.closest('[data-sx]');
+  if(x){const s=SITES.find(q=>q.id===x.dataset.id);if(!s)return;const a=x.dataset.sx;return({pro:proDialog,health:healthDialog,vers:versDialog,log:logDialog,pay:payDialog,ai:q=>aiTune(q,x)}[a])(s)}
+  const tg=t.closest('[data-stog]');if(tg){const s=SITES.find(q=>q.id===tg.dataset.stog);if(s&&s.status!=='live'){if(!(s.paidUntil>Date.now())){if(!confirm('Go live costs '+HOST_CR+' credits ($'+(HOST_CR*0.1).toFixed(2)+') for '+HOST_DAYS+' days. Continue?'))return;const ok=await hostPay(s);if(!ok){sitesSave();return toast('Not enough credits to host. Add credits first.')}}s.status='live';s.hold='';slog(s,'Went live');sitesSave();return renderSites()}if(s){s.status='paused';slog(s,'Paused');sitesSave();return renderSites()}}
+  return old(e)}}
 
 /* ============ credits & billing history ============ */
 function ledgerRows(){const rows=[];S.chats.forEach(c=>c.msgs.forEach(m=>{if(m.t)rows.push({ts:m.ts||0,chat:c.title,persona:(personas().find(p=>p.id===m.pid)||{name:'—'}).name,tier:m.t.tier,mode:m.t.mode,calls:m.t.calls,tokens:m.t.inTok+m.t.outTok,credits:m.t.cost/CR,saved:m.t.saved,free:!m.t.calls})}));store.get('aix3_studio',[]).forEach(e=>rows.push({ts:e.ts,chat:e.src,persona:(personas().find(p=>p.id===e.pid)||{name:'—'}).name,tier:e.tier,mode:e.mode,calls:e.calls,tokens:e.tokens,credits:e.credits,saved:e.saved,free:!e.calls}));return rows.sort((a,b)=>b.ts-a.ts)}
@@ -2222,6 +2305,9 @@ const abAvg=(model,mode,ev,mix)=>{const c=costFor(model,mode,ev),w=AB_MIXES[mix]
 function renderAbout(skip){
   const el=$('#aboutbody');
   const nPers=(()=>{try{return personas().filter(p=>p.preset).length}catch{return 8}})();
+  const tbl=(h,r)=>`<div class="ap-tw rv"><table><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr>${r.map(x=>`<tr>${x.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</table></div>`;
+  const grid=(a)=>`<div class="ap-grid">${a.map(c=>`<div class="ap-card rv" style="grid-column:span 2"><div class="ap-ic" style="background:linear-gradient(145deg,${c[1]},${c[2]})">${c[0]}</div><h3>${c[3]}</h3><p>${c[4]}</p></div>`).join('')}</div>`;
+  const faq=a=>`<div class="ap-faq rv">${a.map(([q,x])=>`<details><summary>${q}</summary><p>${x}</p></details>`).join('')}</div>`;
   const tile=(emoji,c1,c2)=>`<div class="ap-ic" style="background:linear-gradient(145deg,${c1},${c2})">${emoji}</div>`;
   const cards=[
    ['💬','#34d399','#059669','Chat','Eight personas, voice, memory, tasks and attachments. It knows when you are chatting and when you want something built.','s2'],
@@ -2256,10 +2342,10 @@ function renderAbout(skip){
     <div><b>$0.10</b><span>per credit</span></div>
   </section>
 
-  <nav class="ap-jump rv" aria-label="Jump to"><a href="#ap-new">What's new</a><a href="#ap-ent">Enterprise</a><a href="#ap-studio">Studio tools</a><a href="#ap-gh">GitHub</a><a href="#ap-mem">Memory</a><a href="#ap-tasks">Tasks</a><a href="#ap-log">Changelog</a></nav>
+  <nav class="ap-jump rv" aria-label="Jump to"><a href="#ap-new">What's new</a><a href="#ap-ent">Enterprise</a><a href="#ap-studio">Studio tools</a><a href="#ap-gh">GitHub</a><a href="#ap-mem">Memory</a><a href="#ap-tasks">Tasks</a><a href="#ap-sites">Sites</a><a href="#ap-gallery">Gallery</a><a href="#ap-compare">Compare</a><a href="#ap-credits">Credits</a><a href="#ap-faq">FAQ</a><a href="#ap-log">Changelog</a></nav>
 
   <section class="ap-sec" id="ap-new">
-    <div class="ap-head rv"><div class="ap-eyebrow">Version 3.2</div><h2>The biggest update yet.</h2><p class="ap-lead" style="margin-top:8px">A company of AI agents with a one-page control room, a far stronger Studio, direct GitHub access, a smarter Memory page and a full Tasks manager. Here is what each one does and how to use it.</p></div>
+    <div class="ap-head rv"><div class="ap-eyebrow">Version 3.3</div><h2>The biggest update yet.</h2><p class="ap-lead" style="margin-top:8px">Gallery, hosted sites with billing, and a much deeper About page. Plus a company of AI agents with a one-page control room, a far stronger Studio, direct GitHub access, a smarter Memory page and a full Tasks manager. Here is what each one does and how to use it.</p></div>
   </section>
 
   <section class="ap-sec ap-ent" id="ap-ent">
@@ -2330,9 +2416,95 @@ function renderAbout(skip){
     ].map(c=>`<article class="ap-card s2 rv" style="min-height:0">${tile(c[0],c[1],c[2])}<h3>${c[3]}</h3><p>${c[4]}</p></article>`).join('')}</div>
   </section>
 
+
+  <section class="ap-sec" id="ap-sites">
+    <div class="ap-head rv"><div class="ap-eyebrow">Sites and hosting</div><h2>Publish it, brand it, keep it healthy.</h2><p class="ap-lead" style="margin-top:8px">Open Sites to deploy a web app from Studio or an AI chat portal from a persona. Each live site costs a flat <b>50 credits ($5.00) per 30 days</b>. Ten upgrades make every site look finished and stay under control.</p></div>
+    <div class="ap-price rv"><div><b>50 cr</b><span>per site, every 30 days</span></div><div><b>$5.00</b><span>at $0.10 per credit</span></div><div><b>Auto</b><span>renews while you have credits</span></div><div><b>Safe</b><span>paused, never deleted, when credits run out</span></div></div>
+    ${grid([
+     ['🖼','#34d399','#059669','Live thumbnails','Every site card shows a real, scaled preview of the page, so you recognise it at a glance. Maintenance sites show a tool icon instead.'],
+     ['❤','#f472b6','#db2777','Health score','A 0 to 100 score from eight checks: title, description, mobile viewport, language, main heading, image alt text, page weight and secure links. Tap Health to see what to fix.'],
+     ['📈','#60a5fa','#2563eb','Traffic sparkline','A 14 day bar chart on each card plus total visits and chat interactions, so you can see which site is working.'],
+     ['🕘','#fbbf24','#d97706','Versions and restore','Update a site from Studio and the previous version is saved. Keep the last five and restore any of them in one tap.'],
+     ['🎨','#a78bfa','#7c3aed','Branding','Pick an emoji icon, an accent colour, a share title and a description. They become the favicon, the theme colour and the share tags.'],
+     ['✨','#2dd4bf','#0d9488','Splash screen','An optional animated opening screen with your icon and name that fades into the site. Makes any page feel like an app.'],
+     ['🛠','#fb923c','#ea580c','Maintenance mode','One switch shows visitors a friendly notice instead of the site, so you can edit safely. Hosting keeps running.'],
+     ['⏰','#34d399','#059669','Schedule','Set a go-live time and an auto-pause time. A site waits as Scheduled, goes live on its own and pauses when the window ends.'],
+     ['📜','#94a3b8','#475569','Activity log','Every deploy, payment, pause, restore and tune-up with a timestamp, so you always know what happened and when.'],
+     ['🤖','#f59e0b','#b45309','AI tune-up','The model reads your page and writes a better title, a description and three to five concrete fixes. The title and description are applied for you.']])}
+    <h3 class="ap-sub rv">How hosting billing works</h3>
+    ${tbl(['Moment','What happens','Cost'],[['You deploy a new site','A short note in the form tells you the price. The first 30 days are charged when you press Deploy.','50 credits'],['30 days pass','If auto-renew is on and you have credits, the site renews silently and you get a toast. If not, it pauses.','50 credits'],['You run out of credits','The site is paused with a clear reason. Nothing is deleted. Add credits and press Go live.','0'],['You press Go live on a lapsed site','You confirm the price first, then it is charged and the site goes live for 30 more days.','50 credits'],['You pay early (Billing)','The 30 days are added on top of what is left, so you never lose time.','50 credits'],['Your site existed before hosting billing','It got its first 30 days free as a thank you, then renews like any other.','0 then 50'],['You are the owner','Owner accounts host for free and see the same billing history.','0']])}
+  </section>
+
+  <section class="ap-sec" id="ap-gallery">
+    <div class="ap-head rv"><div class="ap-eyebrow">Gallery</div><h2>Everything you made, in one place.</h2><p class="ap-lead" style="margin-top:8px">Open Gallery from the sidebar or the top bar. It collects images and videos from your chats and Studio, plus every app you built, and links each one back to where it came from.</p></div>
+    ${grid([
+     ['▦','#34d399','#059669','Thumbnail grid','Large previews with a type tag. Apps show a live scaled snapshot of the page, images and videos show their frame.'],
+     ['☰','#60a5fa','#2563eb','List view','Switch to a compact list with a small thumbnail, the name and its session, like your chat list. Your choice is remembered.'],
+     ['🔗','#a78bfa','#7c3aed','Linked to the session','Each item says which session it came from. Tap an app to open it in Studio, or Open session to jump back to the chat.'],
+     ['🔎','#fbbf24','#d97706','Filter and search','Chips for All, Images, Videos and Apps with counts, and a search box that matches the name or the session title.'],
+     ['⬇','#f472b6','#db2777','Preview and download','Tap an image or video for a large preview with the prompt as its name, then download it in one tap.'],
+     ['🗂','#2dd4bf','#0d9488','Studio files included','Images and SVGs inside your Studio projects appear too, labelled with the app they belong to.']])}
+  </section>
+
+  <section class="ap-sec" id="ap-compare">
+    <div class="ap-head rv"><div class="ap-eyebrow">Compare</div><h2>What each part does, and how they differ.</h2><p class="ap-lead" style="margin-top:8px">The same app has many doors. Use these tables to pick the right one for the job before you spend a credit.</p></div>
+
+    <h3 class="ap-sub rv">The main areas</h3>
+    ${tbl(['Area','What it is','Best for','What you get','Cost'],[
+     ['Chat','Conversation with a persona. It can also answer with an image, a video, a document or an agent run.','Questions, writing, planning, quick tools','Text, files, images, short clips','Credits per reply. Many replies are free because the local engine handles them.'],
+     ['Studio','A multi-file app builder with a live preview, a code editor, an AI chat and one-tap fixes.','Building websites, tools, games and 3D','A project with real files you can export or deploy','Credits per generation or edit'],
+     ['Company','A team of AI agents with a goal, a time limit and a credit limit, in a one-page control room.','Bigger jobs that need several roles working together','Reports, pages and files saved to the project','Credits per agent step, capped by you'],
+     ['Sites','Hosts a Studio app or a persona chat portal with branding, schedule and versions.','Showing work to others and keeping it organised','A managed site with health, traffic and billing','50 credits per 30 days per site'],
+     ['Chat pages','A shareable mini Alpha with its own link and look.','Letting visitors talk to your persona','A branded chat page','Visitors use your credits within limits you set'],
+     ['Gallery','A browsable index of images, videos and apps.','Finding and reusing what you made','Thumbnails, list, search, downloads','Free'],
+     ['Memory','Facts sent to every chat within a budget.','Making the AI know you and your rules','Pinned, scoped, expiring facts','Free, but long memory adds a few tokens per reply'],
+     ['Tasks','A task manager with quick add, boards, an agenda and AI breakdown.','Turning chats into things you finish','Lists, boards, reminders, recurring tasks','Free, AI breakdown uses credits'],
+     ['API','Your own OpenAI-compatible keys.','Cursor, Open WebUI, Python and your own tools','Keys and live usage','Same credit meter']])}
+
+    <h3 class="ap-sub rv">Reply modes</h3>
+    ${tbl(['Mode','Refine passes','History kept','Typical cost','Use it when'],Object.keys(MODES).map(m=>[m[0].toUpperCase()+m.slice(1),MODES[m].refines,'×'+MODES[m].hist,f1(abAvg('aix-alpha-v3',m,false,'balanced'))+' cr per reply',{eco:'Quick answers, brainstorming, anything you will rewrite anyway',balanced:'Everyday work. The default, and the best price for quality.',thorough:'Important writing, hard reasoning, code you will ship'}[m]]))}
+
+    <h3 class="ap-sub rv">The eight personas</h3>
+    ${tbl(['Persona','Reply style','Best for','Balanced cost'],['aix-alpha-v3','aix-alpha-quantum-v1','aix-alpha-le','code-architect','strategist','tutor','security','storyteller'].map(id=>{const pp=personas().find(x=>x.id===id)||{name:id};return [esc(pp.name),(AB_STYLE[id]||['',1])[0],AB_BEST[id]||'',f1(abAvg(id,'balanced',false,'balanced'))+' cr']}))}
+
+    <h3 class="ap-sub rv">Where your information lives</h3>
+    ${tbl(['Place','Holds','Seen by the AI?','Best for'],[['Memory','Short facts about you and your rules','Yes, every chat, within your budget','Things that should always be true'],['Tasks','Things to do, with dates and subtasks','Only when you ask it to plan or break down','Getting things done'],['Chat history','Everything said in a session','The current session','Working through a topic'],['Studio files','The real files of an app','Yes, when you edit that app','Building'],['Company files','What the agents produced','Yes, to the agents on that project','Reports and team output'],['Gallery','An index of media and apps','No, it is only a viewer','Finding and reusing']])}
+
+    <h3 class="ap-sub rv">Ways to power the replies</h3>
+    ${tbl(['Option','Setup','Cost','Privacy','Speed'],[['AIX hosted engine','None, sign in and go','Credits','Prompts go to the model provider through your account','Fast'],['Your own key','Paste a key in API','Your provider pays, no credits used','Goes to your provider','Fast'],['Alpha Node (Ollama)','Run the node on your Mac','Lowest credit rate','Stays on your machine','Depends on your hardware'],['Bring your model','Add a URL and key','Your provider','Goes to your provider','Depends on the provider']])}
+
+    <h3 class="ap-sub rv">Ways to publish what you built</h3>
+    ${tbl(['Way','Result','Who can see it','Cost'],[['Studio preview','Live in the editor','You','Free'],['Hosted Site','A managed site with branding, versions and health','Anyone you share this app with, plus you','50 credits per 30 days'],['Chat page','A shareable mini Alpha','Anyone with the link','Visitor use comes from your credits'],['Export or ZIP','Real files you can host anywhere','Wherever you host them','Free'],['GitHub in Studio','Commit and push the project','Per your repository settings','Free']])}
+  </section>
+
+  <section class="ap-sec" id="ap-credits">
+    <div class="ap-head rv"><div class="ap-eyebrow">Credits</div><h2>One meter. No subscription.</h2><p class="ap-lead" style="margin-top:8px">One credit is ten cents. You see an estimate before you run anything, and every reply is logged on the Credits page with a CSV export.</p></div>
+    ${tbl(['Action','Credits','Dollars','Notes'],[['Local answers (math, dates, facts)','0','$0','Handled by the loop engine, no model call'],['Chat reply, micro',f1(costFor('aix-alpha-v3','balanced',false).MICRO.typ),'$'+(costFor('aix-alpha-v3','balanced',false).MICRO.typ*0.1).toFixed(3),'Short questions'],['Chat reply, standard',f1(costFor('aix-alpha-v3','balanced',false).STANDARD.typ),'$'+(costFor('aix-alpha-v3','balanced',false).STANDARD.typ*0.1).toFixed(3),'Typical writing and help'],['Chat reply, deep',f1(costFor('aix-alpha-v3','balanced',false).DEEP.typ),'$'+(costFor('aix-alpha-v3','balanced',false).DEEP.typ*0.1).toFixed(3),'Long, multi-step answers'],['Web search','+7','about $0.70','Added only when Web is on and needed'],['Image (FLUX)','1','$0.10','Free for the owner'],['Image (FLUX.2)','3','$0.30','Higher quality'],['Hosted site','50 / 30 days','$5.00','Per live site, auto-renew optional'],['Credit pack','100 credits','$9.99','Buy again whenever you run low']])}
+  </section>
+
+  <section class="ap-sec" id="ap-faq">
+    <div class="ap-head rv"><div class="ap-eyebrow">Questions</div><h2>Good to know.</h2></div>
+    ${faq([
+     ['What happens to my site when I run out of credits?','It is paused, not deleted. Your files, versions and settings stay. Add credits, press Go live, and it comes back for 30 more days.'],
+     ['Can I stop hosting charges?','Yes. Open Pro settings on a site and turn off auto-renew, or simply pause the site. You are only charged when a live site reaches its renewal.'],
+     ['Do paused sites cost anything?','No. Only live sites are billed.'],
+     ['Is my work private?','Yes. Chats, memory, tasks and projects live in your own browser storage. Sync shares them only across your own signed-in devices.'],
+     ['Why do some replies cost nothing?','The local engine answers math, dates, unit conversions and similar questions itself, with no model call and zero tokens.'],
+     ['What is the difference between a Site and a Chat page?','A Site hosts an app or a persona portal you manage in detail, with branding, versions and billing. A Chat page is a lightweight shareable mini Alpha.'],
+     ['Do Company agents keep running when I close the app?','Not yet. Agents run while the app is open. Close it and the run stops safely.'],
+     ['Where do my generated images go?','Into the chat they came from, and into the Gallery, where you can search, preview and download them.'],
+     ['Can I use my own AI key?','Yes. Add it under API or Bring your model and replies are billed by your provider instead of using credits.'],
+     ['How do I get the full details of an agent run?','Open the run in Company. Reports can be viewed, downloaded, saved to Files or exported as a designed PDF.']])}
+  </section>
+
+  <section class="ap-sec" id="ap-limits">
+    <div class="ap-head rv"><div class="ap-eyebrow">Honest limits</div><h2>What it does not do yet.</h2></div>
+    ${tbl(['Area','Today','Workaround'],[['Public URL per site','Sites run inside this app. Sharing this app shares everything in it.','Export a site and host the files, or deploy from GitHub Pages'],['Background agents','Company agents run only while the app is open','Keep the tab open for long runs'],['Hosting enforcement','Billing and pausing are enforced in the app and the account server, not by a separate web host','Treat hosting as managed publishing inside Alpha'],['Image and video quality','Generated media depends on the model you pick','Use FLUX.2 for quality, FLUX for cost'],['Offline','AI replies need a connection, the local engine does not','Use Alpha Node for a private offline-friendly setup']])}
+  </section>
+
   <section class="ap-sec" id="ap-log">
     <div class="ap-head rv"><div class="ap-eyebrow">Changelog</div><h2>What changed, in order.</h2></div>
-    <div class="ap-tl rv">${[['3.2','One-page Company control room with live preview and files, step-in dispatcher, multi-page sites, styled reports and PDFs, Memory v2 and Tasks v2.'],['3.1','Enterprise mode, ten Studio tools, GitHub in Studio, Spatial view shown only for chats with a 3D model.'],['3.0.x','Ten chat features: branching, follow-up chips, canvas, camera, Talk mode, Council, charts, memory map, spatial view and the agent timeline.'],['3.0.x','Create PDF, Word, Excel, CSV, Markdown, text and ZIP files from chat, with previews. Workspaces, cloud sync and Turbo mode.']].map(x=>`<div><b>${x[0]}</b><span>${x[1]}</span></div>`).join('')}</div>
+    <div class="ap-tl rv">${[['3.3','Gallery for images, videos and apps. Sites hosting at 50 credits per 30 days with live thumbnails, health score, traffic, versions, branding, splash, maintenance mode, scheduling, activity log and AI tune-up. A much deeper About page with comparison tables.'],['3.2','One-page Company control room with live preview and files, step-in dispatcher, multi-page sites, styled reports and PDFs, Memory v2 and Tasks v2.'],['3.1','Enterprise mode, ten Studio tools, GitHub in Studio, Spatial view shown only for chats with a 3D model.'],['3.0.x','Ten chat features: branching, follow-up chips, canvas, camera, Talk mode, Council, charts, memory map, spatial view and the agent timeline.'],['3.0.x','Create PDF, Word, Excel, CSV, Markdown, text and ZIP files from chat, with previews. Workspaces, cloud sync and Turbo mode.']].map(x=>`<div><b>${x[0]}</b><span>${x[1]}</span></div>`).join('')}</div>
   </section>
 
   <section class="ap-sec ap-center">
