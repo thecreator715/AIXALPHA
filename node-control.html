@@ -46,7 +46,7 @@ let URL0=LS('aixnode_url')||(location.protocol.startsWith('http')&&location.host
 $('#url').value=URL0;const gb=n=>(n/1073741824).toFixed(1)+' GB',dur=s=>s>86400?Math.floor(s/86400)+'d '+Math.floor(s%86400/3600)+'h':s>3600?Math.floor(s/3600)+'h '+Math.floor(s%3600/60)+'m':Math.floor(s/60)+'m '+s%60+'s';
 async function api(p,o={}){const r=await fetch(URL0.replace(/\/+$/,'')+p,{...o,headers:{'content-type':'application/json',authorization:'Bearer '+TOK,...(o.headers||{})}});if(r.status===401)throw new Error('Wrong token');if(!r.ok&&!o.raw)throw new Error('HTTP '+r.status);return o.raw?r:r.json()}
 async function connect(){URL0=$('#url').value.trim();TOK=$('#tok').value.trim()||TOK;$('#cerr').textContent='';try{await api('/admin/status');LS('aixnode_url',URL0);LS('aixnode_tok',TOK);$('#conn').style.display='none';$('#main').style.display='';tick();timer=setInterval(tick,2000);models()}catch(e){$('#cerr').textContent=e.message.includes('Failed')?'Cannot reach the node. Is the launcher window still open?':e.message}}
-$('#go').onclick=connect;$('#tok').onkeydown=e=>{if(e.key==='Enter')connect()};if(URL0&&TOK)connect();
+$('#go').onclick=connect;$('#tok').onkeydown=e=>{if(e.key==='Enter')connect()};if(URL0&&TOK)connect();else if(/^(localhost|127\.0\.0\.1)$/.test(location.hostname)){$('#url').value=location.origin;TOK='-';connect()}
 $('#disc').onclick=()=>{clearInterval(timer);LS('aixnode_tok','');TOK='';$('#main').style.display='none';$('#conn').style.display='';$('#dot').className='dot'};
 async function tick(){try{const s=await api('/admin/status');$('#dot').className='dot '+(s.ollama?'on':'off');$('#host').textContent=s.host+' · Ollama '+(s.version||'?');
 const used=s.mem.total-s.mem.free,pct=Math.round(100*used/s.mem.total);

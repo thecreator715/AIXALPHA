@@ -27,7 +27,8 @@ http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') { res.writeHead(204, h); return res.end(); }
   if (u === '/' || u === '/monitor' || u === '/monitor.html') { try { const f = fs.readFileSync(path.join(__dirname, 'monitor.html')); res.writeHead(200, { ...h, 'content-type': 'text/html; charset=utf-8' }); return res.end(f); } catch { res.writeHead(404, h); return res.end('monitor.html missing'); } }
   if (u === '/health') return J(res, h, 200, { status: 'ok', engine: 'aix-node' });
-  if ((req.headers.authorization || '') !== 'Bearer ' + TOKEN) return J(res, h, 401, { error: 'bad token' });
+  const localAdmin = u.startsWith('/admin') && /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(req.headers.host || '') && !req.headers['x-forwarded-for'] && !req.headers['cf-connecting-ip'] && !req.headers.origin;
+  if (!localAdmin && (req.headers.authorization || '') !== 'Bearer ' + TOKEN) return J(res, h, 401, { error: 'bad token' });
   try {
     if (u === '/admin/status') {
       let ps = [], up = false, ver = '';
