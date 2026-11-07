@@ -1352,7 +1352,7 @@ $('#exp').onclick=async()=>{const c=curChat();if(!c)return;const md_=`# ${c.titl
 
 /* ============ views, palette, analytics, studio ============ */
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.remove('act');t.classList.add('on');clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove('on'),1400)}
-function setStatus(){$('#pm').title=sampleFn?'':'Click to add an API key';$('#pm').onclick=(sampleFn&&!BACKEND())?null:()=>pmClick();const mob=(()=>{try{return matchMedia('(max-width:900px)').matches}catch{return false}})();$('#pm').textContent=sampleFn?(mob&&BACKEND()&&BAL!=null?(+BAL).toFixed(1)+' cr':('ONLINE'+(BACKEND()&&UNAME?' · '+UNAME:'')+(BAL!=null&&BACKEND()?' · '+(+BAL).toFixed(1)+' cr':''))):(mob?'Sign in':'OFFLINE');$('#pm').style.color=sampleFn?((BACKEND()&&BAL!=null&&BAL<=0&&!ISOWNER)?'#f59e0b':'var(--g)'):'var(--r)'}
+function setStatus(){$('#pm').title=sampleFn?(BACKEND()&&BAL!=null?(+BAL).toFixed(1)+' credits':''):'Click to add an API key';$('#pm').onclick=(sampleFn&&!BACKEND())?null:()=>pmClick();const mob=(()=>{try{return matchMedia('(max-width:900px)').matches}catch{return false}})();$('#pm').textContent=sampleFn?(mob&&BACKEND()&&BAL!=null?(+BAL).toFixed(1):('ONLINE'+(BACKEND()&&UNAME?' · '+UNAME:'')+(BAL!=null&&BACKEND()?' · '+(+BAL).toFixed(1)+' cr':''))):(mob?'Sign in':'OFFLINE');$('#pm').style.color=sampleFn?((BACKEND()&&BAL!=null&&BAL<=0&&!ISOWNER)?'#f59e0b':'var(--g)'):'var(--r)'}
 $('#tabs').onclick=e=>{const b=e.target.closest('button');if(b)setView(b.dataset.v)};
 function renderAnaBase(){
   const ms=S.chats.flatMap(c=>c.msgs.filter(m=>m.t)).map(m=>m.t);
