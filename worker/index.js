@@ -351,6 +351,29 @@ async function v1Api(env, req, path) {
   return json(env, req, { id, object: 'chat.completion', created: Math.floor(Date.now() / 1000), model: 'aix-alpha', choices: [{ index: 0, message: { role: 'assistant', content: t }, finish_reason: j.stop_reason === 'max_tokens' ? 'length' : 'stop' }], usage: { ...u, total_tokens: u.prompt_tokens + u.completion_tokens } });
 }
 
+// ---- Automatic backups: compact gzipped JSON of all important tables, once every 24h, last 14 kept in D1 ----
+async function ensureBackups(env) {
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS backups(id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, rows INTEGER, bytes INTEGER, kind TEXT, data TEXT)').run();
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS grants(id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, at INTEGER, credits REAL, note TEXT)').run();
+}
+async function makeBackup(env, kind) {
+  await ensureBackups(env); await ensureKeys(env); await ensureJobs(env);
+  const now = Date.now(), d30 = new Date(now - 30 * 86400e3).toISOString();
+  const spec = [['users', 'SELECT * FROM users'], ['purchases', 'SELECT * FROM purchases'], ['grants', 'SELECT * FROM grants'], ['api_keys', 'SELECT * FROM api_keys'], ['jobs', 'SELECT * FROM jobs'], ['apps', 'SELECT * FROM apps'], ['app_sales', 'SELECT * FROM app_sales'], ['settings', 'SELECT * FROM settings'],
+    ['usage', 'SELECT * FROM usage WHERE at>=? ORDER BY id DESC LIMIT 20000', d30], ['api_usage', 'SELECT * FROM api_usage WHERE at>=? ORDER BY id DESC LIMIT 20000', now - 30 * 86400e3], ['job_runs', 'SELECT * FROM job_runs ORDER BY id DESC LIMIT 500']];
+  const out = { v: 1, at: new Date(now).toISOString(), tables: {} }; let rows = 0;
+  for (const [t, sql, ...p] of spec) { try { const r = (await env.DB.prepare(sql).bind(...p).all()).results || []; out.tables[t] = r; rows += r.length; } catch (e) { out.tables[t] = { error: String(e.message || e).slice(0, 120) }; } }
+  const gz = await new Response(new Blob([JSON.stringify(out)]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer();
+  const u8 = new Uint8Array(gz); let bin = ''; for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  const b64 = btoa(bin), keep = b64.length < 1.8e6;
+  const ins = await env.DB.prepare('INSERT INTO backups(at,rows,bytes,kind,data) VALUES(?,?,?,?,?)').bind(now, rows, u8.length, kind, keep ? b64 : '').run();
+  await env.DB.prepare('DELETE FROM backups WHERE id NOT IN (SELECT id FROM backups ORDER BY id DESC LIMIT 14)').run();
+  return { id: ins.meta && ins.meta.last_row_id, at: now, rows, bytes: u8.length, stored: keep, data: b64 };
+}
+async function autoBackup(env) {
+  try { await ensureBackups(env); const l = await env.DB.prepare('SELECT MAX(at) AS at FROM backups').first(); if (!l || !l.at || Date.now() - l.at > 23.5 * 3600e3) await makeBackup(env, 'auto'); } catch (e) { /* retry next cron */ }
+}
+
 // ---- Node control panel feed: read-only overview of the whole service, guarded by the node secret ----
 async function nodeAdmin(env, req, url) {
   if (!env.NODE_SECRET || req.headers.get('x-node-secret') !== env.NODE_SECRET) return json(env, req, { error: 'bad node secret' }, 401);
@@ -402,15 +425,89 @@ async function nodeAdmin(env, req, url) {
     const apps = await q("SELECT id, owner, title, price, status, downloads, sales, earned FROM apps ORDER BY sales DESC LIMIT 30");
     return R({ purchases: rows, apps });
   }
+  if (what === 'backups') {
+    await ensureBackups(env);
+    return R({ backups: await q("SELECT id, at, rows, bytes, kind, (length(data)>0) AS stored FROM backups ORDER BY id DESC LIMIT 20"), nextAuto: 'every 24 hours (checked each 5 minutes)' });
+  }
+  if (what === 'backup_now') {
+    if (req.method !== 'POST') return json(env, req, { error: 'POST required' }, 405);
+    return R(await makeBackup(env, url.searchParams.get('kind') === 'node' ? 'node' : 'manual'));
+  }
+  if (what === 'backup_get') {
+    await ensureBackups(env);
+    const r = await one('SELECT id, at, data FROM backups WHERE id=?', Number(url.searchParams.get('id')) || 0);
+    if (!r.id || !r.data) return json(env, req, { error: 'not stored in the cloud (too large) — run Backup now' }, 404);
+    return R({ id: r.id, at: r.at, data: r.data });
+  }
+  if (what === 'grant') {
+    if (req.method !== 'POST') return json(env, req, { error: 'POST required' }, 405);
+    const b = await req.json().catch(() => ({}));
+    const email = String(b.email || '').toLowerCase().trim(), amt = Number(b.credits);
+    if (!email || !isFinite(amt) || amt === 0 || Math.abs(amt) > 100000) return json(env, req, { error: 'Need email and a non-zero credits amount (max 100,000).' }, 400);
+    if (!(await getUser(env, email))) return json(env, req, { error: 'No such user: ' + email }, 404);
+    await env.DB.prepare('CREATE TABLE IF NOT EXISTS grants(id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, at INTEGER, credits REAL, note TEXT)').run();
+    await env.DB.batch([
+      env.DB.prepare('UPDATE users SET credits=MAX(0,credits+?) WHERE email=?').bind(amt, email),
+      env.DB.prepare('INSERT INTO grants(email,at,credits,note) VALUES(?,?,?,?)').bind(email, now, amt, String(b.note || '').slice(0, 200)),
+    ]);
+    const f = await one('SELECT credits FROM users WHERE email=?', email);
+    return R({ ok: true, email, credits: +Number(f.credits).toFixed(2) });
+  }
+  if (what === 'grants') {
+    await env.DB.prepare('CREATE TABLE IF NOT EXISTS grants(id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, at INTEGER, credits REAL, note TEXT)').run();
+    return R({ grants: await q('SELECT email, at, credits, note FROM grants ORDER BY id DESC LIMIT 100') });
+  }
+  if (what === 'user') {
+    const email = String(url.searchParams.get('email') || '').toLowerCase().trim();
+    const u = await one('SELECT email, username, credits, tokens, requests, created, last FROM users WHERE email=?', email);
+    if (!u.email) return json(env, req, { error: 'No such user' }, 404);
+    await env.DB.prepare('CREATE TABLE IF NOT EXISTS grants(id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, at INTEGER, credits REAL, note TEXT)').run();
+    return R({
+      user: { ...u, credits: +Number(u.credits).toFixed(2), owner: owners(env).includes(u.email) },
+      usage: await q('SELECT at, input, output, credits FROM usage WHERE email=? ORDER BY rowid DESC LIMIT 25', email),
+      purchases: await q('SELECT at, usd, credits FROM purchases WHERE email=? ORDER BY id DESC LIMIT 20', email),
+      grants: await q('SELECT at, credits, note FROM grants WHERE email=? ORDER BY id DESC LIMIT 20', email),
+      keys: await q('SELECT name, prefix, created, last, requests, COALESCE(tokens,0) AS tokens, COALESCE(credits,0) AS credits FROM api_keys WHERE email=?', email),
+      jobs: await q('SELECT title, repeat, status, due, last FROM jobs WHERE email=? ORDER BY due LIMIT 20', email),
+    });
+  }
+  if (what === 'growth') {
+    const su = await q('SELECT substr(created,1,10) AS d, COUNT(*) AS n FROM users WHERE created>=? GROUP BY d ORDER BY d', iso(30 * 86400e3));
+    const hr = await q("SELECT substr(at,1,13) AS h, COUNT(*) AS n, COALESCE(SUM(credits),0) AS c FROM usage WHERE at>=? GROUP BY h ORDER BY h", iso(86400e3));
+    const rev = await q('SELECT substr(at,1,10) AS d, COUNT(*) AS n, COALESCE(SUM(usd),0) AS usd FROM purchases WHERE at>=? GROUP BY d ORDER BY d', iso(30 * 86400e3));
+    const eng = await q('SELECT engine, COUNT(*) AS n, COALESCE(SUM(input+output),0) AS t, COALESCE(SUM(credits),0) AS c FROM api_usage GROUP BY engine');
+    const bal = await q("SELECT CASE WHEN credits<=0 THEN 'empty' WHEN credits<10 THEN 'under 10' WHEN credits<50 THEN '10-50' ELSE '50+' END AS b, COUNT(*) AS n FROM users GROUP BY b");
+    return R({ signups: su, hourly: hr, revenue: rev, engines: eng, balances: bal });
+  }
+  if (what === 'health') {
+    const cnt = {};
+    for (const t of ['users', 'usage', 'purchases', 'api_keys', 'api_usage', 'jobs', 'job_runs', 'apps', 'grants']) { try { cnt[t] = (await one('SELECT COUNT(*) AS n FROM ' + t)).n; } catch (e) { cnt[t] = null; } }
+    const nd = await nodeGet(env);
+    const overdue = await one("SELECT COUNT(*) AS n, MIN(due) AS oldest FROM jobs WHERE status='pending' AND due<?", now - 10 * 60e3);
+    const lastRun = await one('SELECT MAX(at) AS at FROM job_runs');
+    const lastUse = await one('SELECT MAX(at) AS at FROM usage');
+    const lastApi = await one('SELECT MAX(at) AS at FROM api_usage');
+    const lastBuy = await one('SELECT MAX(at) AS at FROM purchases');
+    const fail = await one("SELECT COUNT(*) AS n FROM job_runs WHERE at>=? AND (result LIKE 'Skipped%' OR result LIKE 'Failed%' OR result LIKE '%error%')", now - 86400e3);
+    let dbMs = 0; { const t0 = Date.now(); await env.DB.prepare('SELECT 1').first(); dbMs = Date.now() - t0; }
+    const neg = await one('SELECT COUNT(*) AS n FROM users WHERE credits<0');
+    return R({
+      now, dbMs, tables: cnt, bindings: { anthropicKey: !!env.ANTHROPIC_API_KEY, stripeWebhook: !!env.STRIPE_WEBHOOK_SECRET, nodeSecret: !!env.NODE_SECRET, adminToken: !!env.ADMIN_TOKEN, workersAI: !!env.AI, owners: owners(env).length, signupCredits: env.SIGNUP_CREDITS || null },
+      node: nd ? { model: nd.model, ageSec: Math.round((now - nd.at) / 1000), url: String(nd.url || '').replace(/^(https?:\/\/[^/]{0,40}).*$/, '$1') } : null,
+      jobs: { overdue: overdue.n, oldestOverdueMin: overdue.oldest ? Math.round((now - overdue.oldest) / 60e3) : 0, lastRun: lastRun.at || null, failed24h: fail.n },
+      last: { usage: lastUse.at || null, api: lastApi.at || null, purchase: lastBuy.at || null },
+      problems: neg.n ? ['users with negative credits: ' + neg.n] : [],
+    });
+  }
   return json(env, req, { error: 'unknown view' }, 404);
 }
 
 export default {
-  async scheduled(ev, env, ctx) { ctx.waitUntil(runDueJobs(env)); },
+  async scheduled(ev, env, ctx) { ctx.waitUntil(runDueJobs(env).then(() => autoBackup(env))); },
   async fetch(req, env) {
     const url = new URL(req.url), path = url.pathname;
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(env, req) });
-    if (path === '/api/node/admin' && req.method === 'GET') return nodeAdmin(env, req, url);
+    if (path === '/api/node/admin' && (req.method === 'GET' || req.method === 'POST')) return nodeAdmin(env, req, url);
     if (path.startsWith('/api/keys')) return keysApi(env, req, path);
     if (path.startsWith('/v1/')) return v1Api(env, req, path);
     if (path.startsWith('/api/jobs')) return jobsApi(env, req, path);
