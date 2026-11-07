@@ -634,7 +634,8 @@ function route0(p,att){
   return{tier,code,app,m3,fresh,hist:Math.round({MICRO:4,STANDARD:8,DEEP:6}[tier]*M.hist),refines:M.refines};
 }
 /* ---- context diet ---- */
-function stub(txt){return txt.replace(/```([\w+-]*)\n([\s\S]*?)```/g,(m,l,b)=>{const n=b.replace(/\n+$/,'').split('\n').length;return n<12?m:`[${l||'code'} block, ${n} lines omitted — starts: ${(b.split('\n').find(x=>x.trim())||'').trim().slice(0,60)}]`})}
+const EDITRULE='\nEDITING AN EXISTING APP: the app you built earlier is in this conversation in full. When asked to change or add something, reply with ONE short sentence, then the COMPLETE updated file in a single ```html block, starting at <!doctype html> and ending at </html>, with every line of the app. NEVER abbreviate, summarize or write placeholders such as "[html block ... omitted]" or "rest unchanged". Never describe code instead of writing it.';
+function stub(txt){return txt.replace(/```([\w+-]*)\n([\s\S]*?)```/g,(m,l,b)=>{const n=b.replace(/\n+$/,'').split('\n').length;return n<12?m:`(earlier ${l||'code'} removed to save space; ${n} lines)`})}
 function windowStart(n,keep,step=4){const r=Math.max(0,n-keep);return r-(r%step)}
 function digest(ms){let o=ms.map(m=>{const c=stub(m.content).replace(/\s+/g,' ').trim();return c?(m.role==='user'?'U: ':'A: ')+c.split(/(?<=[.!?])\s/)[0].slice(0,140):''}).filter(Boolean).join('\n');return o.length>700?o.slice(-700):o}
 function notesFrom(t){const o=[];const re=/(?:^|[.!?\n]\s*)((?:remember|note|always|never|from now on|use|prefer|my (?:name|stack|project|app|site) is|we(?:'| a)re using|the goal is)\b[^.!?\n]{4,})/gi;let m;while((m=re.exec(t))&&o.length<3)o.push(m[1].trim().slice(0,160));return o}
@@ -865,10 +866,11 @@ async function runLoop0(chat,prompt,onText,onStep){
   if(pers.thinking==='MINIMAL')r.refines=0;else if(pers.thinking==='LOW')r.refines=Math.min(r.refines,1);
   const all=chat.msgs.filter(m=>m.role==='user'||m.role==='assistant').map(m=>({role:m.role,content:m.content}));
   const origTok=all.reduce((s,m)=>s+est(m.content),0);
-  const st=windowStart(all.length,r.hist);const kept=all.slice(st).map((m,i,a)=>({role:m.role,content:i>=a.length-2?m.content:stub(m.content)}));
+  const st0=windowStart(all.length,r.hist);let lhi=-1;all.forEach((m,i)=>{if(m.role==='assistant'&&extractHtml(m.content))lhi=i});const st=(lhi>=0&&lhi<st0&&r.intent!=='chat')?lhi:st0;
+  const kept=all.slice(st).map((m,i,a)=>({role:m.role,content:(i>=a.length-2||st+i===lhi)?m.content:stub(m.content)}));const hadApp=lhi>=0&&!!kept.some(m=>m.role==='assistant'&&extractHtml(m.content));
   const dropped=all.slice(0,st);if(dropped.length)step(`Context trimmed (−${dropped.length} msgs, digest kept)`);
   const memory=[(store.get('aix3_memory',[])||[]).length?'Persistent memory (all chats):\n'+store.get('aix3_memory',[]).map(n=>'- '+n).join('\n'):'',(store.get('aix3_tasks',[])||[]).some(x=>!x.d)?'Open tasks:\n'+store.get('aix3_tasks',[]).filter(x=>!x.d).map(x=>'- '+x.t).join('\n'):'',chat.notes.length?'Session notes:\n'+chat.notes.map(n=>'- '+n).join('\n'):'',dropped.length?'Earlier in this chat (digest):\n'+digest(dropped):''].filter(Boolean).join('\n\n');
-  const prompt1=compose(core,BREV[r.tier],memory,kept);
+  const prompt1=compose(core+(hadApp&&r.intent!=='chat'?EDITRULE:''),BREV[r.tier],memory,kept);
   const ckey=pers.id+'|'+r.tier+'|'+S.mode+'|'+prompt1;
   const naiveIn=est(core)+origTok;
   if(!r.fresh&&!r.conn&&!S.nocache&&S.cache[ckey]){t.cacheHit=true;step('Response cache hit — 0 tokens','ok');t.saved=100;t.naive=cost(naiveIn,est(S.cache[ckey]));return out(S.cache[ckey])}
