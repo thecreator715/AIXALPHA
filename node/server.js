@@ -1,5 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path');
+const VERSION = 5;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -61,11 +62,34 @@ function analytics() {
   const totTok = L.reduce((a, e) => a + (e.tokens || 0), 0), totMs = L.reduce((a, e) => a + (e.ms || 0), 0);
   return { total: L.length, errors: L.filter((e) => e.status >= 400).length, hours, days, hist, heat, byModel: top(by.model), bySrc: top(by.src), byUser: top(by.user), p50: p(0.5), p95: p(0.95), p99: p(0.99), tokPerSec: totMs ? +(totTok / (totMs / 1000)).toFixed(1) : 0, slow, since: L[0] && L[0].t };
 }
+// ---- auto-update: panel always served fresh from GitHub; server.js replaces itself when a newer VERSION is published ----
+const UPD = (process.env.AIX_UPDATE_URL || 'https://raw.githubusercontent.com/thecreator715/AIXALPHA/main/node/').replace(/\/?$/, '/'), UPD_ON = process.env.AIX_UPDATE !== '0';
+let PANEL = { html: '', at: 0 }, UPDST = { checked: 0, remote: null, applied: false, error: '' };
+async function getRemote(f, ms) { const r = await fetch(UPD + f + '?t=' + Date.now(), { signal: AbortSignal.timeout(ms || 5000), headers: { 'cache-control': 'no-cache' } }); if (!r.ok) throw new Error(f + ' HTTP ' + r.status); return r.text(); }
+async function panelHtml() {
+  if (UPD_ON && Date.now() - PANEL.at > 120000) { try { const t = await getRemote('monitor.html', 3500); if (t.length > 15000 && t.includes('AIX NODE CONTROL')) PANEL = { html: t, at: Date.now() }; else PANEL.at = Date.now() - 60000; } catch { PANEL.at = Date.now() - 90000; } }
+  if (PANEL.html) return PANEL.html;
+  return fs.readFileSync(path.join(__dirname, 'monitor.html'), 'utf8');
+}
+async function checkUpdate() {
+  if (!UPD_ON) return; UPDST.checked = Date.now();
+  try {
+    const src = await getRemote('server.js', 8000), m = src.match(/const VERSION = (\d+)/); UPDST.remote = m ? +m[1] : null; UPDST.error = '';
+    if (!m || +m[1] <= VERSION) return;
+    new (require('vm').Script)(src);   // refuse a file that does not even parse
+    if (!src.includes('AIX Alpha Node') || src.length < 8000) throw new Error('remote server.js looks wrong');
+    const me = path.join(__dirname, 'server.js'); try { fs.copyFileSync(me, me + '.bak'); } catch {}
+    fs.writeFileSync(me + '.new', src); fs.renameSync(me + '.new', me); UPDST.applied = true;
+    try { fs.writeFileSync(path.join(__dirname, 'monitor.html'), await getRemote('monitor.html', 8000)); } catch {}
+    console.log('Updated node to v' + m[1] + ' — restarting'); setTimeout(() => process.exit(0), 800);
+  } catch (e) { UPDST.error = e.message; }
+}
+setTimeout(checkUpdate, 30000); setInterval(checkUpdate, 30 * 60000);
 http.createServer(async (req, res) => {
   const h = cors(req), u = req.url.split('?')[0];
   if (req.method === 'OPTIONS') { res.writeHead(204, h); return res.end(); }
-  if (u === '/' || u === '/monitor' || u === '/monitor.html') { try { const f = fs.readFileSync(path.join(__dirname, 'monitor.html')); res.writeHead(200, { ...h, 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); return res.end(f); } catch { res.writeHead(404, h); return res.end('monitor.html missing'); } }
-  if (u === '/health') return J(res, h, 200, { status: 'ok', engine: 'aix-node', build: 3 });
+  if (u === '/' || u === '/monitor' || u === '/monitor.html') { try { const f = await panelHtml(); res.writeHead(200, { ...h, 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); return res.end(f); } catch { res.writeHead(404, h); return res.end('monitor.html missing'); } }
+  if (u === '/health') return J(res, h, 200, { status: 'ok', engine: 'aix-node', build: 3, version: VERSION, update: UPDST });
   const localAdmin = u.startsWith('/admin') && /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(req.headers.host || '') && !req.headers['x-forwarded-for'] && !req.headers['cf-connecting-ip'] && (!req.headers.origin || req.headers.origin === 'http://' + req.headers.host);
   if (!localAdmin && (req.headers.authorization || '') !== 'Bearer ' + TOKEN) return J(res, h, 401, { error: 'bad token' });
   try {
@@ -85,6 +109,7 @@ http.createServer(async (req, res) => {
       const r = await fetch(W.replace(/\/+$/, '') + '/api/node/admin?what=' + what + extra, { method: post ? 'POST' : 'GET', headers: { 'x-node-secret': NS, 'content-type': 'application/json' }, body: post ? bd : undefined });
       return J(res, h, r.status, await r.json().catch(() => ({ error: 'bad response' })));
     }
+    if (u === '/admin/update' && req.method === 'POST') { PANEL.at = 0; await checkUpdate(); return J(res, h, 200, { version: VERSION, ...UPDST }); }
     if (u === '/admin/history') return J(res, h, 200, { points: HIST });
     if (u === '/admin/analytics') return J(res, h, 200, analytics());
     if (u === '/admin/system') {
