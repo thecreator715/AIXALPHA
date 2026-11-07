@@ -30,6 +30,7 @@ button:disabled{opacity:.4}table{width:100%;border-collapse:collapse;font-size:1
 <script>
 const $=s=>document.querySelector(s),E=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const LS=(k,v)=>{try{if(v===undefined)return localStorage.getItem(k)||'';localStorage.setItem(k,v)}catch{}return''};
+(function(){try{const h=new URLSearchParams(location.hash.slice(1));if(h.get('token')){localStorage.setItem('aixnode_tok',h.get('token'));localStorage.setItem('aixnode_url',location.origin);history.replaceState(null,'',location.pathname)}}catch(e){}})();
 let URL0=LS('aixnode_url')||(location.protocol.startsWith('http')&&location.hostname?location.origin:''),TOK=LS('aixnode_tok'),timer=0;
 $('#url').value=URL0;const gb=n=>(n/1073741824).toFixed(1)+' GB',dur=s=>s>86400?Math.floor(s/86400)+'d '+Math.floor(s%86400/3600)+'h':s>3600?Math.floor(s/3600)+'h '+Math.floor(s%3600/60)+'m':Math.floor(s/60)+'m '+s%60+'s';
 async function api(p,o={}){const r=await fetch(URL0.replace(/\/+$/,'')+p,{...o,headers:{'content-type':'application/json',authorization:'Bearer '+TOK,...(o.headers||{})}});if(r.status===401)throw new Error('Wrong token');if(!r.ok&&!o.raw)throw new Error('HTTP '+r.status);return o.raw?r:r.json()}
