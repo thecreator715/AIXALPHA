@@ -40,7 +40,6 @@ if [ -z "$MODEL" ]; then
   else MODEL="llama3.2:3b"; fi
 fi
 say "This Mac has ${GB} GB. Using model: $MODEL (first download can take a while)"
-"$OLLAMA" pull "$MODEL" || die "Model download failed"
 
 # 4) Node.js (portable copy if missing)
 if ! command -v node >/dev/null 2>&1; then
@@ -55,6 +54,17 @@ fi
 # 5) token (kept between runs)
 [ -f .aix-token ] || openssl rand -hex 24 > .aix-token
 TOKEN=$(cat .aix-token)
+
+# 5b) start the node RIGHT AWAY so the control panel opens immediately; model download and the tunnel continue below
+say "Starting AIX Node on port $PORT"
+rm -f .aix-public-url
+export AIX_TOKEN="$TOKEN" AIX_WORKER="$WORKER" AIX_NODE_SECRET="$NODE_SECRET" MODEL="$MODEL"
+node server.js &
+NODE_PID=$!
+sleep 1
+[ "$HEADLESS" = "1" ] || open "http://localhost:$PORT/?v=$(date +%s)" 2>/dev/null || true
+say "Checking the model: $MODEL"
+"$OLLAMA" pull "$MODEL" || echo "Model download failed - the panel is already running; the node will retry when you start it again."
 
 # 6) public https address so the cloud (and every app: GitHub, artifact, phones) can reach this Mac. Cloudflare quick tunnel, no account.
 URL="http://localhost:$PORT"; TUN_PID=""
@@ -79,14 +89,10 @@ fi
 
 # 7) start the AIX node and open the app already paired
 say "Starting AIX Node on port $PORT"
-export AIX_TOKEN="$TOKEN" AIX_WORKER="$WORKER" AIX_PUBLIC_URL="$URL" AIX_NODE_SECRET="$NODE_SECRET" MODEL="$MODEL"
-node server.js &
-NODE_PID=$!
-sleep 1
+printf %s "$URL" > .aix-public-url   # the running node picks this up and registers with the cloud
 ENC_URL=$(printf %s "$URL" | sed 's|:|%3A|g; s|/|%2F|g')
 LINK="${APP_URL}#node=${ENC_URL}&token=${TOKEN}&model=$(printf %s "$MODEL" | sed 's|:|%3A|g')"
 echo "$LINK" > aix-pair-link.txt
-[ "$HEADLESS" = "1" ] || open "http://localhost:$PORT/?v=$(date +%s)" 2>/dev/null || true
 cat <<MSG
 
   AIX Node is running.
