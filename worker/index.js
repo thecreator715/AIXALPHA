@@ -62,7 +62,7 @@ async function nodeGet(env) {
 async function viaNode(env, req, a, nd, prompt, stream, maxTok) {
   let up;
   try {
-    up = await fetch(nd.url.replace(/\/+$/, '') + '/v1/chat/completions', { method: 'POST', signal: AbortSignal.timeout(12000), headers: { 'content-type': 'application/json', authorization: 'Bearer ' + nd.token }, body: JSON.stringify({ model: nd.model, stream, max_tokens: maxTok, messages: [{ role: 'user', content: prompt }] }) });
+    up = await nfetch(nd.url.replace(/\/+$/, '') + '/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + nd.token }, body: JSON.stringify({ model: nd.model, stream, max_tokens: maxTok, messages: [{ role: 'user', content: prompt }] }) }, stream ? 20000 : 90000);
   } catch { return null; }
   if (!up.ok) return null;
   const inTok = Math.ceil(prompt.length / 4);
@@ -215,11 +215,149 @@ async function jobsApi(env, req, path) {
   return json(env, req, { error: 'unknown' }, 404);
 }
 
+// ---- Public API: user-created keys, OpenAI-compatible endpoint, credits billed per request ----
+async function nfetch(url, init, ms) {
+  const ac = new AbortController(); const t = setTimeout(() => ac.abort(), ms);
+  try { return await fetch(url, { ...init, signal: ac.signal }); } finally { clearTimeout(t); }
+}
+let KEYS_READY = false;
+async function ensureKeys(env) {
+  if (KEYS_READY) return;
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS api_keys(key_hash TEXT PRIMARY KEY, email TEXT NOT NULL, name TEXT, prefix TEXT, created INTEGER, last INTEGER, requests INTEGER DEFAULT 0)').run();
+  await env.DB.prepare('CREATE INDEX IF NOT EXISTS api_keys_email ON api_keys(email)').run();
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS api_usage(id INTEGER PRIMARY KEY AUTOINCREMENT, key_hash TEXT NOT NULL, email TEXT NOT NULL, at INTEGER, input INTEGER, output INTEGER, credits REAL, engine TEXT)').run();
+  await env.DB.prepare('CREATE INDEX IF NOT EXISTS api_usage_email ON api_usage(email, at)').run();
+  for (const col of ['tokens INTEGER DEFAULT 0', 'credits REAL DEFAULT 0']) { try { await env.DB.prepare('ALTER TABLE api_keys ADD COLUMN ' + col).run(); } catch (e) { /* already there */ } }
+  KEYS_READY = true;
+}
+async function chargeKey(env, a, kr, engine, u) {
+  const bill = await charge(env, a, u);
+  const tok = (u.input || 0) + (u.output || 0);
+  try {
+    await env.DB.batch([
+      env.DB.prepare('INSERT INTO api_usage(key_hash,email,at,input,output,credits,engine) VALUES(?,?,?,?,?,?,?)').bind(kr.key_hash, a.email, Date.now(), u.input || 0, u.output || 0, bill.spentCredits || 0, engine),
+      env.DB.prepare('UPDATE api_keys SET tokens=COALESCE(tokens,0)+?, credits=COALESCE(credits,0)+? WHERE key_hash=?').bind(tok, bill.spentCredits || 0, kr.key_hash),
+    ]);
+  } catch (e) { /* tracking must never break a reply */ }
+  return bill;
+}
+async function keysApi(env, req, path) {
+  const a = await authed(env, req);
+  if (!a) return json(env, req, { error: 'Sign in first.' }, 401);
+  await ensureKeys(env);
+  if (path === '/api/keys' && req.method === 'GET') {
+    const rows = (await env.DB.prepare('SELECT * FROM api_keys WHERE email=? ORDER BY created DESC').bind(a.email).all()).results || [];
+    return json(env, req, { keys: rows.map((r) => ({ id: r.key_hash.slice(0, 12), name: r.name, prefix: r.prefix, created: r.created, last: r.last, requests: r.requests, tokens: r.tokens || 0, credits: +(r.credits || 0).toFixed(3) })), base: new URL(req.url).origin + '/v1' });
+  }
+  if (path === '/api/keys/stats' && req.method === 'GET') {
+    const now = Date.now(), q = async (sql, ...p) => ((await env.DB.prepare(sql).bind(...p).all()).results || []);
+    const tot = async (since) => (await env.DB.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(input),0) AS i, COALESCE(SUM(output),0) AS o, COALESCE(SUM(credits),0) AS c FROM api_usage WHERE email=? AND at>?').bind(a.email, since).first());
+    const [all, d1, d7, d30] = await Promise.all([tot(0), tot(now - 86400e3), tot(now - 7 * 86400e3), tot(now - 30 * 86400e3)]);
+    const fm = (r) => ({ requests: r.n, input: r.i, output: r.o, tokens: r.i + r.o, credits: +Number(r.c).toFixed(3) });
+    const byKey = await q('SELECT k.key_hash AS h, k.name AS name, k.prefix AS prefix, COUNT(u.id) AS n, COALESCE(SUM(u.input+u.output),0) AS t, COALESCE(SUM(u.credits),0) AS c, MAX(u.at) AS last FROM api_keys k LEFT JOIN api_usage u ON u.key_hash=k.key_hash WHERE k.email=? GROUP BY k.key_hash ORDER BY c DESC', a.email);
+    const byEngine = await q('SELECT engine, COUNT(*) AS n, COALESCE(SUM(input+output),0) AS t, COALESCE(SUM(credits),0) AS c FROM api_usage WHERE email=? GROUP BY engine', a.email);
+    const daily = await q("SELECT strftime('%Y-%m-%d', at/1000, 'unixepoch') AS d, COUNT(*) AS n, COALESCE(SUM(input+output),0) AS t, COALESCE(SUM(credits),0) AS c FROM api_usage WHERE email=? AND at>? GROUP BY d ORDER BY d", a.email, now - 14 * 86400e3);
+    const recent = await q('SELECT u.at AS at, k.name AS name, u.engine AS engine, u.input AS i, u.output AS o, u.credits AS c FROM api_usage u LEFT JOIN api_keys k ON k.key_hash=u.key_hash WHERE u.email=? ORDER BY u.id DESC LIMIT 25', a.email);
+    const f = await getUser(env, a.email);
+    return json(env, req, { balance: +Number(f.credits).toFixed(2), unlimited: owners(env).includes(a.email), all: fm(all), d1: fm(d1), d7: fm(d7), d30: fm(d30), byKey: byKey.map((r) => ({ id: r.h.slice(0, 12), name: r.name, prefix: r.prefix, requests: r.n, tokens: r.t, credits: +Number(r.c).toFixed(3), last: r.last })), byEngine: byEngine.map((r) => ({ engine: r.engine, requests: r.n, tokens: r.t, credits: +Number(r.c).toFixed(3) })), daily: daily.map((r) => ({ day: r.d, requests: r.n, tokens: r.t, credits: +Number(r.c).toFixed(3) })), recent: recent.map((r) => ({ at: r.at, key: r.name, engine: r.engine, input: r.i, output: r.o, credits: +Number(r.c).toFixed(3) })) });
+  }
+  const b = await req.json().catch(() => ({}));
+  if (path === '/api/keys' && req.method === 'POST') {
+    const n = (await env.DB.prepare('SELECT COUNT(*) AS n FROM api_keys WHERE email=?').bind(a.email).first()).n;
+    if (n >= 10) return json(env, req, { error: 'Limit of 10 keys. Revoke one first.' }, 400);
+    const key = 'aixk_' + hex(crypto.getRandomValues(new Uint8Array(24)));
+    const kh = await sha(key);
+    await env.DB.prepare('INSERT INTO api_keys(key_hash,email,name,prefix,created,requests) VALUES(?,?,?,?,?,0)').bind(kh, a.email, String(b.name || 'My key').slice(0, 60), key.slice(0, 11) + '…' + key.slice(-4), Date.now()).run();
+    return json(env, req, { key, id: kh.slice(0, 12) });
+  }
+  if (path === '/api/keys/delete') {
+    const id = String(b.id || '').replace(/[^0-9a-f]/g, '').slice(0, 12); if (id.length < 12) return json(env, req, { error: 'bad id' }, 400);
+    await env.DB.prepare("DELETE FROM api_keys WHERE email=? AND key_hash LIKE ?").bind(a.email, id + '%').run();
+    return json(env, req, { ok: true });
+  }
+  return json(env, req, { error: 'unknown' }, 404);
+}
+const oaiErr = (env, req, status, msg, code) => json(env, req, { error: { message: msg, type: status === 401 ? 'invalid_request_error' : status === 402 ? 'insufficient_credits' : 'api_error', code: code || null } }, status);
+const oaiId = () => 'chatcmpl-' + hex(crypto.getRandomValues(new Uint8Array(10)));
+function anthropicToOai(env, a, kr, id, inTok0) {
+  let buf = '', inTok = inTok0, outTok = 0; const dec = new TextDecoder();
+  const chunk = (delta, fin) => enc.encode('data: ' + JSON.stringify({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: 'aix-alpha', choices: [{ index: 0, delta, finish_reason: fin || null }] }) + '\n\n');
+  return new TransformStream({
+    transform(c, ctl) {
+      buf += dec.decode(c, { stream: true }); const lines = buf.split('\n'); buf = lines.pop();
+      for (const ln of lines) {
+        if (!ln.startsWith('data:')) continue; let e; try { e = JSON.parse(ln.slice(5)); } catch { continue; }
+        if (e.type === 'message_start') { inTok = (e.message && e.message.usage && e.message.usage.input_tokens) || inTok; ctl.enqueue(chunk({ role: 'assistant', content: '' })); }
+        else if (e.type === 'content_block_delta' && e.delta && e.delta.text) ctl.enqueue(chunk({ content: e.delta.text }));
+        else if (e.type === 'message_delta') { outTok = (e.usage && e.usage.output_tokens) || outTok; ctl.enqueue(chunk({}, e.delta && e.delta.stop_reason === 'max_tokens' ? 'length' : 'stop')); }
+      }
+    },
+    async flush(ctl) { ctl.enqueue(enc.encode('data: [DONE]\n\n')); await chargeKey(env, a, kr, 'cloud', { input: inTok, output: outTok }); },
+  });
+}
+async function v1Api(env, req, path) {
+  if (path === '/v1/models' && req.method === 'GET') return json(env, req, { object: 'list', data: [{ id: 'aix-alpha', object: 'model', owned_by: 'aix' }, { id: 'aix-alpha-cloud', object: 'model', owned_by: 'aix' }] });
+  if (path !== '/v1/chat/completions' || req.method !== 'POST') return oaiErr(env, req, 404, 'Unknown endpoint. Use POST /v1/chat/completions.');
+  const h = req.headers.get('authorization') || ''; const key = h.startsWith('Bearer ') ? h.slice(7).trim() : '';
+  if (!/^aixk_[0-9a-f]{48}$/.test(key)) return oaiErr(env, req, 401, 'Invalid API key. Create one on the API page of AIX Alpha.', 'invalid_api_key');
+  await ensureKeys(env);
+  const kr = await env.DB.prepare('SELECT * FROM api_keys WHERE key_hash=?').bind(await sha(key)).first();
+  if (!kr) return oaiErr(env, req, 401, 'Invalid or revoked API key.', 'invalid_api_key');
+  const a = await getUser(env, kr.email);
+  if (!a) return oaiErr(env, req, 401, 'Account not found.', 'invalid_api_key');
+  if (a.credits <= 0 && !owners(env).includes(a.email)) return oaiErr(env, req, 402, 'Out of credits. Add credits to your AIX account.', 'insufficient_credits');
+  const b = await req.json().catch(() => null);
+  if (!b || !Array.isArray(b.messages) || !b.messages.length) return oaiErr(env, req, 400, 'messages array required');
+  const txt = (c) => typeof c === 'string' ? c : Array.isArray(c) ? c.map((p) => (p && p.type === 'text' ? p.text : '')).join('') : '';
+  const msgs = b.messages.slice(-100).map((m) => ({ role: ['system', 'assistant'].includes(m.role) ? m.role : 'user', content: txt(m.content) })).filter((m) => m.content);
+  const total = msgs.reduce((n, m) => n + m.content.length, 0);
+  if (!msgs.length || total > 400000) return oaiErr(env, req, 400, 'messages empty or too long (limit about 100k tokens)');
+  const maxTok = Math.max(1, Math.min(Number(b.max_tokens || b.max_completion_tokens) || 1024, 4096)), stream = !!b.stream, id = oaiId();
+  const temp = typeof b.temperature === 'number' ? Math.max(0, Math.min(b.temperature, 2)) : undefined;
+  await env.DB.prepare('UPDATE api_keys SET last=?, requests=requests+1 WHERE key_hash=?').bind(Date.now(), kr.key_hash).run();
+  const sse = { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', ...cors(env, req) };
+  const inTok = Math.ceil(total / 4);
+  // 1) your Mac node, when online (unless the cloud model was asked for)
+  const nd = b.model === 'aix-alpha-cloud' ? null : await nodeGet(env);
+  if (nd) {
+    try {
+      const up = await nfetch(nd.url.replace(/\/+$/, '') + '/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + nd.token }, body: JSON.stringify({ model: nd.model, stream, max_tokens: maxTok, temperature: temp, messages: msgs }) }, stream ? 20000 : 110000);
+      if (up.ok) {
+        if (!stream) {
+          const j = await up.json(); const ch = (j.choices || [])[0] || {}; const t = (ch.message && ch.message.content) || '';
+          const u = { prompt_tokens: (j.usage && j.usage.prompt_tokens) || inTok, completion_tokens: (j.usage && j.usage.completion_tokens) || Math.ceil(t.length / 4) };
+          await chargeKey(env, a, kr, 'node', { input: u.prompt_tokens, output: u.completion_tokens });
+          return json(env, req, { id, object: 'chat.completion', created: Math.floor(Date.now() / 1000), model: 'aix-alpha', choices: [{ index: 0, message: { role: 'assistant', content: t }, finish_reason: ch.finish_reason === 'length' ? 'length' : 'stop' }], usage: { ...u, total_tokens: u.prompt_tokens + u.completion_tokens } });
+        }
+        let buf = '', outChars = 0; const dec = new TextDecoder();
+        const ts = new TransformStream({
+          transform(c, ctl) { ctl.enqueue(c); buf += dec.decode(c, { stream: true }); const lines = buf.split('\n'); buf = lines.pop(); for (const ln of lines) if (ln.startsWith('data:') && !ln.includes('[DONE]')) { try { const e = JSON.parse(ln.slice(5)); const t = e.choices && e.choices[0] && e.choices[0].delta && e.choices[0].delta.content; if (t) outChars += t.length; } catch { /* ignore */ } } },
+          async flush() { await chargeKey(env, a, kr, 'node', { input: inTok, output: Math.ceil(outChars / 4) }); },
+        });
+        return new Response(up.body.pipeThrough(ts), { headers: sse });
+      }
+    } catch (e) { /* node unreachable: fall back to cloud */ }
+  }
+  // 2) cloud model
+  const sys = msgs.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n');
+  let conv = msgs.filter((m) => m.role !== 'system'); if (!conv.length) conv = [{ role: 'user', content: sys }];
+  const merged = []; for (const m of conv) { const l = merged[merged.length - 1]; if (l && l.role === m.role) l.content += '\n\n' + m.content; else merged.push({ ...m }); }
+  if (merged[0].role !== 'user') merged.unshift({ role: 'user', content: '(continue)' });
+  const up = await fetch(env.UPSTREAM_URL || 'https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: MODEL, max_tokens: maxTok, stream, ...(sys ? { system: sys } : {}), ...(temp !== undefined ? { temperature: Math.min(temp, 1) } : {}), messages: merged }) });
+  if (!up.ok) return oaiErr(env, req, 502, 'Upstream model error (' + up.status + '). Try again.');
+  if (stream) return new Response(up.body.pipeThrough(anthropicToOai(env, a, kr, id, inTok)), { headers: sse });
+  const j = await up.json(); const t = (j.content || []).map((c) => c.text || '').join(''); const u = { prompt_tokens: (j.usage && j.usage.input_tokens) || inTok, completion_tokens: (j.usage && j.usage.output_tokens) || Math.ceil(t.length / 4) };
+  await chargeKey(env, a, kr, 'cloud', { input: u.prompt_tokens, output: u.completion_tokens });
+  return json(env, req, { id, object: 'chat.completion', created: Math.floor(Date.now() / 1000), model: 'aix-alpha', choices: [{ index: 0, message: { role: 'assistant', content: t }, finish_reason: j.stop_reason === 'max_tokens' ? 'length' : 'stop' }], usage: { ...u, total_tokens: u.prompt_tokens + u.completion_tokens } });
+}
+
 export default {
   async scheduled(ev, env, ctx) { ctx.waitUntil(runDueJobs(env)); },
   async fetch(req, env) {
     const url = new URL(req.url), path = url.pathname;
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(env, req) });
+    if (path.startsWith('/api/keys')) return keysApi(env, req, path);
+    if (path.startsWith('/v1/')) return v1Api(env, req, path);
     if (path.startsWith('/api/jobs')) return jobsApi(env, req, path);
     if (path === '/api/health') return json(env, req, { status: 'ok', engine: 'aix-alpha-cloud', model: MODEL, hasApiKey: !!env.ANTHROPIC_API_KEY });
     if (path === '/api/account/signup' && req.method === 'POST') {
