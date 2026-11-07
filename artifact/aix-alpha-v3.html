@@ -2294,10 +2294,11 @@ const jobOn=()=>!!(BACKEND()&&store.get(TOKK,''));
 async function jobApi(path,body){const r=await fetch(BACKEND()+path,body===undefined?{headers:jobHdr()}:{method:'POST',headers:jobHdr(),body:JSON.stringify(body)});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Request failed ('+r.status+')');return j}
 const repLabel=r=>r==='hourly'?'every hour':r==='daily'?'every day':r==='weekly'?'every week':/^every:\d+$/.test(r||'')?'every '+r.slice(6)+' min':'once';
 function parseSchedule(text){
-  let s=text.trim().replace(/^\/tasks?\s+(schedule\s+)?/i,'');
-  if(!/^(create|write|make|generate|post|publish|send|check|summari[sz]e|find|remind|draft|run|monitor|give|tell|email|scan|update|research|build|compile|collect|review)\b/i.test(s))return null;
+  let s=text.trim();const viaCmd=/^\/tasks?\s/i.test(s);s=s.replace(/^\/tasks?\s+(schedule\s+)?/i,'').replace(/^(?:(?:hey|ok|okay|please|can|could|would|will)\s+)*(?:you\s+)?(?:please\s+)?(?:go ahead and\s+|i want you to\s+|i need you to\s+)?/i,'').replace(/\?+\s*$/,'');
+  const NW={a:1,an:1,one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,fifteen:15,twenty:20,thirty:30,forty:40,sixty:60};s=s.replace(/\b(a|an|one|two|three|four|five|six|seven|eight|nine|ten|fifteen|twenty|thirty|forty|sixty)(?=\s*(?:min(?:ute)?s?|hours?|hrs?)\b)/gi,m=>NW[m.toLowerCase()]);
+  if(!viaCmd&&!/^(create|write|make|generate|post|publish|send|check|summari[sz]e|find|remind|draft|run|monitor|give|tell|email|scan|update|research|build|compile|collect|review)\b/i.test(s))return null;
   let rep='none',due=null,m,now=Date.now();const cut=x=>{s=s.replace(x,' ')};
-  if(m=s.match(/\bevery\s+(\d+)\s*(min(?:ute)?s?|hours?|hrs?|h)\b/i)){const n=+m[1],mins=/^h/i.test(m[2])?n*60:n;rep=mins===60?'hourly':mins===1440?'daily':'every:'+Math.max(15,mins);cut(m[0])}
+  if(m=s.match(/\bevery\s+(\d+)\s*(min(?:ute)?s?|hours?|hrs?|h)\b/i)){const n=+m[1],mins=/^h/i.test(m[2])?n*60:n;rep=mins===60?'hourly':mins===1440?'daily':'every:'+Math.max(5,mins);cut(m[0])}
   else if(m=s.match(/\b(every\s+(?:hour|hr)|hourly)\b/i)){rep='hourly';cut(m[0])}
   else if(m=s.match(/\b(every\s+(?:day|morning|night|evening)|each\s+day|daily)\b/i)){rep='daily';cut(m[0]);if(/morning/i.test(m[0]))s+=' at 9am';else if(/evening|night/i.test(m[0]))s+=' at 8pm'}
   else if(m=s.match(/\b(every\s+week|each\s+week|weekly)\b/i)){rep='weekly';cut(m[0])}
@@ -2311,7 +2312,7 @@ function parseSchedule(text){
 }
 async function scheduleJob(sj){
   if(!jobOn())return 'Sign in first (menu, AIX account) so I can run this on time in the cloud, then say it again.';
-  try{await jobApi('/api/jobs',sj);const when=new Date(sj.due).toLocaleString([], {weekday:'short',hour:'numeric',minute:'2-digit'});return `**Scheduled:** ${sj.title}\n\n- First run: ${when} (the cloud checks every 5 minutes)\n- Repeat: ${repLabel(sj.repeat)}\n- ${sj.prompt?'Each result is saved on the **Tasks** page. ECO/BALANCED runs use your Mac node when it is online.':'Plain reminder, it will show on the **Tasks** page.'}`}catch(e){return 'Could not schedule: '+e.message}
+  try{await jobApi('/api/jobs',sj);const when=new Date(sj.due).toLocaleString([], {weekday:'short',hour:'numeric',minute:'2-digit'});return `**Scheduled:** ${sj.title}\n\n- First run: ${when} (the cloud checks every 5 minutes, so that is the fastest repeat)\n- Repeat: ${repLabel(sj.repeat)}\n- ${sj.prompt?'Each result is saved on the **Tasks** page. ECO/BALANCED runs use your Mac node when it is online.':'Plain reminder, it will show on the **Tasks** page.'}`}catch(e){return 'Could not schedule: '+e.message}
 }
 let JOBSEEN=store.get('aix3_jobseen',{})||{};
 async function pollJobs(first){
@@ -2344,7 +2345,7 @@ function renderTasks(){
   <h3 class="mono" style="margin:22px 0 4px;font-size:13px">SCHEDULED (runs on time, even when this page is closed)</h3>
   <div class="mono" style="font-size:11px;color:var(--m);margin-bottom:8px">Example: <i>write a blog post every hour</i> typed in chat does this for you.</div>
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"><input id="sprompt" placeholder="What should AIX do? (leave empty for a plain reminder)" style="flex:1;min-width:220px;${pgCss}"><input id="stitle" placeholder="Name" style="width:150px;${pgCss}"></div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><input id="sdue" type="datetime-local" style="${pgCss}"><select id="srep" style="${pgCss}"><option value="none">Once</option><option value="every:15">Every 15 min</option><option value="every:30">Every 30 min</option><option value="hourly">Every hour</option><option value="daily">Every day</option><option value="weekly">Every week</option></select><button class="btn" id="sadd">Schedule</button></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><input id="sdue" type="datetime-local" style="${pgCss}"><select id="srep" style="${pgCss}"><option value="none">Once</option><option value="every:5">Every 5 min</option><option value="every:15">Every 15 min</option><option value="every:30">Every 30 min</option><option value="hourly">Every hour</option><option value="daily">Every day</option><option value="weekly">Every week</option></select><button class="btn" id="sadd">Schedule</button></div>
   <div id="sched" style="margin-bottom:18px"></div>
   <h3 class="mono" style="margin:6px 0 8px;font-size:13px">TO-DO</h3>
   <div style="margin-bottom:8px"><button class="btn2" id="tclear"${L.length-open?'':' disabled'}>Clear finished</button></div>
