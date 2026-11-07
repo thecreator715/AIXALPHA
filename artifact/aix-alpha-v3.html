@@ -503,6 +503,20 @@ dialog#dlg.sheet::backdrop{background:rgba(0,0,0,.6);backdrop-filter:blur(6px)}
 .mnu-l{position:relative;font-size:13px;font-weight:700;letter-spacing:-.01em;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mnu-s{position:relative;font-size:9.5px;color:var(--m);max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:-3px}
 @keyframes mnuin{from{opacity:0;transform:translateY(10px) scale(.94)}to{opacity:1;transform:none}}
 .mnu-ft{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.mnu-b{border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:var(--t);border-radius:16px;padding:13px;font-size:14px;font-weight:600;cursor:pointer}.mnu-b:first-child{background:var(--t);color:var(--bg)}
+
+@media(max-width:900px){.sbrand .bt{display:block!important}.sbrand{gap:12px}}
+#prog{background:linear-gradient(180deg,#101013,var(--bg,#09090b) 40%);border-left:1px solid rgba(255,255,255,.09);box-shadow:-20px 0 60px rgba(0,0,0,.5)}
+#prog .pgtop{background:linear-gradient(160deg,rgba(255,255,255,.05),transparent);border-bottom:1px solid rgba(255,255,255,.08);padding:14px 16px}
+#prog .pgttl{display:flex;align-items:center;gap:12px;min-width:0}#prog .pgttl .logo{width:36px;height:36px;font-size:18px;flex:none}#prog .pgttl b{display:block;font-size:17px;letter-spacing:-.01em}#prog .pgttl small{display:block;font-size:10px;letter-spacing:.1em;color:var(--m);text-transform:uppercase;margin-top:2px}
+#prog #progx{width:36px;height:36px;border-radius:50%;padding:0;display:grid;place-items:center}
+#prog #progbody{padding:12px 14px 90px;display:grid;gap:12px;align-content:start}
+#prog .pgsec{border:1px solid rgba(255,255,255,.09);border-radius:20px;background:linear-gradient(165deg,rgba(255,255,255,.06),rgba(255,255,255,.015));padding:14px;min-width:0}
+#prog .pgh{font:700 11px/1 ui-monospace,monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--m);margin:0 0 10px;display:flex;align-items:center;gap:8px}#prog .pgh:before{content:"";width:6px;height:6px;border-radius:50%;background:var(--ac);box-shadow:0 0 10px var(--ac)}
+#prog .pgcard{border-radius:14px;border:1px solid rgba(255,255,255,.08);background:#0a0a0c;height:160px}
+#prog .pgrow{padding:9px 10px;margin:4px 0;border-radius:12px;background:rgba(255,255,255,.035);border:1px solid transparent;transition:.15s}#prog .pgrow.link:hover{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.12)}
+#prog .pgic{width:28px;height:28px;border-radius:9px;background:rgba(255,255,255,.07);display:grid;place-items:center;font-size:13px;flex:none;color:var(--t)}
+#prog .pgl{overflow:hidden;text-overflow:ellipsis;min-width:0}#prog .pgv{font-family:ui-monospace,monospace;font-size:11px}
+#prog .bl{border:1px solid rgba(255,255,255,.08)!important;border-radius:14px!important;background:rgba(0,0,0,.25)!important}
 .gl-top{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:10px;margin:4px 0 16px}
 .gl-b{border:1px solid var(--b);border-radius:18px;background:linear-gradient(160deg,rgba(255,255,255,.05),rgba(255,255,255,.015));padding:10px 12px;min-width:0;display:flex;align-items:center;gap:8px}
 .gl-title{grid-column:span 5;flex-direction:column;align-items:flex-start;justify-content:center;gap:2px}.gl-title b{font-size:clamp(18px,4.6vw,24px);letter-spacing:-.02em}.gl-title span{font-size:11px;color:var(--m);line-height:1.3}
@@ -591,7 +605,7 @@ dialog#dlg.sheet::backdrop{background:rgba(0,0,0,.6);backdrop-filter:blur(6px)}
 <style>#wssel,#wsn,#wsi{width:100%;background:#111113;color:#e4e4e7;border:1px solid #27272a;border-radius:8px;padding:7px 9px;font:inherit;font-size:12px}#wsi{resize:vertical}@media(max-width:900px){#loop .bar{flex-wrap:wrap!important;justify-content:center;row-gap:6px;overflow:visible!important}#loop .bar #modes{flex:1 0 100%;order:-1;display:flex}#loop .bar #modes button{flex:1 1 0;font-size:11px!important;padding:7px 2px!important;letter-spacing:0!important}#loop .bar #modes button .lf{display:inline!important}#loop .bar #modes button .ls{display:none!important}#loop .bar .lp{display:none}}</style>
 </head>
 <body>
-<aside id="prog"><div class="pgtop"><b>Progress</b><button class="btn2" id="progx">✕</button></div><div id="progbody"></div></aside><div id="scrim"></div><nav id="bnav"></nav><div id="siteview"></div><div id="pal"><div class="box"><input id="pin" placeholder="Type a command…"><div id="pl"></div></div></div><div id="toast"></div>
+<aside id="prog"><div class="pgtop"><div class="pgttl"><span class="logo">◈</span><div><b>Progress</b><small class="mono">steps · outputs · usage</small></div></div><button class="btn2" id="progx" aria-label="Close">✕</button></div><div id="progbody"></div></aside><div id="scrim"></div><nav id="bnav"></nav><div id="siteview"></div><div id="pal"><div class="box"><input id="pin" placeholder="Type a command…"><div id="pl"></div></div></div><div id="toast"></div>
 <div id="app">
   <aside id="side">
     <div class="brand sbrand"><div class="logo">◈</div><b class="bt">AIX ALPHA</b><span class="pill mono">v3.0</span></div>
