@@ -632,7 +632,7 @@ function nodeSample(){
       for(const ln of lines){if(!ln.startsWith('data:')||ln.includes('[DONE]'))continue;try{const e=JSON.parse(ln.slice(5)),ch=(e.choices||[])[0]||{};const t=ch.delta&&ch.delta.content;if(t){text+=t;o.onText({text})}if(ch.finish_reason==='length')trunc=true}catch{}}}
     return{text,truncated:trunc}};
   f.limits=async()=>({images:false});f.node=true;return f}
-const nodeWrap=()=>{if(!NODEFN){const f=nodeSample();NODEFN=async(a,b)=>{let r;try{r=await f(a,b)}catch(e){if(e.nodeDown){NODEDOWN=Date.now();let cloud=sampleFn||pickEngine();if(cloud&&!cloud.node){try{toast('Mac node unreachable: using the cloud engine for now')}catch{}return cloud(a,b)}}throw e}
+const nodeWrap=()=>{if(!NODEFN){const f=nodeSample();NODEFN=async(a,b)=>{let r;try{r=await f(a,b)}catch(e){if(e.nodeDown){NODEDOWN=Date.now();let cloud=sampleFn||pickEngine();if(cloud&&!cloud.node){if(ISOWNER)try{toast('Mac node unreachable: using the cloud engine for now')}catch{}return cloud(a,b)}}throw e}
 r.node=true;try{const tok=store.get(TOKK,'');if(tok&&BACKEND()){const j=await fetch(BACKEND()+'/api/node/charge',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+tok},body:JSON.stringify({input:est(a),output:est(r.text||'')})}).then(x=>x.json());if(j&&j.credits!=null){BAL=j.credits;setStatus()}}}catch{}return r};NODEFN.limits=f.limits}return NODEFN};
 
 /* auto-pair from the Mac node launcher: #node=<url>&token=<t>&model=<m> */
@@ -789,7 +789,7 @@ async function runLoop0(chat,prompt,onText,onStep){
     if(spent>=S.caps.req){step(`Stop: request budget (${label})`,'bad');return null}
     const imgs=label==='gen'?(S.curImages||[]):[];step(label==='gen'?`Sending to the model · ~${est(p).toLocaleString()} tokens in`:`${label} pass · sending ~${est(p).toLocaleString()} tokens`);const res=await ask(p,label==='gen'?onText:null,null,imgs,label==='gen'?S.curTools:null);if(imgs.length)t.inTok+=1500*imgs.length;
     if(res&&res.searches){t.web=(t.web||0)+res.searches;t.webCr=+((t.webCr||0)+(res.spentCr||0)).toFixed(1)}
-    const i=est(p),o=est(res.text||'');t.inTok+=i;t.outTok+=o;const c=cost(i,o);spent+=c;t.cost+=c;t.calls++;if(res.node){t.node=true;step('Ran on your Mac node (same credit scaling)','ok')}
+    const i=est(p),o=est(res.text||'');t.inTok+=i;t.outTok+=o;const c=cost(i,o);spent+=c;t.cost+=c;t.calls++;if(res.node){t.node=true;if(ISOWNER)step('Ran on your Mac node (same credit scaling)','ok')}
     step(`${label}: ~${o} out`);return res;
   };
   let res=await call('gen',prompt1);if(!res)return out('⛔ Request budget leaves no room for a reply.');
@@ -977,9 +977,9 @@ function openHub(){
 }
 function openSettings(){
   const d=dialog(`<h3 style="margin:0 0 8px">Credit caps</h3><label>Per request (credits)</label><input id="c1" type="number" step="1" value="${capCr(S.caps.req)}"><label>Per chat (credits)</label><input id="c2" type="number" step="1" value="${capCr(S.caps.ses)}"><label>Per day (credits)</label><input id="c3" type="number" step="10" value="${capCr(S.caps.day)}">
-  <button class="btn2" id="keyb" style="margin:4px 0 8px">Account / go online</button><label style="display:flex;gap:8px;align-items:center;margin:4px 0 8px"><input id="metr" type="checkbox" ${METER()?'checked':''} style="width:auto"> Charge my admin account like a member (test credits)</label> <button class="btn2" id="nodeb" style="margin:4px 0 8px">Local node (Mac Studio)</button><div style="display:flex;gap:8px;justify-content:space-between"><button class="btn2" id="wipe">Delete all chats</button><span><button class="btn2" data-close>Cancel</button> <button class="btn" id="ssave">Save</button></span></div>`);
+  <button class="btn2" id="keyb" style="margin:4px 0 8px">Account / go online</button><label style="display:flex;gap:8px;align-items:center;margin:4px 0 8px"><input id="metr" type="checkbox" ${METER()?'checked':''} style="width:auto"> Charge my admin account like a member (test credits)</label>${ISOWNER?' <button class="btn2" id="nodeb" style="margin:4px 0 8px">Local node (Mac Studio)</button>':''}<div style="display:flex;gap:8px;justify-content:space-between"><button class="btn2" id="wipe">Delete all chats</button><span><button class="btn2" data-close>Cancel</button> <button class="btn" id="ssave">Save</button></span></div>`);
   $('#ssave').onclick=()=>{S.caps={req:(+$('#c1').value||7)*CR,ses:(+$('#c2').value||178)*CR,day:(+$('#c3').value||1428)*CR};store.set('aix3_caps',S.caps);updateMeter();d.close()};
-  $('#keyb').onclick=()=>{d.close();openKey()};$('#metr').onchange=()=>{store.set('aix3_meter',$('#metr').checked);try{setStatus();updateMeter()}catch{}toast($('#metr').checked?'Admin is now metered like a member':'Admin is free again')};$('#nodeb').onclick=()=>{d.close();openNode()};
+  $('#keyb').onclick=()=>{d.close();openKey()};$('#metr').onchange=()=>{store.set('aix3_meter',$('#metr').checked);try{setStatus();updateMeter()}catch{}toast($('#metr').checked?'Admin is now metered like a member':'Admin is free again')};if($('#nodeb'))$('#nodeb').onclick=()=>{d.close();openNode()};
   $('#wipe').onclick=()=>{S.chats=[];S.cur=null;save();renderThreads();renderMsgs();d.close()};
 }
 function openAbout(){dialog(`<h3 style="margin:0 0 6px">AIX ALPHA v3.0</h3><div class="body" style="font-size:13px;color:#d4d4d8"><p>The full v2 suite rebuilt around a token-saving loop engine, running inside this page. Usage is shown in <b>credits</b>.</p>
