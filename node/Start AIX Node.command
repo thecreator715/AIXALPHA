@@ -3,8 +3,11 @@
 cd "$(dirname "$0")" || exit 1
 APP_URL="https://thecreator715.github.io/AIXALPHA/"
 PORT=8787
+WORKER="https://aix-alpha.aixalpha.workers.dev"
+[ -f .aix-node-secret ] && NODE_SECRET=$(tr -d "[:space:]" < .aix-node-secret)
 say() { printf "\n\033[1;36m==> %s\033[0m\n" "$1"; }
-die() { printf "\n\033[1;31mERROR: %s\033[0m\n" "$1"; read -n 1 -s -r -p "Press any key to close"; exit 1; }
+HEADLESS=0; [ "$1" = "--headless" ] && HEADLESS=1
+die() { printf "\n\033[1;31mERROR: %s\033[0m\n" "$1"; [ "$HEADLESS" = 1 ] || read -n 1 -s -r -p "Press any key to close"; exit 1; }
 
 [ "$(uname)" = "Darwin" ] || die "This launcher is for macOS."
 
@@ -53,9 +56,21 @@ fi
 [ -f .aix-token ] || openssl rand -hex 24 > .aix-token
 TOKEN=$(cat .aix-token)
 
-# 6) optional https address via Tailscale (needed for phones / the claude.ai artifact)
-URL="http://localhost:$PORT"
-if command -v tailscale >/dev/null 2>&1 || [ -x /Applications/Tailscale.app/Contents/MacOS/Tailscale ]; then
+# 6) public https address so the cloud (and every app: GitHub, artifact, phones) can reach this Mac. Cloudflare quick tunnel, no account.
+URL="http://localhost:$PORT"; TUN_PID=""
+ARCH=$([ "$(uname -m)" = "arm64" ] && echo arm64 || echo amd64)
+if [ ! -x runtime/cloudflared ]; then
+  say "Setting up the secure tunnel (cloudflared)"
+  mkdir -p runtime && curl -fL --progress-bar "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-$ARCH.tgz" | tar -xz -C runtime 2>/dev/null
+fi
+if [ -x runtime/cloudflared ]; then
+  : > tunnel.log
+  nohup runtime/cloudflared tunnel --no-autoupdate --url "http://localhost:$PORT" >> tunnel.log 2>&1 &
+  TUN_PID=$!
+  for i in $(seq 1 40); do T=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' tunnel.log | head -1); [ -n "$T" ] && break; sleep 1; done
+  [ -n "$T" ] && URL="$T"
+fi
+if [ -z "$TUN_PID" ] && { command -v tailscale >/dev/null 2>&1 || [ -x /Applications/Tailscale.app/Contents/MacOS/Tailscale ]; }; then
   TS=$(command -v tailscale || echo /Applications/Tailscale.app/Contents/MacOS/Tailscale)
   "$TS" serve --bg "$PORT" >/dev/null 2>&1
   H=$("$TS" status --json 2>/dev/null | grep -o '"DNSName": *"[^"]*"' | head -1 | sed 's/.*: *"\(.*\)"/\1/; s/\.$//')
@@ -64,7 +79,7 @@ fi
 
 # 7) start the AIX node and open the app already paired
 say "Starting AIX Node on port $PORT"
-export AIX_TOKEN="$TOKEN"
+export AIX_TOKEN="$TOKEN" AIX_WORKER="$WORKER" AIX_PUBLIC_URL="$URL" AIX_NODE_SECRET="$NODE_SECRET" MODEL="$MODEL"
 node server.js &
 NODE_PID=$!
 sleep 1
@@ -75,19 +90,19 @@ cat <<MSG
 
   AIX Node is running.
   Engine : $MODEL via Ollama
-  URL    : $URL
-  Token  : saved in .aix-token (keep it private)
+  Public : $URL
+  Cloud  : registers itself with AIX Alpha every 45s. Every app (GitHub site, artifact,
+           phones) now uses this Mac automatically for ECO and BALANCED replies.
+           If this Mac is off, replies fall back to the cloud model.
+  Token  : .aix-token (keep it private)
+  Panel  : http://localhost:$PORT/
 
-  Opening AIX Alpha and asking it to connect. Click "Connect" in the page.
-  If the page does not pair, use Settings > Local node and paste the URL,
-  token and model above. The pairing link is also in aix-pair-link.txt.
-
-  Dashboard: http://localhost:$PORT/   (monitor, models, test chat. Token is in .aix-token)
-
-  Leave this window open while you use the app. Close it (or press Ctrl+C) to stop.
+  Keep this window open, or double-click "Install AutoStart.command" once so it
+  runs by itself at every login.
 MSG
-printf %s "$LINK" | pbcopy 2>/dev/null
-echo "  (Pairing link copied to your clipboard: paste it in AIX Alpha > Settings > Local node)"
-open "$LINK"
-trap 'kill $NODE_PID 2>/dev/null' EXIT
-wait $NODE_PID
+[ -n "$NODE_SECRET" ] || echo "  WARNING: .aix-node-secret is missing, so cloud registration is OFF."
+trap 'kill $NODE_PID $TUN_PID 2>/dev/null' EXIT
+# watchdog: if the tunnel or node dies, restart everything (new tunnel address is re-registered automatically)
+while kill -0 $NODE_PID 2>/dev/null && { [ -z "$TUN_PID" ] || kill -0 $TUN_PID 2>/dev/null; }; do sleep 10; done
+kill $NODE_PID $TUN_PID 2>/dev/null; sleep 3
+exec "$0" --headless

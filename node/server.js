@@ -50,4 +50,11 @@ http.createServer(async (req, res) => {
     }
     res.writeHead(404, h); res.end('not found');
   } catch (e) { ST.err++; try { J(res, h, 502, { error: 'Ollama not reachable: ' + e.message }); } catch {} }
-}).listen(PORT, () => console.log(`AIX node v2 on :${PORT} -> ${OLLAMA}   dashboard: http://localhost:${PORT}/`));
+}).listen(PORT, () => {
+  console.log(`AIX node v2 on :${PORT} -> ${OLLAMA}   dashboard: http://localhost:${PORT}/`);
+  const W = process.env.AIX_WORKER, PU = process.env.AIX_PUBLIC_URL, NS = process.env.AIX_NODE_SECRET, MODEL = process.env.MODEL || '';
+  if (W && PU && NS && MODEL) {
+    const reg = async () => { try { const r = await fetch(W.replace(/\/+$/, '') + '/api/node/register', { method: 'POST', headers: { 'content-type': 'application/json', 'x-node-secret': NS }, body: JSON.stringify({ url: PU, token: TOKEN, model: MODEL }) }); if (!reg.ok) { reg.ok = r.ok; console.log(r.ok ? 'Registered with AIX cloud: apps will use this node automatically' : 'Register failed: HTTP ' + r.status); } } catch (e) { console.log('Register error: ' + e.message); reg.ok = false; } };
+    reg(); setInterval(reg, 45000).unref && 0; setInterval(reg, 45000);
+  } else console.log('Cloud registration off (needs AIX_WORKER, AIX_PUBLIC_URL, AIX_NODE_SECRET, MODEL)');
+});

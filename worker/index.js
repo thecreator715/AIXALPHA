@@ -11,7 +11,7 @@ const cors = (env, req) => {
   const allow = (env.ALLOWED_ORIGINS || '*').split(',').map((s) => s.trim());
   const o = req.headers.get('origin') || '';
   const ok = allow.includes('*') ? '*' : allow.includes(o) ? o : '';
-  return { 'access-control-allow-origin': ok, 'access-control-allow-headers': 'content-type, authorization, x-admin-token, x-meter', 'access-control-allow-methods': 'GET,POST,OPTIONS', vary: 'Origin' };
+  return { 'access-control-allow-origin': ok, 'access-control-allow-headers': 'content-type, authorization, x-admin-token, x-meter, x-node-secret', 'access-control-allow-methods': 'GET,POST,OPTIONS', vary: 'Origin' };
 };
 const json = (env, req, body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...cors(env, req) } });
 const sha = async (s) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(s)))].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -54,6 +54,34 @@ async function charge(env, a, usage) {
   return { credits: +Number(f.credits).toFixed(2), spentCredits: +cr.toFixed(3), searches: usage.searches || 0 };
 }
 
+
+// ---- Mac/Ollama node registered with this Worker: ECO/BALANCED replies run there, billed like Haiku, falling back to Haiku if the node is down ----
+async function nodeGet(env) {
+  try { const r = await env.DB.prepare("SELECT v FROM settings WHERE k='node'").first(); if (!r) return null; const n = JSON.parse(r.v); return Date.now() - n.at < 180000 ? n : null; } catch { return null; }
+}
+async function viaNode(env, req, a, nd, prompt, stream, maxTok) {
+  let up;
+  try {
+    up = await fetch(nd.url.replace(/\/+$/, '') + '/v1/chat/completions', { method: 'POST', signal: AbortSignal.timeout(12000), headers: { 'content-type': 'application/json', authorization: 'Bearer ' + nd.token }, body: JSON.stringify({ model: nd.model, stream, max_tokens: maxTok, messages: [{ role: 'user', content: prompt }] }) });
+  } catch { return null; }
+  if (!up.ok) return null;
+  const inTok = Math.ceil(prompt.length / 4);
+  if (!stream) {
+    const j = await up.json().catch(() => null); if (!j) return null; const ch = (j.choices || [])[0] || {}; const text = (ch.message && ch.message.content) || '';
+    const bill = await charge(env, a, { input: j.usage?.prompt_tokens || inTok, output: j.usage?.completion_tokens || Math.ceil(text.length / 4) });
+    return json(env, req, { text, truncated: ch.finish_reason === 'length', engine: 'node', ...bill });
+  }
+  let buf = '', outChars = 0; const dec = new TextDecoder();
+  const ts = new TransformStream({
+    transform(chunk, ctl) {
+      buf += dec.decode(chunk, { stream: true }); const lines = buf.split('\n'); buf = lines.pop();
+      for (const ln of lines) if (ln.startsWith('data:') && !ln.includes('[DONE]')) { try { const e = JSON.parse(ln.slice(5)); const t = e.choices?.[0]?.delta?.content; if (t) { outChars += t.length; ctl.enqueue(enc.encode('data: ' + JSON.stringify({ type: 'content_block_delta', delta: { type: 'text_delta', text: t } }) + '\n\n')); } } catch {} }
+    },
+    async flush(ctl) { const bill = await charge(env, a, { input: inTok, output: Math.ceil(outChars / 4) }); ctl.enqueue(enc.encode('data: ' + JSON.stringify({ type: 'aix_balance', engine: 'node', ...bill }) + '\n\n')); },
+  });
+  return new Response(up.body.pipeThrough(ts), { headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', ...cors(env, req) } });
+}
+
 async function sample(env, req) {
   const a = await authed(env, req);
   if (!a) return json(env, req, { error: 'Sign in to use AIX.' }, 401);
@@ -65,6 +93,7 @@ async function sample(env, req) {
   const search = !!b.search && (owner || a.credits >= SEARCH_MIN_CREDITS);
   const content = (Array.isArray(b.images) ? b.images.slice(0, 4) : []).map((i) => ({ type: 'image', source: { type: 'base64', media_type: String(i.media_type || 'image/png'), data: String(i.data || '') } }));
   content.push({ type: 'text', text: prompt });
+  if (!(Array.isArray(b.images) && b.images.length) && !b.search && ['eco', 'balanced'].includes(String(b.mode || ''))) { const nd = await nodeGet(env); if (nd) { const r = await viaNode(env, req, a, nd, prompt, stream, Math.min(Number(b.max_tokens) || 4096, 8192)); if (r) return r; } }
   const call = (withSearch) => fetch(env.UPSTREAM_URL || 'https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: MODEL, max_tokens: Math.min(Number(b.max_tokens) || 4096, 8192), stream, ...(withSearch ? { tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }] } : {}), messages: [{ role: 'user', content }] }) });
   let up = await call(search);
   if (!up.ok && search && up.status === 400) up = await call(false);       // search not available: answer without it
@@ -162,6 +191,14 @@ export default {
     }
     if (path === '/api/account/me') { const a = await authed(env, req); return a ? json(env, req, vw(env, a)) : json(env, req, { error: 'sign in' }, 401); }
     if (path.startsWith('/api/market/')) return market(env, req, path, { json, authed, owners });
+    if (path === '/api/node/register' && req.method === 'POST') {
+      if (!env.NODE_SECRET || req.headers.get('x-node-secret') !== env.NODE_SECRET) return json(env, req, { error: 'bad node secret' }, 401);
+      const b = await req.json().catch(() => ({})); const url = String(b.url || '');
+      if (!/^https:\/\//.test(url) || !b.token || !b.model) return json(env, req, { error: 'https url, token and model required' }, 400);
+      await env.DB.prepare("INSERT INTO settings(k,v) VALUES('node',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(JSON.stringify({ url, token: String(b.token), model: String(b.model), at: Date.now() })).run();
+      return json(env, req, { ok: true });
+    }
+    if (path === '/api/node/status') { const n = await nodeGet(env); return json(env, req, { online: !!n, model: n ? n.model : '' }); }
     if (path === '/api/node/charge' && req.method === 'POST') {          // replies served by a local Ollama node: same credit scaling as the cloud model
       const a = await authed(env, req); if (!a) return json(env, req, { error: 'sign in' }, 401);
       const b = await req.json().catch(() => ({})); const inp = Math.min(400000, Math.max(0, Number(b.input) || 0)), out = Math.min(200000, Math.max(0, Number(b.output) || 0));
