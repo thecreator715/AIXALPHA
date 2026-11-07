@@ -82,6 +82,8 @@ cat <<MSG
   If the page does not pair, use Settings > Local node and paste the URL,
   token and model above. The pairing link is also in aix-pair-link.txt.
 
+  Dashboard: http://localhost:$PORT/   (monitor, models, test chat. Token is in .aix-token)
+
   Leave this window open while you use the app. Close it (or press Ctrl+C) to stop.
 MSG
 open "$LINK"
