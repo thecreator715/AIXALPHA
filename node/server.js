@@ -22,12 +22,30 @@ setInterval(() => { const n = os.cpus().map((c) => ({ ...c.times })); let idle =
 const J = (res, h, code, obj) => { res.writeHead(code, { ...h, 'content-type': 'application/json' }); res.end(JSON.stringify(obj)); };
 async function body(req) { const c = []; for await (const x of req) c.push(x); return Buffer.concat(c); }
 async function oll(p, opt) { const r = await fetch(OLLAMA + p, opt); return r; }
+// ---- Backups: every 24h pull a compact gzipped snapshot of the cloud database + a copy of the node's own log, keep 30 days ----
+const zlib = require('zlib'), BKDIR = path.join(__dirname, 'backups'); let LASTBK = null, REGOK = false, LASTREG = null;
+try { fs.mkdirSync(BKDIR, { recursive: true }); } catch {}
+const bkList = () => { try { return fs.readdirSync(BKDIR).filter((f) => /\.gz$/.test(f)).map((f) => { const st = fs.statSync(path.join(BKDIR, f)); return { name: f, bytes: st.size, at: st.mtimeMs }; }).sort((a, b) => b.at - a.at); } catch { return []; } };
+const stamp = () => new Date().toISOString().replace(/[:T]/g, '-').slice(0, 16);
+async function runBackup(kind) {
+  const out = { ok: false, files: [] };
+  try {
+    const W = process.env.AIX_WORKER, NS = process.env.AIX_NODE_SECRET;
+    if (W && NS) { const r = await fetch(W.replace(/\/+$/, '') + '/api/node/admin?what=backup_now&kind=node', { method: 'POST', headers: { 'x-node-secret': NS } }); const j = await r.json(); if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status); const f = 'aix-cloud-' + stamp() + '.json.gz'; fs.writeFileSync(path.join(BKDIR, f), Buffer.from(j.data, 'base64')); out.files.push(f); out.rows = j.rows; }
+    try { if (fs.existsSync(LOGFILE)) { const f = 'aix-node-log-' + stamp() + '.log.gz'; fs.writeFileSync(path.join(BKDIR, f), zlib.gzipSync(fs.readFileSync(LOGFILE))); out.files.push(f); } } catch {}
+    const all = bkList(), cut = Date.now() - 30 * 86400e3; all.filter((f) => f.at < cut).forEach((f) => { try { fs.unlinkSync(path.join(BKDIR, f.name)); } catch {} });
+    out.ok = out.files.length > 0; if (!out.ok) out.error = 'Cloud link not configured and no log to back up'; LASTBK = { at: Date.now(), kind, ok: out.ok, files: out.files };
+  } catch (e) { out.error = e.message; LASTBK = { at: Date.now(), kind, ok: false, error: e.message }; }
+  return out;
+}
+setTimeout(() => { const l = bkList()[0]; if (!l || Date.now() - l.at > 23.5 * 3600e3) runBackup('auto'); }, 20000);
+setInterval(() => { const l = bkList()[0]; if (!l || Date.now() - l.at > 23.5 * 3600e3) runBackup('auto'); }, 3600e3);
 http.createServer(async (req, res) => {
   const h = cors(req), u = req.url.split('?')[0];
   if (req.method === 'OPTIONS') { res.writeHead(204, h); return res.end(); }
   if (u === '/' || u === '/monitor' || u === '/monitor.html') { try { const f = fs.readFileSync(path.join(__dirname, 'monitor.html')); res.writeHead(200, { ...h, 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); return res.end(f); } catch { res.writeHead(404, h); return res.end('monitor.html missing'); } }
   if (u === '/health') return J(res, h, 200, { status: 'ok', engine: 'aix-node', build: 3 });
-  const localAdmin = u.startsWith('/admin') && /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(req.headers.host || '') && !req.headers['x-forwarded-for'] && !req.headers['cf-connecting-ip'] && !req.headers.origin;
+  const localAdmin = u.startsWith('/admin') && /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(req.headers.host || '') && !req.headers['x-forwarded-for'] && !req.headers['cf-connecting-ip'] && (!req.headers.origin || req.headers.origin === 'http://' + req.headers.host);
   if (!localAdmin && (req.headers.authorization || '') !== 'Bearer ' + TOKEN) return J(res, h, 401, { error: 'bad token' });
   try {
     if (u === '/admin/status') {
@@ -40,10 +58,23 @@ http.createServer(async (req, res) => {
     if (u === '/admin/cloud') {
       const W = process.env.AIX_WORKER, NS = process.env.AIX_NODE_SECRET;
       if (!W || !NS) return J(res, h, 503, { error: 'Cloud link not configured on this node (needs AIX_WORKER and AIX_NODE_SECRET).' });
-      const what = (new URL(req.url, 'http://x').searchParams.get('what') || 'overview').replace(/[^a-z]/g, '');
-      const r = await fetch(W.replace(/\/+$/, '') + '/api/node/admin?what=' + what, { headers: { 'x-node-secret': NS } });
+      const qs = new URL(req.url, 'http://x').searchParams, what = (qs.get('what') || 'overview').replace(/[^a-z_]/g, '');
+      const extra = ['email', 'id', 'kind'].filter((k) => qs.get(k) != null).map((k) => '&' + k + '=' + encodeURIComponent(qs.get(k))).join('');
+      const post = req.method === 'POST', bd = post ? await body(req) : null;
+      const r = await fetch(W.replace(/\/+$/, '') + '/api/node/admin?what=' + what + extra, { method: post ? 'POST' : 'GET', headers: { 'x-node-secret': NS, 'content-type': 'application/json' }, body: post ? bd : undefined });
       return J(res, h, r.status, await r.json().catch(() => ({ error: 'bad response' })));
     }
+    if (u === '/admin/system') {
+      const sh = (c) => { try { return require('child_process').execSync(c, { timeout: 4000, encoding: 'utf8' }).trim(); } catch { return ''; } };
+      const df = sh("df -k / | tail -1").split(/\s+/), du = (p) => { try { return fs.statSync(p).size; } catch { return 0; } };
+      const procs = sh("ps -Ao pid,pcpu,pmem,comm").split('\n').slice(1).map((l) => l.trim().split(/\s+/)).filter((a) => a.length >= 4).map((a) => ({ pid: a[0], cpu: a[1], mem: a[2], name: (a.slice(3).join(' ') || '').split('/').pop() })).sort((x, y) => y.cpu - x.cpu).slice(0, 8);
+      let tun = ''; try { tun = (fs.readFileSync(path.join(__dirname, 'tunnel.log'), 'utf8').match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/g) || []).pop() || ''; } catch {}
+      const nm = process.memoryUsage();
+      return J(res, h, 200, { platform: os.platform() + ' ' + os.release(), arch: os.arch(), host: os.hostname(), node: process.version, pid: process.pid, load: os.loadavg(), cores: os.cpus().length, mem: { total: os.totalmem(), free: os.freemem() }, disk: { total: +df[1] * 1024 || 0, used: +df[2] * 1024 || 0, free: +df[3] * 1024 || 0 }, nodeMem: { rss: nm.rss, heap: nm.heapUsed }, procs, tunnel: tun, files: { requestsLog: du(LOGFILE), tunnelLog: du(path.join(__dirname, 'tunnel.log')) }, env: { worker: !!process.env.AIX_WORKER, secret: !!process.env.AIX_NODE_SECRET, publicUrl: process.env.AIX_PUBLIC_URL || '', model: process.env.MODEL || '', logPrompts: LOGTEXT }, registered: REGOK, lastRegister: LASTREG, errors: LOG.filter((e) => e.status >= 400).slice(0, 10).map((e) => ({ t: e.t, status: e.status, path: e.path, model: e.model })) });
+    }
+    if (u === '/admin/backups') return J(res, h, 200, { dir: BKDIR, files: bkList(), last: LASTBK, auto: 'every 24 hours' });
+    if (u === '/admin/backups/now' && req.method === 'POST') { const r = await runBackup('manual'); return J(res, h, r.ok ? 200 : 502, r); }
+    if (u === '/admin/backups/get') { const f = path.basename(new URL(req.url, 'http://x').searchParams.get('f') || ''); const fp = path.join(BKDIR, f); if (!f || !fs.existsSync(fp)) return J(res, h, 404, { error: 'no such file' }); res.writeHead(200, { ...h, 'content-type': 'application/gzip', 'content-disposition': 'attachment; filename="' + f + '"' }); return res.end(fs.readFileSync(fp)); }
     if (u === '/admin/models') { const r = await oll('/api/tags'); return J(res, h, r.status, await r.json()); }
     if (u === '/admin/delete' && req.method === 'POST') { const b = JSON.parse((await body(req)).toString() || '{}'); const r = await oll('/api/delete', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: b.name }) }); return J(res, h, r.ok ? 200 : r.status, { ok: r.ok }); }
     if (u === '/admin/pull' && req.method === 'POST') {
@@ -75,7 +106,7 @@ http.createServer(async (req, res) => {
   console.log(`AIX node v2 on :${PORT} -> ${OLLAMA}   dashboard: http://localhost:${PORT}/`);
   const W = process.env.AIX_WORKER, PU = process.env.AIX_PUBLIC_URL, NS = process.env.AIX_NODE_SECRET, MODEL = process.env.MODEL || '';
   if (W && PU && NS && MODEL) {
-    const reg = async () => { try { const r = await fetch(W.replace(/\/+$/, '') + '/api/node/register', { method: 'POST', headers: { 'content-type': 'application/json', 'x-node-secret': NS }, body: JSON.stringify({ url: PU, token: TOKEN, model: MODEL }) }); if (!reg.ok) { reg.ok = r.ok; console.log(r.ok ? 'Registered with AIX cloud: apps will use this node automatically' : 'Register failed: HTTP ' + r.status); } } catch (e) { console.log('Register error: ' + e.message); reg.ok = false; } };
+    const reg = async () => { try { const r = await fetch(W.replace(/\/+$/, '') + '/api/node/register', { method: 'POST', headers: { 'content-type': 'application/json', 'x-node-secret': NS }, body: JSON.stringify({ url: PU, token: TOKEN, model: MODEL }) }); REGOK = r.ok; LASTREG = Date.now(); if (!reg.ok) { reg.ok = r.ok; console.log(r.ok ? 'Registered with AIX cloud: apps will use this node automatically' : 'Register failed: HTTP ' + r.status); } } catch (e) { console.log('Register error: ' + e.message); reg.ok = false; } };
     reg(); setInterval(reg, 45000).unref && 0; setInterval(reg, 45000);
   } else console.log('Cloud registration off (needs AIX_WORKER, AIX_PUBLIC_URL, AIX_NODE_SECRET, MODEL)');
 });
