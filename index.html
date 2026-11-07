@@ -627,6 +627,11 @@ function nodeSample(){
       for(const ln of lines){if(!ln.startsWith('data:')||ln.includes('[DONE]'))continue;try{const e=JSON.parse(ln.slice(5)),ch=(e.choices||[])[0]||{};const t=ch.delta&&ch.delta.content;if(t){text+=t;o.onText({text})}if(ch.finish_reason==='length')trunc=true}catch{}}}
     return{text,truncated:trunc}};
   f.limits=async()=>({images:false});f.node=true;return f}
+
+/* auto-pair from the Mac node launcher: #node=<url>&token=<t>&model=<m> */
+(function(){try{const h=new URLSearchParams(location.hash.slice(1));const u=h.get('node');if(!u)return;const cfg={url:u,token:h.get('token')||'',model:h.get('model')||'',on:true};try{history.replaceState(null,'',location.pathname+location.search)}catch{}
+setTimeout(()=>{const d=dialog(`<h3 style="margin:0 0 8px">Connect your Mac node?</h3><p style="font-size:12.5px;color:var(--m)">This link wants AIX Alpha to run replies on:</p><div class="mono" style="font-size:12px;margin:6px 0">${esc(cfg.url)}<br>model: ${esc(cfg.model)}</div><p style="font-size:12px;color:var(--m)">Only accept if you started it from your own AIX Node launcher.</p><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn2" data-close>No</button><button class="btn" id="npair">Connect</button></div>`);
+$('#npair').onclick=()=>{store.set('aix3_node',cfg);sampleFn=nodeSample();setStatus();try{updateMeter()}catch{}toast('Connected to your node: '+cfg.model);d.close()}},700)}catch{}})();
 function openNode(){
   const c=nodeCfg()||{url:'http://localhost:8787',token:'',model:'qwen2.5-coder:32b',on:false};
   const d=dialog(`<h3 style="margin:0 0 8px">Local node (Mac Studio)</h3><p style="font-size:12.5px;color:var(--m);margin:0 0 8px">Point AIX at your own machine. Replies run on your hardware: no credits, no API key. Start it with <code>AIX_TOKEN=secret node server.js</code> (file: node/server.js in the repo) and keep Ollama running.</p>
