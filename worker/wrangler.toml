@@ -15,4 +15,4 @@ OWNER_EMAILS = ""
 binding = "AI"
 
 [triggers]
-crons = ["*/5 * * * *"]
+crons = ["*/15 * * * *"]

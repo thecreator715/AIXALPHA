@@ -909,7 +909,7 @@ function liveEv(e,st){const em=S.emitStep;if(!em)return;
 
 let TURBONOW=false,viaNodeFlag=false,NODEUP=false,NODEMODEL='',BSF=null;
 async function pollNode(){try{if(!BACKEND())return;const j=await fetch(BACKEND()+'/api/node/status').then(r=>r.json());NODEUP=!!j.online;NODEMODEL=j.model||'';try{updateMeter()}catch{}}catch{}}
-setInterval(pollNode,60000);setTimeout(pollNode,1500);
+setInterval(()=>{if(!document.hidden)pollNode()},300000);setTimeout(pollNode,1500);
 function backendSample(){
   const f=async(prompt,o)=>{o=o||{};const tok=store.get(TOKK,'');if(!tok)throw new Error('Sign in to use AIX.');
     const images=[];for(const im of(o.images||[])){try{const b=im.blob||im;const data=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(String(fr.result).split(',')[1]);fr.readAsDataURL(b)});images.push({media_type:b.type||'image/png',data})}catch{}}
@@ -1231,7 +1231,7 @@ async function syncPull(){if(SYNCOFF||!syncTok())return;try{const r=await fetch(
     const cur=S.chats.filter(c=>!del.has(c.id)).length;const merged=[...map.values()].filter(c=>!del.has(c.id)).sort((a,b)=>Math.max(lastTs(b),0)-Math.max(lastTs(a),0));if(merged.length!==cur)changed=true;if(changed){S.chats=merged.slice(0,60);store.set('aix3_chats',S.chats)}}
   if(it.aix3_ws){const rw=JSON.parse(it.aix3_ws.v||'[]'),lw=store.get('aix3_ws',[]),ids=new Set(lw.map(w=>w.id));let add=false;for(const w of rw)if(!ids.has(w.id)){lw.push(w);add=true}if(add){store.set('aix3_ws',lw);changed=true}}
   if(changed&&!S.busy){renderThreads();renderMsgs()}if(!it.aix3_chats)syncSoon()}catch(e){}}
-setTimeout(()=>{syncPull()},2500);setInterval(()=>{if(!document.hidden)syncPull()},60000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncPull()});
+setTimeout(()=>{syncPull()},2500);setInterval(()=>{if(!document.hidden)syncPull()},180000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncPull()});
 const WSLIST=()=>store.get('aix3_ws',[]);
 function renderWs(){const sel=$('#wssel');if(!sel)return;sel.innerHTML='<option value="">All chats</option>'+WSLIST().map(w=>`<option value="${w.id}" ${S.ws===w.id?'selected':''}>${esc(w.name)}</option>`).join('')+'<option value="__new">＋ New workspace…</option>'+(S.ws?'<option value="__edit">✎ Edit this workspace…</option>':'')}
 function wsOpen(w){$('#wsed').style.display='block';$('#wsn').value=w?w.name:'';$('#wsi').value=w?w.inst||'':'';$('#wsed').dataset.id=w?w.id:'';$('#wsd').style.display=w?'':'none'}
@@ -3433,7 +3433,7 @@ let JOBSEEN=store.get('aix3_jobseen',{})||{};
 async function pollJobs(first){
   if(!jobOn())return;try{const j=await jobApi('/api/jobs');for(const x of j.jobs){if(x.last&&JOBSEEN[x.id]!==x.last){const was=JOBSEEN[x.id]!==undefined;JOBSEEN[x.id]=x.last;if(was||!first){toast('Task ran: '+x.title);try{if(window.Notification&&Notification.permission==='granted')new Notification('AIX task done',{body:x.title})}catch{}}}}store.set('aix3_jobseen',JOBSEEN);if($('#vtasks')&&$('#vtasks').classList.contains('on')&&!document.activeElement?.closest?.('#sched'))loadSched()}catch{}
 }
-setInterval(()=>pollJobs(false),60000);setTimeout(()=>pollJobs(true),4000);
+setInterval(()=>{if(!document.hidden)pollJobs(false)},300000);setTimeout(()=>pollJobs(true),4000);
 async function loadSched(){
   const box=$('#sched');if(!box)return;
   if(!jobOn()){box.innerHTML='<div class="mono" style="color:var(--m);font-size:12px">Sign in (menu, AIX account) to schedule tasks that run on time in the cloud.</div>';return}

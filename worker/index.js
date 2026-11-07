@@ -31,12 +31,16 @@ async function authed(env, req) {
   if (a && req.headers.get('x-meter') === '1') a.meter = true;   // owner opted to be charged like a member (for testing credits)
   return a;
 }
+const AUTH_C = new Map();   // short isolate cache of sign-in lookups; balances are re-read where money moves
 async function authed0(env, req) {
   const h = req.headers.get('authorization') || '';
   const t = h.startsWith('Bearer ') ? h.slice(7).trim() : '';
   if (!t) return null;
   const th = await sha(t);
-  return (await env.DB.prepare('SELECT u.* FROM sessions s JOIN users u ON u.email=s.email WHERE s.token_hash=?').bind(th).first()) || (await env.DB.prepare('SELECT * FROM users WHERE token_hash=?').bind(th).first());
+  const hit = AUTH_C.get(th); if (hit && Date.now() - hit.t < 20000) return { ...hit.a };
+  const u = (await env.DB.prepare('SELECT u.* FROM sessions s JOIN users u ON u.email=s.email WHERE s.token_hash=?').bind(th).first()) || (await env.DB.prepare('SELECT * FROM users WHERE token_hash=?').bind(th).first());
+  if (u) { if (AUTH_C.size > 200) AUTH_C.clear(); AUTH_C.set(th, { t: Date.now(), a: u }); }
+  return u;
 }
 const SEARCH_USD = 0.01;            // Anthropic web search: $10 per 1,000 searches (~7 credits each)
 const SEARCH_MIN_CREDITS = 8;       // a user needs at least this balance to allow live search on a reply
@@ -56,8 +60,9 @@ async function charge(env, a, usage) {
 
 
 // ---- Mac/Ollama node registered with this Worker: ECO/BALANCED replies run there, billed like Haiku, falling back to Haiku if the node is down ----
+let NODE_C = null, NODE_T = 0;   // isolate cache: spares D1 reads on every poll
 async function nodeGet(env) {
-  try { const r = await env.DB.prepare("SELECT v FROM settings WHERE k='node'").first(); if (!r) return null; const n = JSON.parse(r.v); return Date.now() - n.at < 180000 ? n : null; } catch { return null; }
+  try { if (Date.now() - NODE_T < 30000) return NODE_C; const r = await env.DB.prepare("SELECT v FROM settings WHERE k='node'").first(); let n = null; if (r) { n = JSON.parse(r.v); if (Date.now() - n.at >= 420000) n = null; } NODE_C = n; NODE_T = Date.now(); return n; } catch { return null; }
 }
 async function viaNode(env, req, a, nd, prompt, stream, maxTok) {
   let up;
@@ -392,7 +397,9 @@ async function v1Run(env, req, kr, a, b) {
 }
 
 // ---- Automatic backups: compact gzipped JSON of all important tables, once every 24h, last 14 kept in D1 ----
+let BK_READY = false;
 async function ensureBackups(env) {
+  if (BK_READY) return; BK_READY = true;
   await env.DB.prepare('CREATE TABLE IF NOT EXISTS backups(id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, rows INTEGER, bytes INTEGER, kind TEXT, data TEXT)').run();
   await env.DB.prepare('CREATE TABLE IF NOT EXISTS grants(id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, at INTEGER, credits REAL, note TEXT)').run();
 }
@@ -630,7 +637,11 @@ async function pagesApi(env, req, path) {
 
 export default {
   async scheduled(ev, env, ctx) { ctx.waitUntil(runDueJobs(env).then(() => autoBackup(env))); },
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
+    try { return await this._h(req, env, ctx); }
+    catch (e) { console.log('worker error', req.method, new URL(req.url).pathname, e && e.stack || e); return json(env, req, { error: 'Server error: ' + (e && e.message || e) }, 500); }
+  },
+  async _h(req, env) {
     const url = new URL(req.url), path = url.pathname;
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(env, req) });
     if (path === '/api/node/admin' && (req.method === 'GET' || req.method === 'POST')) return nodeAdmin(env, req, url);
