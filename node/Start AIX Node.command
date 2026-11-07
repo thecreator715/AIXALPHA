@@ -86,7 +86,7 @@ sleep 1
 ENC_URL=$(printf %s "$URL" | sed 's|:|%3A|g; s|/|%2F|g')
 LINK="${APP_URL}#node=${ENC_URL}&token=${TOKEN}&model=$(printf %s "$MODEL" | sed 's|:|%3A|g')"
 echo "$LINK" > aix-pair-link.txt
-[ "$HEADLESS" = "1" ] || open "http://localhost:$PORT/#token=$TOKEN" 2>/dev/null || true
+[ "$HEADLESS" = "1" ] || open "http://localhost:$PORT/?v=$(date +%s)" 2>/dev/null || true
 cat <<MSG
 
   AIX Node is running.

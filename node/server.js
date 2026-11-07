@@ -25,8 +25,8 @@ async function oll(p, opt) { const r = await fetch(OLLAMA + p, opt); return r; }
 http.createServer(async (req, res) => {
   const h = cors(req), u = req.url.split('?')[0];
   if (req.method === 'OPTIONS') { res.writeHead(204, h); return res.end(); }
-  if (u === '/' || u === '/monitor' || u === '/monitor.html') { try { const f = fs.readFileSync(path.join(__dirname, 'monitor.html')); res.writeHead(200, { ...h, 'content-type': 'text/html; charset=utf-8' }); return res.end(f); } catch { res.writeHead(404, h); return res.end('monitor.html missing'); } }
-  if (u === '/health') return J(res, h, 200, { status: 'ok', engine: 'aix-node' });
+  if (u === '/' || u === '/monitor' || u === '/monitor.html') { try { const f = fs.readFileSync(path.join(__dirname, 'monitor.html')); res.writeHead(200, { ...h, 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); return res.end(f); } catch { res.writeHead(404, h); return res.end('monitor.html missing'); } }
+  if (u === '/health') return J(res, h, 200, { status: 'ok', engine: 'aix-node', build: 3 });
   const localAdmin = u.startsWith('/admin') && /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(req.headers.host || '') && !req.headers['x-forwarded-for'] && !req.headers['cf-connecting-ip'] && !req.headers.origin;
   if (!localAdmin && (req.headers.authorization || '') !== 'Bearer ' + TOKEN) return J(res, h, 401, { error: 'bad token' });
   try {
