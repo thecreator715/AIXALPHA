@@ -499,7 +499,7 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
       <div class="sth mono" style="border-top:1px solid var(--b);border-bottom:0"><input id="stq" placeholder="Ask about this project…"><button class="btn2" id="stmic" title="Voice input" aria-label="Voice input">🎤</button><button class="btn" id="stgo">➤</button></div></div>
   </div></div></div>
 <div class="view" id="vpersonas"><div class="pad" id="personasbody"></div></div>
-<div class="view" id="vtools"><div class="pad" id="toolsbody"></div></div>
+<div class="view" id="vplugins"><div class="pad" id="plugbody"></div></div><div class="view" id="vtools"><div class="pad" id="toolsbody"></div></div>
 <div class="view" id="vconnect"><div class="pad" id="connectbody"></div></div>
 <div class="view" id="vmarket"><div class="pad" id="marketbody"></div></div>
 <div class="view" id="vsites"><div class="pad" id="sitesbody"></div></div>
@@ -538,6 +538,7 @@ const PRESETS=[
 
 /* ============ engine config ============ */
 const ICP={api:'M8 9l-3 3 3 3M16 9l3 3-3 3M13 6l-2 12',memory:'M12 3a6 6 0 0 0-6 6c0 2 1 3.5 2 4.5V17h8v-3.5c1-1 2-2.5 2-4.5a6 6 0 0 0-6-6zM9 20h6M10 17v3M14 17v3',tasks:'M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2',menu:'M4 7h16M4 12h16M4 17h16',chat:'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z',studio:'M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14',tools:'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',more:'M5 12h.01M12 12h.01M19 12h.01',attach:'M21 11.5l-8.6 8.6a5 5 0 0 1-7-7l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7L10 17.8a1.7 1.7 0 0 1-2.4-2.4l7.7-7.7',mic:'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3',shield:'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',site:'M3 5h18v14H3zM3 9h18M7 7h.01M10 7h.01',app:'M7 3h10a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM11 18h2',help:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9.6 9.6a2.4 2.4 0 1 1 3.4 2.2c-.6.3-1 .8-1 1.5M12 16.8h.01',coins:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9 12h6M12 9v6',pulse:'M3 12h4l3-8 4 16 3-8h4',image:'M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M15 9h.01',history:'M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 7v5l3 2',play:'M7 5l12 7-12 7z',copy:'M9 9h11v11H9zM5 15V5h10',pencil:'M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z',term:'M4 5h16v14H4zM8 10l3 2-3 2M13 15h3',back:'M15 5l-7 7 7 7',fwd:'M9 5l7 7-7 7',reload:'M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5',bug:'M9 9a3 3 0 0 1 6 0v6a3 3 0 0 1-6 0zM5 12h4M15 12h4M6 7l3 2M18 7l-3 2M6 18l3-2M18 18l-3-2',bolt:'M13 3L5 14h6l-1 7 8-11h-6z',personas:'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.7 1.8L21.5 18.5l-1.8.7L19 21l-.7-1.8-1.8-.7 1.8-.7z',connect:'M9 3v5M15 3v5M7 8h10v3a5 5 0 0 1-10 0zM12 16v5',sites:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18',ana:'M5 20V11M12 20V4M19 20v-6',credits:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9.5 12h5M12 9.5v5',members:'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z',users:'M16 19v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1M9.5 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM21 19v-1a4 4 0 0 0-3-3.9M16 4.1a3 3 0 0 1 0 5.8',about:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v5M12 8h.01',key:'M15 7a4 4 0 1 1-3.5 6L4 20.5V18H2v-2h2v-2l2.5-2.5A4 4 0 0 1 15 7z',gift:'M4 11h16v9H4zM3 8h18v3H3zM12 8v12M12 8C9 8 8 5 10 4.5S12 7 12 8zM12 8c3 0 4-3 2-3.5S12 7 12 8z'};
+ICP.plugins=ICP.connect;
 const ico=n=>`<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICP[n]}"/></svg>`;
 const MODES={eco:{refines:1,hist:1},balanced:{refines:2,hist:1.5},thorough:{refines:3,hist:2}};
 const RATE={in:0.10,out:0.50};
@@ -648,7 +649,7 @@ function backendSample(){
     const nf=viaNodeFlag;viaNodeFlag=false;return{text,truncated:trunc,searches:sr,spentCr:spc,node:nf}};
   f.limits=async()=>({images:true});return f}
 function embKey(){const m=document.querySelector('meta[name=aix-embedded-key]');return m&&/^sk-ant-/.test(m.content)?m.content:''}
-function pickEngine(){if(embKey()){store.set(KEYK,embKey());return directSample()}if(BACKEND()&&store.get(TOKK,''))return backendSample();if(store.get(KEYK,''))return directSample();return nodeOn()?nodeSample():null}
+function pickEngine(){if(embKey()){store.set(KEYK,embKey());return directSample()}if(BACKEND()&&store.get(TOKK,''))return withTools(backendSample());if(store.get(KEYK,''))return directSample();return nodeOn()?nodeSample():null}
 
 /* ===== Local node: your own Mac Studio (Ollama) as the engine ===== */
 const METER=()=>store.get('aix3_meter',false);const OWNF=()=>ISOWNER&&!METER();
@@ -664,7 +665,7 @@ function nodeSample(){
       for(const ln of lines){if(!ln.startsWith('data:')||ln.includes('[DONE]'))continue;try{const e=JSON.parse(ln.slice(5)),ch=(e.choices||[])[0]||{};const t=ch.delta&&ch.delta.content;if(t){text+=t;o.onText({text})}if(ch.finish_reason==='length')trunc=true}catch{}}}
     return{text,truncated:trunc}};
   f.limits=async()=>({images:false});f.node=true;return f}
-const nodeWrap=()=>{if(!NODEFN){const f=nodeSample();NODEFN=async(a,b)=>{let r;try{r=await f(a,b)}catch(e){if(e.nodeDown){NODEDOWN=Date.now();let cloud=sampleFn||pickEngine();if(cloud&&!cloud.node){if(ISOWNER)try{toast('Mac node unreachable: using the cloud engine for now')}catch{}return cloud(a,b)}}throw e}
+const nodeWrap=()=>{if(!NODEFN){const f=withTools(nodeSample());NODEFN=async(a,b)=>{let r;try{r=await f(a,b)}catch(e){if(e.nodeDown){NODEDOWN=Date.now();let cloud=sampleFn||pickEngine();if(cloud&&!cloud.node){if(ISOWNER)try{toast('Mac node unreachable: using the cloud engine for now')}catch{}return cloud(a,b)}}throw e}
 r.node=true;try{const tok=store.get(TOKK,'');if(tok&&BACKEND()){const j=await fetch(BACKEND()+'/api/node/charge',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+tok},body:JSON.stringify({input:est(a),output:est(r.text||'')})}).then(x=>x.json());if(j&&j.credits!=null){BAL=j.credits;setStatus()}}}catch{}return r};NODEFN.limits=f.limits}return NODEFN};
 
 /* auto-pair from the Mac node launcher: #node=<url>&token=<t>&model=<m> */
@@ -739,8 +740,9 @@ function openKey(force){if(!force)return openAccount();
 }
 async function ask(promptStr,onText,signal,images,tools){
   let eng=null;if(PROVON()&&!(images&&images.length))eng=provWrap();
+  if(!eng&&tools&&tools.length&&nodeOn()&&!(images&&images.length))eng=nodeWrap();
   if(!eng&&nodeForMode()&&!(images&&images.length))eng=nodeWrap();
-  if(!eng&&NODEUP&&BACKEND()&&store.get(TOKK,'')&&(S.mode==='eco'||S.mode==='balanced')&&!(images&&images.length)&&!(S.web&&onText))eng=BSF||(BSF=backendSample());
+  if(!eng&&NODEUP&&BACKEND()&&store.get(TOKK,'')&&(S.mode==='eco'||S.mode==='balanced')&&!(images&&images.length)&&!(S.web&&onText))eng=BSF||(BSF=withTools(backendSample()));
   if(!eng){if(!sampleFn)sampleFn=pickEngine();eng=sampleFn;if(!eng&&nodeOn())eng=nodeWrap()}
   if(eng&&!eng.prov&&BACKEND()&&store.get(TOKK,'')&&!OWNF()&&BAL!=null&&BAL<=0&&!embKey()){setTimeout(()=>openCredits('out'),60);throw new Error('You are out of credits. Add credits or claim your free credit to continue (a window just opened).')}
   if(!eng){try{openKey()}catch{}throw new Error('AIX is offline. Add your API key (Settings, or tap OFFLINE) to bring it online.')}
@@ -819,7 +821,8 @@ async function runLoop0(chat,prompt,onText,onStep){
   if(daySpend()>=S.caps.day){t.blocked='daily';step('Budget guard: daily cap','bad');return out(`⛔ **Budget guard:** daily cap ${capCr(S.caps.day)} cr reached. No tokens used. Raise it in Settings.`)}
   if((chat.cost||0)>=S.caps.ses){t.blocked='session';step('Budget guard: session cap','bad');return out(`⛔ **Budget guard:** this chat reached its ${capCr(S.caps.ses)} cr cap. No tokens used. Start a new chat or raise it in Settings.`)}
 
-  if(r.conn){S.curTools=await connTools();if(!S.curTools.length){step('Connector needed — none enabled','bad');t.saved=100;return out('That needs a connector. Plug one in with a single tap, then ask again:',{ui:'connect'})}step('🔌 Connectors attached ('+S.curTools.length+' tools)','ok')}
+  r.plug=!r.command&&!r.reflex&&!r.m3&&!r.build&&plugWanted(prompt);if(r.plug){const pt=await plugTools(prompt);if(pt.length){S.curTools=[...(r.conn?await connTools():[]),...pt];step('🔌 Plug-ins attached ('+S.curTools.length+' tools)','ok');if(r.tier==='MICRO')r.tier='STANDARD'}else r.plug=false}
+  if(r.conn&&!(r.plug&&S.curTools&&S.curTools.length)){S.curTools=await connTools();if(!S.curTools.length){step('Connector needed — none enabled','bad');t.saved=100;return out('That needs a connector. Plug one in with a single tap, then ask again:',{ui:'connect'})}step('🔌 Connectors attached ('+S.curTools.length+' tools)','ok')}
   chat.notes=chat.notes||[];for(const n of notesFrom(prompt))if(!chat.notes.some(x=>x.toLowerCase()===n.toLowerCase()))chat.notes.push(n);chat.notes=chat.notes.slice(-12);
   const pers=personas().find(p=>p.id===S.pid)||PRESETS[0];
   const core=(pers.core||pers.prompt||PRESETS[0].core)+'\n'+todayLine()+(r.intent==='chat'&&!r.build?'\n'+CHATRULE:'')+(r.build?'\n'+GUIRULE:'')+(TARGETRULE[targetMode()]?'\n'+TARGETRULE[targetMode()]:'');if(TARGETRULE[targetMode()])step('Mode: '+targetMode().toUpperCase()+' — chat knows what it is making from the start','ok');if(r.build)step('Build request → will design a full GUI with live preview','ok');
@@ -1109,9 +1112,9 @@ function renderAnaBase(){
 $('#srch').oninput=renderThreads;
 const ACC={emerald:'#34d399',cyan:'#22d3ee',violet:'#a78bfa',amber:'#fbbf24',rose:'#fb7185'};
 function setAccent(n){document.documentElement.style.setProperty('--ac',ACC[n]);store.set('aix3_acc',n)}setAccent(store.get('aix3_acc','emerald'));
-const ACTIONS=()=>[['New chat','⌘N',()=>$('#newc').click()],['Go to Chat','',()=>setView('chat')],['Go to Analytics','',()=>setView('ana')],['Go to Studio','',()=>setView('studio')],['Go to Tools','',()=>setView('tools')],['Toggle progress panel','',()=>toggleProg()],['Go to Users & platform','',()=>setView('users')],['Voice settings','',()=>$('#voice').click()],['Backup / import','',()=>$('#bk').click()],
+const ACTIONS=()=>[['New chat','⌘N',()=>$('#newc').click()],['Go to Chat','',()=>setView('chat')],['Go to Analytics','',()=>setView('ana')],['Go to Studio','',()=>setView('studio')],['Go to Plug-ins','',()=>setView('plugins')],['Toggle progress panel','',()=>toggleProg()],['Go to Users & platform','',()=>setView('users')],['Voice settings','',()=>$('#voice').click()],['Backup / import','',()=>$('#bk').click()],
  ['Mode: AUTO (best for each reply)','',()=>{S.auto=true;store.set('aix3_auto',true);updateMeter()}],['Mode: ECO','',()=>{S.mode='eco';store.set('aix3_mode','eco');updateMeter()}],['Mode: BALANCED','',()=>{S.mode='balanced';store.set('aix3_mode','balanced');updateMeter()}],['Mode: THOROUGH','',()=>{S.mode='thorough';store.set('aix3_mode','thorough');updateMeter()}],
- ['Toggle evaluator','',()=>$('#evalb').click()],['Go to Persona Hub','',()=>setView('personas')],['Go to Connect','',()=>setView('connect')],['Go to Sites','',()=>setView('sites')],['Go to Credits','',()=>setView('credits')],['Go to Members & pricing','',()=>setView('members')],['Go to About','',()=>setView('about')],['Spend caps / settings','',openSettings],['Export chat','',()=>$('#exp').click()],
+ ['Toggle evaluator','',()=>$('#evalb').click()],['Go to Persona Hub','',()=>setView('personas')],['Go to Sites','',()=>setView('sites')],['Go to Credits','',()=>setView('credits')],['Go to Members & pricing','',()=>setView('members')],['Go to About','',()=>setView('about')],['Spend caps / settings','',openSettings],['Export chat','',()=>$('#exp').click()],
  ...Object.keys(ACC).map(k=>['Accent: '+k,'',()=>setAccent(k)]),...personas().map(p=>['Persona: '+p.name,'',()=>{S.pid=p.id;store.set('aix3_pid',p.id);buildPersonaSel();updateMeter()}])];
 let pi=0,pf=[];
 function palRender(){const q=$('#pin').value.toLowerCase();pf=ACTIONS().filter(a=>a[0].toLowerCase().includes(q));pi=Math.min(pi,Math.max(0,pf.length-1));$('#pl').innerHTML=pf.map((a,i)=>`<div class="pi ${i===pi?'on':''}" data-i="${i}">${esc(a[0])}<small class="mono">${a[1]}</small></div>`).join('')||'<div class="pi">No match</div>'}
@@ -2386,7 +2389,7 @@ function provSample(){const f=async(prompt,o)=>{const c=provActive();if(!c)throw
   if(!o.onText){const j=await res.json();const ch=(j.choices||[])[0]||{};return{text:(ch.message&&ch.message.content)||'',truncated:ch.finish_reason==='length'}}
   return provStream(res,o.onText)};
   f.limits=async()=>({images:false});f.prov=true;return f}
-const provWrap=()=>PROVFN||(PROVFN=provSample());
+const provWrap=()=>PROVFN||(PROVFN=withTools(provSample()));
 function openProvider(p){
   const cur=p||{id:'p'+Date.now().toString(36),name:'',url:'',key:'',model:''};
   const d=dialog(`<h3 style="margin:0 0 6px">${p?'Edit':'Add'} custom model</h3><p style="font-size:12px;color:var(--m);margin:0 0 8px">Use any model that speaks the OpenAI chat API. Your key stays in this browser and calls go straight to the provider, so no AIX credits are used.</p>
@@ -2574,12 +2577,97 @@ function renderTasks(){
   $('#tlist').onchange=e=>{const c=e.target.closest('[data-c]');if(!c)return;const a=store.get(TSKK,[])||[];a[+c.dataset.c].d=c.checked?1:0;store.set(TSKK,a);renderTasks()};
   $('#tlist').addEventListener('focusout',e=>{const t=e.target.closest('[data-e]');if(!t)return;const a=store.get(TSKK,[])||[],v=t.textContent.trim(),i=+t.dataset.e;if(!a[i])return;if(!v)a.splice(i,1);else a[i].t=v;store.set(TSKK,a);if(!v)renderTasks()});
 }
-const VIEWS=[['chat','Chat','💬'],['studio','Studio','🛠'],['market','Market','🛒'],['personas','Personas','🧠'],['memory','Memory','🧩'],['tasks','Tasks','✅'],['api','API','🔑'],['tools','Tools','⚙'],['connect','Connect','🔌'],['sites','Sites','🌐'],['ana','Analytics','📊'],['credits','Credits','◈'],['members','Members','★'],['users','Users','👥'],['about','About','ℹ']];
+/* ============ Plug-ins: tools any model can use, including Ollama (prompt-based tool calling) ============ */
+const PLUGK='aix3_plugs',MCPK='aix3_mcps';
+const plugState=()=>store.get(PLUGK,{})||{};
+const plugSet=(id,v)=>{const s=plugState();s[id]=Object.assign(s[id]||{},v);store.set(PLUGK,s)};
+const mcpList=()=>store.get(MCPK,[])||[];
+const jf=async(u,o)=>{const r=await fetch(u,o);if(!r.ok)throw new Error('HTTP '+r.status+' from '+new URL(u).host);return r};
+const PLUGINS=[
+ {id:'datetime',icon:'🕒',name:'Date & time',blurb:'Current date, time and time zones.',re:/\b(what time|current time|time (in|at)|date today|today'?s date|what day|timezone|time zone)\b/i,
+  tools:()=>[{name:'now',description:'Get the current date and time, optionally for an IANA time zone like Asia/Tokyo.',inputSchema:{type:'object',properties:{timezone:{type:'string'}}},execute:async a=>{const tz=a.timezone||undefined;try{return new Date().toLocaleString('en-US',{dateStyle:'full',timeStyle:'long',timeZone:tz})}catch{return 'Unknown time zone'}}}]},
+ {id:'calc',icon:'🧮',name:'Calculator',blurb:'Exact math instead of guessing.',re:/\b(calculate|compute|what is [\d(]|how much is [\d(]|[\d)]\s*[-+*\/^%]\s*[\d(]|percent of|sqrt|square root)\b|\d\s*[*\/^]\s*\d/i,
+  tools:()=>[{name:'calculate',description:'Evaluate a math expression like (12.5*3)/7 + sqrt(2). Supports + - * / ** % and Math functions.',inputSchema:{type:'object',properties:{expression:{type:'string'}},required:['expression']},execute:async a=>{const e=String(a.expression||'').replace(/\^/g,'**').replace(/\bsqrt\(/g,'Math.sqrt(').replace(/\b(sin|cos|tan|log|exp|abs|floor|ceil|round|min|max|pow)\(/g,'Math.$1(').replace(/\bpi\b/gi,'Math.PI');if(!/^[\d\s+\-*\/().,%eMathsqrtincoglxpbfdrunwPI_]*$/.test(e))throw new Error('Unsupported characters');return String(Function('"use strict";return ('+e+')')())}}]},
+ {id:'weather',icon:'⛅',name:'Weather',blurb:'Live forecast for any city (Open-Meteo, no key).',re:/\b(weather|forecast|temperature|rain(ing)?|snow(ing)?|humid|how (hot|cold|warm))\b/i,
+  tools:()=>[{name:'weather',description:'Get current weather and a 3 day forecast for a city name.',inputSchema:{type:'object',properties:{city:{type:'string'}},required:['city']},execute:async a=>{const g=await(await jf('https://geocoding-api.open-meteo.com/v1/search?count=1&name='+encodeURIComponent(a.city))).json();const p=(g.results||[])[0];if(!p)throw new Error('City not found');const w=await(await jf(`https://api.open-meteo.com/v1/forecast?latitude=${p.latitude}&longitude=${p.longitude}&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,precipitation,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&forecast_days=3&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto`)).json();return JSON.stringify({place:p.name+', '+(p.admin1||'')+' '+(p.country||''),current:w.current,daily:w.daily,units:{temp:'F',wind:'mph',precip:'inch'}})}}]},
+ {id:'wiki',icon:'📚',name:'Wikipedia',blurb:'Look up facts and summaries.',re:/\b(wikipedia|wiki|who (is|was)|what (is|was) (a|an|the)|tell me about|history of)\b/i,
+  tools:()=>[{name:'wikipedia',description:'Search Wikipedia and return the summary of the best matching article.',inputSchema:{type:'object',properties:{query:{type:'string'}},required:['query']},execute:async a=>{const s=await(await jf('https://en.wikipedia.org/w/api.php?action=query&list=search&format=json&origin=*&srlimit=1&srsearch='+encodeURIComponent(a.query))).json();const t=((s.query||{}).search||[])[0];if(!t)throw new Error('No article found');const r=await(await jf('https://en.wikipedia.org/api/rest_v1/page/summary/'+encodeURIComponent(t.title))).json();return r.title+': '+(r.extract||'')+'\n'+(((r.content_urls||{}).desktop||{}).page||'')}}]},
+ {id:'readurl',icon:'🔗',name:'Read web pages',blurb:'Fetch and read any public page as clean text (via r.jina.ai).',re:/https?:\/\/\S+|\b(read (this|the) (page|article|link|site)|summari[sz]e (this|the) (page|article|link|url))\b/i,
+  tools:()=>[{name:'read_url',description:'Fetch a public web page and return its readable text.',inputSchema:{type:'object',properties:{url:{type:'string'}},required:['url']},execute:async a=>{if(!/^https?:\/\//i.test(a.url||''))throw new Error('Need a full http(s) URL');const t=await(await jf('https://r.jina.ai/'+a.url)).text();return t.slice(0,7000)}}]},
+ {id:'github',icon:'🐙',name:'GitHub',blurb:'Search repos, read files, list issues. Add a token for private repos.',needs:[['token','GitHub token (optional, read-only is enough)','password']],re:/\b(github|repo(sitory)?|pull requests?|issues?|commits?)\b/i,
+  tools:(c)=>{const H=()=>({accept:'application/vnd.github+json',...(c.token?{authorization:'Bearer '+c.token}:{})});const G=async p=>(await jf('https://api.github.com'+p,{headers:H()})).json();return[
+   {name:'github_search_repos',description:'Search GitHub repositories.',inputSchema:{type:'object',properties:{query:{type:'string'}},required:['query']},execute:async a=>JSON.stringify(((await G('/search/repositories?per_page=5&q='+encodeURIComponent(a.query))).items||[]).map(r=>({name:r.full_name,desc:r.description,stars:r.stargazers_count,url:r.html_url})))},
+   {name:'github_issues',description:'List open issues of a repo given as owner/name.',inputSchema:{type:'object',properties:{repo:{type:'string'}},required:['repo']},execute:async a=>JSON.stringify((await G('/repos/'+a.repo+'/issues?state=open&per_page=10')).map(i=>({n:i.number,title:i.title,by:i.user&&i.user.login,url:i.html_url})))},
+   {name:'github_read_file',description:'Read a text file from a repo. repo is owner/name, path is the file path.',inputSchema:{type:'object',properties:{repo:{type:'string'},path:{type:'string'}},required:['repo','path']},execute:async a=>{const j=await G('/repos/'+a.repo+'/contents/'+a.path.replace(/^\/+/,''));if(!j.content)throw new Error('Not a file');return decodeURIComponent(escape(atob(j.content.replace(/\n/g,'')))).slice(0,7000)}}]}},
+ {id:'webhook',icon:'📣',name:'Send to webhook',blurb:'Post a message to Slack, Discord or any webhook URL. Always asks you first.',needs:[['url','Webhook URL','password']],re:/\b(slack|discord|webhook|notify|post (this|it) to)\b/i,
+  tools:(c)=>[{name:'send_webhook',description:'Send a text message to the configured webhook (Slack/Discord style). The user is asked first.',inputSchema:{type:'object',properties:{text:{type:'string'}},required:['text']},execute:async a=>{if(!c.url)throw new Error('Webhook URL not set');if(!(await confirmAsk('Send this message to your webhook?\n\n'+String(a.text).slice(0,300))))throw new Error('User declined');const isD=/discord/i.test(c.url);await fetch(c.url,{method:'POST',mode:'no-cors',headers:{'content-type':'text/plain'},body:JSON.stringify(isD?{content:a.text}:{text:a.text})});return 'Sent (the browser cannot read the webhook reply).'}}]}
+];
+/* MCP over HTTP (JSON-RPC, Streamable HTTP). Works with any server that allows browser calls. */
+async function mcpRpc(srv,method,params,notify){
+  const h={'content-type':'application/json',accept:'application/json, text/event-stream',...(srv.token?{authorization:'Bearer '+srv.token}:{}),...(srv.sid?{'mcp-session-id':srv.sid}:{})};
+  const body=notify?{jsonrpc:'2.0',method,params}:{jsonrpc:'2.0',id:Date.now()%1e9,method,params};
+  const r=await fetch(srv.url,{method:'POST',headers:h,body:JSON.stringify(body)});
+  const sid=r.headers.get('mcp-session-id');if(sid)srv.sid=sid;
+  if(notify)return null;
+  if(!r.ok)throw new Error('HTTP '+r.status+(r.status===401?' (needs a token)':''));
+  const txt=await r.text();let j;
+  if((r.headers.get('content-type')||'').includes('event-stream')){const ln=txt.split('\n').filter(l=>l.startsWith('data:')).map(l=>l.slice(5).trim()).filter(Boolean).pop();j=JSON.parse(ln||'{}')}else j=JSON.parse(txt);
+  if(j.error)throw new Error(j.error.message||'MCP error');return j.result}
+async function mcpTools(srv){
+  if(!srv.sid||!srv._init){await mcpRpc(srv,'initialize',{protocolVersion:'2025-03-26',capabilities:{},clientInfo:{name:'aix-alpha',version:'3'}});await mcpRpc(srv,'notifications/initialized',{},true);srv._init=1}
+  const r=await mcpRpc(srv,'tools/list',{});
+  return(r.tools||[]).map(t=>({name:(srv.name.toLowerCase().replace(/\W+/g,'_')+'__'+t.name).slice(0,60),description:(srv.name+': '+(t.description||t.name)).slice(0,300)+' (asks you first)',inputSchema:t.inputSchema||{type:'object'},
+    execute:async a=>{if(!(await confirmAsk('Allow '+srv.name+' → '+t.name+'?\n\n'+JSON.stringify(a).slice(0,300))))throw new Error('User declined');const x=await mcpRpc(srv,'tools/call',{name:t.name,arguments:a||{}});S.toolLog.push(srv.name+'·'+t.name);return((x.content||[]).map(c=>c.text||'').join('\n')||JSON.stringify(x)).slice(0,6000)}}))}
+/* which plug-ins apply to this message */
+function plugWanted(p){const st=plugState();for(const pl of PLUGINS)if(st[pl.id]&&st[pl.id].on&&pl.re.test(p))return true;for(const m of mcpList())if(m.on&&(new RegExp('\\b'+m.name.replace(/\W+/g,'.?')+'\\b','i').test(p)||(m.always)))return true;return false}
+async function plugTools(p){const out=[],st=plugState();
+  for(const pl of PLUGINS){const s=st[pl.id];if(!s||!s.on||!pl.re.test(p))continue;try{out.push(...pl.tools(s.cfg||{}))}catch{}}
+  for(const m of mcpList()){if(!m.on)continue;if(!(m.always||new RegExp('\\b'+m.name.replace(/\W+/g,'.?')+'\\b','i').test(p)))continue;try{out.push(...await mcpTools(m))}catch(e){try{toast(m.name+': '+e.message)}catch{}}}
+  return out}
+/* Tool calling for models without native support (Ollama, Hugging Face, any OpenAI-compatible): the model writes a tool block, we run it, feed the result back. */
+async function toolLoop(base,prompt,o){
+  const tools=o.tools,spec=tools.map(t=>'- '+t.name+': '+t.description+' | args: '+JSON.stringify((t.inputSchema&&t.inputSchema.properties)||{}).slice(0,400)).join('\n');
+  const head='You can call tools. To call one, reply with ONLY this block and nothing else:\n```tool\n{"tool":"<name>","args":{...}}\n```\nYou will then get the result and can call another tool or answer. When you have what you need, answer the user in plain text with NO tool block. Never invent tool results.\nTools:\n'+spec+'\n\n';
+  let conv=head+prompt;const used=[];
+  for(let i=0;i<5;i++){
+    const r=await base(conv,{...o,onText:null,tools:null});
+    const m=(r.text||'').match(/```(?:tool|json)?\s*(\{[\s\S]*?\})\s*```/)||(r.text||'').match(/^\s*(\{\s*"tool"[\s\S]*\})\s*$/);
+    let call=null;if(m){try{call=JSON.parse(m[1])}catch{}}
+    if(!call||!call.tool){if(o.onText)o.onText({text:r.text});return{...r,toolsUsed:used}}
+    const t=tools.find(x=>x.name===call.tool);let res;
+    try{if(!t)throw new Error('Unknown tool '+call.tool);res=await t.execute(call.args||{});used.push(call.tool)}catch(e){res='ERROR: '+e.message}
+    conv+='\n\nASSISTANT: (called '+call.tool+')\nTOOL RESULT:\n'+String(res).slice(0,4000)+'\n\nUse the result to answer the user now, or call another tool if needed.';
+  }
+  const r=await base(conv+'\n\nAnswer the user now in plain text, no tool block.',{...o,tools:null});return{...r,toolsUsed:used}}
+const withTools=f=>{const g=(a,o)=>(o&&o.tools&&o.tools.length)?toolLoop(f,a,o):f(a,o);Object.assign(g,f);return g};
+/* page */
+function renderPlugins(){
+  const el=$('#plugbody'),st=plugState(),ms=mcpList();
+  const eng=PROVON()?'your custom model':nodeOn()?'your Ollama node':'the cloud model';
+  const card=pl=>{const s=st[pl.id]||{},on=!!s.on;return `<div class="bc"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b style="font-size:14px">${pl.icon} ${esc(pl.name)}</b><button class="tg ${on?'on':''}" data-pg="${pl.id}">${on?'On':'Off'}</button></div><div class="bs" style="margin:2px 0 6px">${esc(pl.blurb)}</div>${(pl.needs||[]).map(([k,l,ty])=>`<input data-pgc="${pl.id}:${k}" type="${ty||'text'}" placeholder="${esc(l)}" value="${esc(((s.cfg||{})[k])||'')}" style="${pgCss};width:100%;font-size:12px">`).join('')}</div>`};
+  el.innerHTML=`<div class="ab" style="max-width:980px;margin:0 auto"><h2 class="mono" style="margin:0 0 4px">PLUG-INS</h2>
+  <div class="mono" style="font-size:11px;color:var(--m);margin-bottom:12px">Give any model extra abilities. Turn a plug-in on, then just ask in chat (for example "weather in Tokyo"). Plug-ins work with <b>every engine</b>: the model writes a tool call, AIX runs it and hands back the result. Replies now run on ${eng}.</div>
+  <div class="bento">${PLUGINS.map(card).join('')}
+  <div class="bc f"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px"><h3 class="bh" style="margin:0">CUSTOM MCP SERVERS</h3><button class="btn" id="mcpadd">+ Add MCP server</button></div>
+   <div class="mono bs" style="margin-bottom:8px">Plug in the same kind of connectors Claude uses. Paste the server's HTTP (Streamable HTTP) URL and, if it needs one, a token. Its tools are discovered automatically, and every call asks you first. The server must allow browser requests (CORS); servers that need a sign-in flow (OAuth) are not supported here yet.</div>
+   ${ms.length?ms.map((m,i)=>`<div class="rw" style="flex-wrap:wrap"><div style="min-width:0;flex:1 1 180px"><b style="font-size:13px">${esc(m.name)}</b><div class="mono bs" style="word-break:break-all">${esc(m.url)}</div><div class="mono bs">${m.always?'Always available':'Used when you mention "'+esc(m.name)+'"'}</div></div><div style="display:flex;gap:6px"><button class="btn2" data-mt="${i}">Test</button><button class="tg ${m.on?'on':''}" data-mo="${i}">${m.on?'On':'Off'}</button><button class="btn2" data-md="${i}">Remove</button></div></div>`).join(''):'<div class="mono bs">None yet.</div>'}
+   <div id="mcpst" class="mono bs" style="margin-top:6px"></div></div>
+  <div class="bc f"><h3 class="bh">CLAUDE CONNECTORS</h3><div class="mono bs" style="margin-bottom:8px">PayPal, Gmail and Claude Docs work only when this app is opened from its claude.ai link, and they run on Claude's own model. Everything above works anywhere, including with Ollama.</div><div class="ccwrap">${connectCardsHtml()}</div></div>
+  </div></div>`;
+  el.querySelectorAll('[data-pg]').forEach(b=>b.onclick=()=>{const id=b.dataset.pg,on=!(plugState()[id]||{}).on;plugSet(id,{on});renderPlugins();toast(on?'Turned on':'Turned off')});
+  el.querySelectorAll('[data-pgc]').forEach(i=>i.onchange=()=>{const[id,k]=i.dataset.pgc.split(':'),c=Object.assign({},(plugState()[id]||{}).cfg||{});c[k]=i.value.trim();plugSet(id,{cfg:c});if(i.value.trim())plugSet(id,{on:true});renderPlugins()});
+  $('#mcpadd').onclick=()=>{const d=dialog(`<h3 style="margin:0 0 6px">Add MCP server</h3><p style="font-size:12px;color:var(--m);margin:0 0 6px">Works with servers that expose an HTTP endpoint and allow browser requests.</p><label>Name</label><input id="mn" placeholder="Linear"><label>Server URL</label><input id="mu" placeholder="https://…/mcp"><label>Token (optional)</label><input id="mt" type="password" autocomplete="off"><label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input id="ma" type="checkbox" style="width:auto"> Always available (otherwise only when I mention its name)</label><div id="mst" class="mono" style="font-size:11px;margin:8px 0;min-height:14px"></div><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn2" data-close>Cancel</button><button class="btn" id="msv">Connect and save</button></div>`);
+    $('#msv').onclick=async()=>{const m={name:$('#mn').value.trim(),url:$('#mu').value.trim(),token:$('#mt').value.trim(),always:$('#ma').checked,on:true};if(!m.name||!/^https?:\/\//.test(m.url))return toast('Enter a name and a full URL');const st2=$('#mst');st2.textContent='Connecting…';try{const t=await mcpTools(Object.assign({},m));const L=mcpList();L.push(m);store.set(MCPK,L);d.close();toast(m.name+': '+t.length+' tools found');renderPlugins()}catch(e){st2.style.color='var(--bad)';st2.textContent=/Failed to fetch|NetworkError|Load failed/i.test(e.message)?'Could not reach it from the browser (wrong URL, or the server blocks browser requests).':e.message}}};
+  el.querySelectorAll('[data-mo]').forEach(b=>b.onclick=()=>{const L=mcpList();L[+b.dataset.mo].on=!L[+b.dataset.mo].on;store.set(MCPK,L);renderPlugins()});
+  el.querySelectorAll('[data-md]').forEach(b=>b.onclick=()=>{if(confirm('Remove this server?')){const L=mcpList();L.splice(+b.dataset.md,1);store.set(MCPK,L);renderPlugins()}});
+  el.querySelectorAll('[data-mt]').forEach(b=>b.onclick=async()=>{const m=mcpList()[+b.dataset.mt],s=$('#mcpst');s.textContent='Testing '+m.name+'…';try{const t=await mcpTools(Object.assign({},m));s.textContent=m.name+' works: '+t.map(x=>x.name.split('__')[1]).join(', ').slice(0,300)}catch(e){s.textContent=m.name+': '+e.message}});
+}
+const VIEWS=[['chat','Chat','💬'],['studio','Studio','🛠'],['market','Market','🛒'],['personas','Personas','🧠'],['memory','Memory','🧩'],['tasks','Tasks','✅'],['api','API','🔑'],['plugins','Plug-ins','🔌'],['sites','Sites','🌐'],['ana','Analytics','📊'],['credits','Credits','◈'],['members','Members','★'],['users','Users','👥'],['about','About','ℹ']];
 function setView(v){document.querySelectorAll('.view').forEach(x=>x.classList.toggle('on',x.id==='v'+v));document.querySelectorAll('#tabs button,#bnav button[data-v]').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
-  ({ana:renderAna,studio:renderStudio,market:renderMarket,personas:renderPersonas,memory:renderMemory,tasks:renderTasks,api:renderApi,tools:renderTools,connect:async()=>{if(CT==='live')await loadLive();renderConnect()},sites:renderSites,credits:renderCredits,members:renderMembers,admin:renderAdmin,users:renderUsers,about:renderAbout}[v]||(()=>{}))();
+  ({ana:renderAna,studio:renderStudio,market:renderMarket,personas:renderPersonas,memory:renderMemory,tasks:renderTasks,api:renderApi,plugins:async()=>{await loadLive().catch(()=>{});renderPlugins()},sites:renderSites,credits:renderCredits,members:renderMembers,admin:renderAdmin,users:renderUsers,about:renderAbout}[v]||(()=>{}))();
   $('#side').classList.remove('open');$('#scrim').classList.remove('on');window.scrollTo(0,0)}
 $('#tabs').innerHTML=VIEWS.map(([k,l])=>`<button data-v="${k}" class="${k==='chat'?'on':''}">${l}</button>`).join('');
-$('#bnav').innerHTML=['chat','studio','tools'].map(k=>{const v=VIEWS.find(x=>x[0]===k);return `<button data-v="${k}" class="${k==='chat'?'on':''}"><span>${ico(k)}</span>${v[1]}</button>`}).join('')+`<button id="bmore"><span>${ico('more')}</span>More</button>`;
+$('#bnav').innerHTML=['chat','studio','plugins'].map(k=>{const v=VIEWS.find(x=>x[0]===k);return `<button data-v="${k}" class="${k==='chat'?'on':''}"><span>${ico(k)}</span>${v[1]}</button>`}).join('')+`<button id="bmore"><span>${ico('more')}</span>More</button>`;
 $('#bnav').onclick=e=>{const b=e.target.closest('button');if(!b)return;if(b.id==='bmore'){const cur=(document.querySelector('.view.on')||{id:'vchat'}).id.slice(1);const d=dialog(`<h3 style="margin:0 0 12px">Menu</h3><div class="mgrid">${VIEWS.map(([k,l])=>`<button class="mtile${k===cur?' on':''}" data-mv="${k}"><span class="mti">${ico(k)}</span><span class="mtl">${l}</span></button>`).join('')}</div><div style="text-align:right;margin-top:12px"><button class="btn2" data-close>Close</button></div>`);d.querySelectorAll('[data-mv]').forEach(x=>x.onclick=()=>{d.close();setView(x.dataset.mv)})}else setView(b.dataset.v)};
 $('#scrim').onclick=()=>{$('#side').classList.remove('open');$('#scrim').classList.remove('on')};
 $('#menu').onclick=()=>{$('#side').classList.toggle('open');$('#scrim').classList.toggle('on',$('#side').classList.contains('open'))};
