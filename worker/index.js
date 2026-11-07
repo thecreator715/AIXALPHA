@@ -11,7 +11,7 @@ const cors = (env, req) => {
   const allow = (env.ALLOWED_ORIGINS || '*').split(',').map((s) => s.trim());
   const o = req.headers.get('origin') || '';
   const ok = allow.includes('*') ? '*' : allow.includes(o) ? o : '';
-  return { 'access-control-allow-origin': ok, 'access-control-allow-headers': 'content-type, authorization, x-admin-token, x-meter, x-node-secret', 'access-control-allow-methods': 'GET,POST,OPTIONS', vary: 'Origin' };
+  return { 'access-control-allow-origin': ok, 'access-control-allow-headers': 'content-type, authorization, x-admin-token, x-meter, x-node-secret', 'access-control-allow-methods': 'GET,POST,PUT,OPTIONS', vary: 'Origin' };
 };
 const json = (env, req, body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...cors(env, req) } });
 const sha = async (s) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(s)))].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -86,6 +86,7 @@ async function sample(env, req) {
   const a = await authed(env, req);
   if (!a) return json(env, req, { error: 'Sign in to use AIX.' }, 401);
   if (a.credits <= 0 && !(owners(env).includes(a.email) && !a.meter)) return json(env, req, { error: 'Out of credits. Top up to continue.' }, 402);
+  if (!(owners(env).includes(a.email) && !a.meter) && rateLimited(env, a)) return json(env, req, { error: 'Slow down: too many requests this minute. Try again in a few seconds.' }, 429);
   const b = await req.json().catch(() => ({}));
   const prompt = String(b.prompt || ''); if (!prompt) return json(env, req, { error: 'prompt required' }, 400);
   const stream = !!b.stream;
@@ -185,6 +186,43 @@ async function runDueJobs(env) {
   for (const j of rows) { await env.DB.prepare("UPDATE jobs SET status='running' WHERE id=? AND status='pending'").bind(j.id).run(); await runJob(env, j); }
   // un-stick anything left 'running' for over 10 minutes
   await env.DB.prepare("UPDATE jobs SET status='pending' WHERE status='running' AND (last IS NULL OR last<?)").bind(Date.now() - 600e3).run();
+}
+let SYNC_READY = false;
+const SYNC_KEYS = ['aix3_chats', 'aix3_ws', 'aix3_memory', 'aix3_personas', 'aix3_remind'];
+async function ensureSync(env) {
+  if (SYNC_READY) return;
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS sync(email TEXT NOT NULL, k TEXT NOT NULL, v TEXT, updated INTEGER, PRIMARY KEY(email,k))').run();
+  SYNC_READY = true;
+}
+// Per-account cloud sync: GET returns everything; PUT stores each key (newest write wins).
+async function syncApi(env, req) {
+  const a = await authed(env, req);
+  if (!a) return json(env, req, { error: 'Sign in to sync.' }, 401);
+  await ensureSync(env);
+  if (req.method === 'GET') {
+    const rows = (await env.DB.prepare('SELECT k,v,updated FROM sync WHERE email=?').bind(a.email).all()).results || [];
+    const items = {}; rows.forEach((r) => { items[r.k] = { v: r.v, updated: r.updated }; });
+    return json(env, req, { items });
+  }
+  if (req.method === 'PUT') {
+    const b = await req.json().catch(() => ({})); const items = b.items || {}; const saved = [];
+    for (const k of Object.keys(items)) {
+      if (!SYNC_KEYS.includes(k)) continue;
+      const v = String(items[k].v == null ? '' : items[k].v); if (v.length > 1500000) continue;
+      const upd = Math.min(+items[k].updated || Date.now(), Date.now() + 60000);
+      await env.DB.prepare('INSERT INTO sync(email,k,v,updated) VALUES(?,?,?,?) ON CONFLICT(email,k) DO UPDATE SET v=excluded.v, updated=excluded.updated WHERE excluded.updated>=sync.updated').bind(a.email, k, v, upd).run();
+      saved.push(k);
+    }
+    return json(env, req, { ok: true, saved });
+  }
+  return json(env, req, { error: 'method' }, 405);
+}
+// Best-effort per-account rate limit (per Worker isolate): RATE_PER_MIN requests/minute, owner exempt.
+const RL = new Map();
+function rateLimited(env, a) {
+  const cap = +(env.RATE_PER_MIN || 20); const m = Math.floor(Date.now() / 60000), key = a.email;
+  const e = RL.get(key); if (!e || e.m !== m) { RL.set(key, { m, n: 1 }); if (RL.size > 5000) RL.clear(); return false; }
+  e.n++; return e.n > cap;
 }
 async function jobsApi(env, req, path) {
   const a = await authed(env, req);
@@ -599,6 +637,7 @@ export default {
     if (path.startsWith('/api/keys')) return keysApi(env, req, path);
     if (path.startsWith('/api/page')) return pagesApi(env, req, path);
     if (path.startsWith('/v1/')) return v1Api(env, req, path);
+    if (path === '/api/sync') return syncApi(env, req);
     if (path.startsWith('/api/jobs')) return jobsApi(env, req, path);
     if (path === '/api/health') return json(env, req, { status: 'ok', engine: 'aix-alpha-cloud', model: MODEL, hasApiKey: !!env.ANTHROPIC_API_KEY });
     if (path === '/api/account/signup' && req.method === 'POST') {

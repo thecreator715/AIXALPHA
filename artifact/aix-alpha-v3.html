@@ -1010,7 +1010,22 @@ function chipsHtml(t){
   if(t.web)ch(`WEB · ${t.web} search${t.web>1?'es':''} · ${t.webCr} cr this reply`,'a');if(!t.verified&&t.calls)ch('UNVERIFIED','a');return `<div class="chips mono">${c.join('')}</div>`;
 }
 function curChat(){return S.chats.find(c=>c.id===S.cur)}
-function save(){store.set('aix3_chats',S.chats.slice(0,60));store.set('aix3_ledger',S.ledger)}
+function save(){store.set('aix3_chats',S.chats.slice(0,60));store.set('aix3_ledger',S.ledger);try{syncSoon()}catch(e){}}
+/* ============ cloud sync (per account, via the worker) ============ */
+let SYNCT=null,SYNCBUSY=false,SYNCOFF=false;
+const syncTok=()=>store.get('aix3_token','');
+const lastTs=c=>(c.msgs&&c.msgs.length&&c.msgs[c.msgs.length-1].ts)||0;
+function syncSoon(){if(SYNCOFF||!syncTok())return;clearTimeout(SYNCT);SYNCT=setTimeout(syncPush,3000)}
+function syncHdr(){return{'content-type':'application/json',authorization:'Bearer '+syncTok()}}
+async function syncPush(){if(SYNCBUSY||!syncTok())return;SYNCBUSY=true;try{let ch=S.chats.slice(0,60);let v=JSON.stringify({chats:ch,del:store.get('aix3_del',[])});while(v.length>1400000&&ch.length>3){ch=ch.slice(0,-3);v=JSON.stringify({chats:ch,del:store.get('aix3_del',[])})}
+  const now=Date.now();const r=await fetch(BACKEND()+'/api/sync',{method:'PUT',headers:syncHdr(),body:JSON.stringify({items:{aix3_chats:{v,updated:now},aix3_ws:{v:JSON.stringify(store.get('aix3_ws',[])),updated:now}}})});if(r.status===401||r.status===404)SYNCOFF=true;store.set('aix3_synct',now)}catch(e){}finally{SYNCBUSY=false}}
+async function syncPull(){if(SYNCOFF||!syncTok())return;try{const r=await fetch(BACKEND()+'/api/sync',{headers:syncHdr()});if(r.status===401||r.status===404){SYNCOFF=true;return}if(!r.ok)return;const j=await r.json(),it=j.items||{};let changed=false;
+  if(it.aix3_chats){const rm=JSON.parse(it.aix3_chats.v||'{}');const del=new Set([...(rm.del||[]),...store.get('aix3_del',[])]);store.set('aix3_del',[...del].slice(-200));const map=new Map(S.chats.map(c=>[c.id,c]));
+    for(const c of (rm.chats||[])){if(del.has(c.id))continue;const l=map.get(c.id);if(!l){map.set(c.id,c);changed=true}else if(lastTs(c)>lastTs(l)||(lastTs(c)===lastTs(l)&&(c.msgs||[]).length>(l.msgs||[]).length)){map.set(c.id,c);changed=true}}
+    const cur=S.chats.filter(c=>!del.has(c.id)).length;const merged=[...map.values()].filter(c=>!del.has(c.id)).sort((a,b)=>Math.max(lastTs(b),0)-Math.max(lastTs(a),0));if(merged.length!==cur)changed=true;if(changed){S.chats=merged.slice(0,60);store.set('aix3_chats',S.chats)}}
+  if(it.aix3_ws){const rw=JSON.parse(it.aix3_ws.v||'[]'),lw=store.get('aix3_ws',[]),ids=new Set(lw.map(w=>w.id));let add=false;for(const w of rw)if(!ids.has(w.id)){lw.push(w);add=true}if(add){store.set('aix3_ws',lw);changed=true}}
+  if(changed&&!S.busy){renderThreads();renderMsgs()}if(!it.aix3_chats)syncSoon()}catch(e){}}
+setTimeout(()=>{syncPull()},2500);setInterval(()=>{if(!document.hidden)syncPull()},60000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncPull()});
 const WSLIST=()=>store.get('aix3_ws',[]);
 function renderWs(){const sel=$('#wssel');if(!sel)return;sel.innerHTML='<option value="">All chats</option>'+WSLIST().map(w=>`<option value="${w.id}" ${S.ws===w.id?'selected':''}>${esc(w.name)}</option>`).join('')+'<option value="__new">＋ New workspace…</option>'+(S.ws?'<option value="__edit">✎ Edit this workspace…</option>':'')}
 function wsOpen(w){$('#wsed').style.display='block';$('#wsn').value=w?w.name:'';$('#wsi').value=w?w.inst||'':'';$('#wsed').dataset.id=w?w.id:'';$('#wsd').style.display=w?'':'none'}
@@ -1175,7 +1190,7 @@ $('#evalb').onclick=()=>{S.verify=S.verify==='llm'?'local':'llm';store.set('aix3
 $('#estb').onclick=()=>$('#estp').classList.toggle('on');
 function renameChat(id){const c=S.chats.find(x=>x.id===id);if(!c)return;const row=document.querySelector('#threads .th[data-id="'+id+'"] span');if(!row)return;const inp=document.createElement('input');inp.value=c.title;inp.style.cssText='width:100%;min-width:0;background:transparent;color:inherit;border:1px solid var(--ac,#7c9cff);border-radius:6px;padding:2px 6px;font:inherit';row.replaceWith(inp);inp.focus();inp.select();let done=false;const fin=ok=>{if(done)return;done=true;const v=inp.value.trim();if(ok&&v&&v!==c.title){c.title=v.slice(0,80);c.named=1;save();if(S.cur===id&&$('#ttl'))$('#ttl').textContent=c.title;try{if(typeof proj==='function'&&proj().sid===id){}}catch{}}renderThreads()};inp.onkeydown=e=>{e.stopPropagation();if(e.key==='Enter')fin(true);if(e.key==='Escape')fin(false)};inp.onblur=()=>fin(true);inp.onclick=e=>e.stopPropagation()}
 $('#threads').onclick=e=>{if(e.target.closest('input'))return;const rn=e.target.closest('[data-ren]');if(rn){renameChat(rn.dataset.ren);return}const pn=e.target.closest('[data-pin]');if(pn){const c=S.chats.find(x=>x.id===pn.dataset.pin);c.pin=!c.pin;save();renderThreads();return}
-  const d=e.target.closest('[data-del]');if(d){S.chats=S.chats.filter(c=>c.id!==d.dataset.del);if(S.cur===d.dataset.del)S.cur=null;save();renderThreads();renderMsgs();return}
+  const d=e.target.closest('[data-del]');if(d){{const dl=store.get('aix3_del',[]);dl.push(d.dataset.del);store.set('aix3_del',dl.slice(-200))}S.chats=S.chats.filter(c=>c.id!==d.dataset.del);if(S.cur===d.dataset.del)S.cur=null;save();renderThreads();renderMsgs();return}
   const t=e.target.closest('[data-id]');if(t){const now=Date.now(),L=renameChat.last;if(L&&L[0]===t.dataset.id&&now-L[1]<450&&S.cur===t.dataset.id){renameChat.last=null;renameChat(t.dataset.id);return}renameChat.last=[t.dataset.id,now];S.cur=t.dataset.id;renderThreads();renderMsgs();syncStudio();$('#side').classList.remove('open')}};
 $('#msgs').oninput=e=>{const o=e.target.closest('[data-ask-other]');if(!o)return;const c=curChat(),m=c&&c.msgs[+o.dataset.askOther];if(!m||!m.ask)return;const a=m.ask,qi=+o.dataset.q;a.other=a.other||{};a.other[qi]=o.value;if(o.value.trim()&&!a.qs[qi].multi)a.ans[qi]=[];const g=o.closest('.askc').querySelector('[data-ask-go]');if(g)g.disabled=!askReady(a);save()};
 $('#msgs').onclick=e=>{const ak=e.target.closest('[data-ask]');if(ak){const c=curChat(),m=c&&c.msgs[+ak.dataset.ask];if(m&&m.ask){askPick(m.ask,+ak.dataset.q,+ak.dataset.o);if(m.ask.qs.length===1&&!m.ask.qs[0].multi)return askRun(+ak.dataset.ask,'go');save();renderMsgs()}return}
