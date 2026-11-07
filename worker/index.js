@@ -157,6 +157,11 @@ export default {
     }
     if (path === '/api/account/me') { const a = await authed(env, req); return a ? json(env, req, vw(env, a)) : json(env, req, { error: 'sign in' }, 401); }
     if (path.startsWith('/api/market/')) return market(env, req, path, { json, authed, owners });
+    if (path === '/api/node/charge' && req.method === 'POST') {          // replies served by a local Ollama node: same credit scaling as the cloud model
+      const a = await authed(env, req); if (!a) return json(env, req, { error: 'sign in' }, 401);
+      const b = await req.json().catch(() => ({})); const inp = Math.min(400000, Math.max(0, Number(b.input) || 0)), out = Math.min(200000, Math.max(0, Number(b.output) || 0));
+      return json(env, req, await charge(env, a, { input: inp, output: out }));
+    }
     if (path === '/api/image' && req.method === 'POST') return image(env, req);
     if (path === '/api/video' && req.method === 'POST') return video(env, req);
     if (path === '/api/sample' && req.method === 'POST') return sample(env, req);

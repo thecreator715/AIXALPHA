@@ -616,18 +616,19 @@ function embKey(){const m=document.querySelector('meta[name=aix-embedded-key]');
 function pickEngine(){if(embKey()){store.set(KEYK,embKey());return directSample()}if(BACKEND()&&store.get(TOKK,''))return backendSample();if(store.get(KEYK,''))return directSample();return nodeOn()?nodeSample():null}
 
 /* ===== Local node: your own Mac Studio (Ollama) as the engine ===== */
-const nodeCfg=()=>store.get('aix3_node',null);const nodeOn=()=>{const c=nodeCfg();return !!(c&&c.on&&c.url&&c.model)};let NODEFN=null;const nodeForMode=()=>nodeOn()&&(nodeCfg().all||S.mode==='eco'||S.mode==='balanced');
+const NODEDEF={url:'http://localhost:8787',token:'',model:'qwen2.5-coder:32b',on:true,all:false,auto:true};const nodeCfg=()=>store.get('aix3_node',null)||(ISOWNER?NODEDEF:null);let NODEDOWN=0;const nodeOn=()=>{const c=nodeCfg();return !!(c&&c.on&&c.url&&c.model)};let NODEFN=null;const nodeForMode=()=>nodeOn()&&Date.now()-NODEDOWN>60000&&(nodeCfg().all||S.mode==='eco'||S.mode==='balanced');
 function nodeSample(){
   const f=async(prompt,o)=>{const c=nodeCfg();const base=c.url.replace(/\/+$/,'');
-    const res=await fetch(base+'/v1/chat/completions',{method:'POST',signal:o.signal,headers:{'content-type':'application/json',...(c.token?{authorization:'Bearer '+c.token}:{})},body:JSON.stringify({model:c.model,stream:!!o.onText,messages:[{role:'user',content:prompt}]})}).catch(e=>{throw new Error('Cannot reach your node at '+base+' ('+e.message+'). Is the Mac awake, Ollama running and server.js started?')});
-    if(!res.ok){let m='';try{m=(await res.json()).error}catch{}throw new Error('Node '+res.status+(m?': '+(m.message||m):''))}
+    const res=await fetch(base+'/v1/chat/completions',{method:'POST',signal:o.signal,headers:{'content-type':'application/json',...(c.token?{authorization:'Bearer '+c.token}:{})},body:JSON.stringify({model:c.model,stream:!!o.onText,messages:[{role:'user',content:prompt}]})}).catch(e=>{const er=new Error('Cannot reach your node at '+base+' ('+e.message+'). Is the Mac awake, Ollama running and server.js started?');er.nodeDown=1;throw er});
+    if(res.status===401){const er=new Error('Node token rejected. Open the launcher pairing link again (aix-pair-link.txt).');er.nodeDown=1;throw er}if(!res.ok){let m='';try{m=(await res.json()).error}catch{}throw new Error('Node '+res.status+(m?': '+(m.message||m):''))}
     if(!o.onText){const j=await res.json();const ch=(j.choices||[])[0]||{};return{text:(ch.message&&ch.message.content)||'',truncated:ch.finish_reason==='length'}}
     const rd=res.body.getReader(),dec=new TextDecoder();let buf='',text='',trunc=false;
     for(;;){const{done,value}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});const lines=buf.split('\n');buf=lines.pop();
       for(const ln of lines){if(!ln.startsWith('data:')||ln.includes('[DONE]'))continue;try{const e=JSON.parse(ln.slice(5)),ch=(e.choices||[])[0]||{};const t=ch.delta&&ch.delta.content;if(t){text+=t;o.onText({text})}if(ch.finish_reason==='length')trunc=true}catch{}}}
     return{text,truncated:trunc}};
   f.limits=async()=>({images:false});f.node=true;return f}
-const nodeWrap=()=>{if(!NODEFN){const f=nodeSample();NODEFN=async(a,b)=>{const r=await f(a,b);r.node=true;return r};NODEFN.limits=f.limits}return NODEFN};
+const nodeWrap=()=>{if(!NODEFN){const f=nodeSample();NODEFN=async(a,b)=>{let r;try{r=await f(a,b)}catch(e){if(e.nodeDown){NODEDOWN=Date.now();let cloud=sampleFn||pickEngine();if(cloud&&!cloud.node){try{toast('Mac node unreachable: using the cloud engine for now')}catch{}return cloud(a,b)}}throw e}
+r.node=true;try{const tok=store.get(TOKK,'');if(tok&&BACKEND()){const j=await fetch(BACKEND()+'/api/node/charge',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+tok},body:JSON.stringify({input:est(a),output:est(r.text||'')})}).then(x=>x.json());if(j&&j.credits!=null){BAL=j.credits;setStatus()}}}catch{}return r};NODEFN.limits=f.limits}return NODEFN};
 
 /* auto-pair from the Mac node launcher: #node=<url>&token=<t>&model=<m> */
 (function(){try{const h=new URLSearchParams(location.hash.slice(1));const u=h.get('node');if(!u)return;const cfg={url:u,token:h.get('token')||'',model:h.get('model')||'',on:true};try{history.replaceState(null,'',location.pathname+location.search)}catch{}
@@ -637,7 +638,7 @@ function openNode(){
   const c=nodeCfg()||{url:'http://localhost:8787',token:'',model:'qwen2.5-coder:32b',on:false};
   const d=dialog(`<h3 style="margin:0 0 8px">Local node (Mac Studio)</h3><p style="font-size:12.5px;color:var(--m);margin:0 0 8px">Point AIX at your own machine. Replies run on your hardware: no credits, no API key. Start it with <code>AIX_TOKEN=secret node server.js</code> (file: node/server.js in the repo) and keep Ollama running.</p>
   <label>Node URL (https if you use Tailscale or a tunnel)</label><input id="nu" value="${esc(c.url)}"><label>Token (AIX_TOKEN)</label><input id="nt" type="password" value="${esc(c.token||'')}"><label>Model name (as in <code>ollama list</code>)</label><input id="nm" value="${esc(c.model)}">
-  <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input id="non" type="checkbox" ${c.on?'checked':''} style="width:auto"> Use my node for ECO and BALANCED replies (free)</label><label style="display:flex;gap:8px;align-items:center;margin-top:6px"><input id="nall" type="checkbox" ${c.all?'checked':''} style="width:auto"> Also use it for THOROUGH and AUTO (cloud otherwise)</label><div class="mono" id="nst" style="font-size:11px;margin:8px 0;min-height:16px"></div>
+  <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input id="non" type="checkbox" ${c.on?'checked':''} style="width:auto"> Use my node for ECO and BALANCED replies (same credits)</label><label style="display:flex;gap:8px;align-items:center;margin-top:6px"><input id="nall" type="checkbox" ${c.all?'checked':''} style="width:auto"> Also use it for THOROUGH and AUTO (cloud otherwise)</label><div class="mono" id="nst" style="font-size:11px;margin:8px 0;min-height:16px"></div>
   <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn2" id="ntest">Test</button><button class="btn2" data-close>Cancel</button><button class="btn" id="nsave">Save</button></div>`);
   const read=()=>({url:$('#nu').value.trim(),token:$('#nt').value.trim(),model:$('#nm').value.trim(),on:$('#non').checked,all:$('#nall').checked});
   $('#ntest').onclick=async()=>{const v=read(),st=$('#nst');st.textContent='Testing…';try{const r=await fetch(v.url.replace(/\/+$/,'')+'/v1/chat/completions',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+v.token},body:JSON.stringify({model:v.model,max_tokens:8,messages:[{role:'user',content:'Say ok'}]})});const j=await r.json();st.innerHTML=r.ok?'<span style="color:#34d399">Connected. Model replied: '+esc(((j.choices||[])[0]||{}).message?.content||'')+'</span>':'<span style="color:#f87171">'+esc(JSON.stringify(j.error||j))+'</span>'}catch(e){st.innerHTML='<span style="color:#f87171">Cannot reach node: '+esc(e.message)+'</span>'}};
@@ -701,7 +702,7 @@ function openKey(force){if(!force)return openAccount();
 async function ask(promptStr,onText,signal,images,tools){
   let eng=null;if(nodeForMode()&&!(images&&images.length))eng=nodeWrap();
   if(!eng){if(!sampleFn)sampleFn=pickEngine();eng=sampleFn;if(!eng&&nodeOn())eng=nodeWrap()}
-  if(eng&&!eng.node&&sampleFn&&BACKEND()&&store.get(TOKK,'')&&!ISOWNER&&BAL!=null&&BAL<=0&&!embKey()){setTimeout(()=>openCredits('out'),60);throw new Error('You are out of credits. Add credits or claim your free credit to continue (a window just opened).')}
+  if(eng&&BACKEND()&&store.get(TOKK,'')&&!ISOWNER&&BAL!=null&&BAL<=0&&!embKey()){setTimeout(()=>openCredits('out'),60);throw new Error('You are out of credits. Add credits or claim your free credit to continue (a window just opened).')}
   if(!eng){try{openKey()}catch{}throw new Error('AIX is offline. Add your API key (Settings, or tap OFFLINE) to bring it online.')}
   const o={modelTier:'quick',cache:false,onText,signal,search:!!onText&&!!S.web&&(!BACKEND()||ISOWNER||BAL==null||BAL>=8)};
   if(S.web&&onText&&BACKEND()&&!ISOWNER&&BAL!=null&&BAL<8){try{toast('Live web needs 8+ credits. Answering without it.')}catch{}}
@@ -781,7 +782,7 @@ async function runLoop0(chat,prompt,onText,onStep){
     if(spent>=S.caps.req){step(`Stop: request budget (${label})`,'bad');return null}
     const imgs=label==='gen'?(S.curImages||[]):[];step(label==='gen'?`Sending to the model · ~${est(p).toLocaleString()} tokens in`:`${label} pass · sending ~${est(p).toLocaleString()} tokens`);const res=await ask(p,label==='gen'?onText:null,null,imgs,label==='gen'?S.curTools:null);if(imgs.length)t.inTok+=1500*imgs.length;
     if(res&&res.searches){t.web=(t.web||0)+res.searches;t.webCr=+((t.webCr||0)+(res.spentCr||0)).toFixed(1)}
-    const i=est(p),o=est(res.text||'');t.inTok+=i;t.outTok+=o;const c=res.node?0:cost(i,o);spent+=c;t.cost+=c;t.calls++;if(res.node){t.node=true;step('Ran on your Mac node: free, no credits','ok')}
+    const i=est(p),o=est(res.text||'');t.inTok+=i;t.outTok+=o;const c=cost(i,o);spent+=c;t.cost+=c;t.calls++;if(res.node){t.node=true;step('Ran on your Mac node (same credit scaling)','ok')}
     step(`${label}: ~${o} out`);return res;
   };
   let res=await call('gen',prompt1);if(!res)return out('⛔ Request budget leaves no room for a reply.');
