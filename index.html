@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="aix-backend" content=""><meta name="aix-embedded-key" content="">
+<meta charset="utf-8"><meta name="aix-backend" content="https://aix-alpha.aixalpha.workers.dev"><meta name="aix-embedded-key" content="">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>AIX Alpha v3.0 AI Suite</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -591,7 +591,7 @@ function merge(acc,c){const mx=Math.min(200,acc.length,c.length);for(let k=mx;k>
 /* ============ model transport: the artifact "sample" capability, cheapest tier ============ */
 let sampleFn=null;
 const KEYK='aix3_apikey',MODELK='claude-haiku-5-5',TOKK='aix3_token',BEK='aix3_backend';
-const BACKEND=()=>(store.get(BEK,'')||(document.querySelector('meta[name=aix-backend]')||{}).content||'').replace(/\/+$/,'');
+const BACKEND=()=>(store.get(BEK,'')||(document.querySelector('meta[name=aix-backend]')||{}).content||'https://aix-alpha.aixalpha.workers.dev').replace(/\/+$/,'');
 let BAL=null;
 function liveEv(e,st){const em=S.emitStep;if(!em)return;
   if(e.type==='content_block_start'&&e.content_block){const cb=e.content_block;
