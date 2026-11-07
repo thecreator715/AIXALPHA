@@ -40,6 +40,27 @@ async function runBackup(kind) {
 }
 setTimeout(() => { const l = bkList()[0]; if (!l || Date.now() - l.at > 23.5 * 3600e3) runBackup('auto'); }, 20000);
 setInterval(() => { const l = bkList()[0]; if (!l || Date.now() - l.at > 23.5 * 3600e3) runBackup('auto'); }, 3600e3);
+// ---- history ring (every 10s, 2h) for charts + analytics from requests.log ----
+const HIST = []; setInterval(() => { HIST.push({ t: Date.now(), cpu: cpuPct, mem: 1 - os.freemem() / os.totalmem(), load: os.loadavg()[0] }); if (HIST.length > 720) HIST.shift(); }, 10000);
+function analytics() {
+  let L = []; try { L = fs.readFileSync(LOGFILE, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter((e) => e && e.path && /chat\/completions/.test(e.path)); } catch {}
+  const now = Date.now(), H = 3600e3, hours = [], days = [];
+  for (let i = 23; i >= 0; i--) hours.push({ t: now - i * H, n: 0, err: 0, tok: 0, ms: 0 });
+  for (let i = 13; i >= 0; i--) days.push({ d: new Date(now - i * 86400e3).toISOString().slice(0, 10), n: 0, err: 0, tok: 0 });
+  const buck = [1, 2, 5, 10, 20, 40, 80, 1e9], hist = buck.map((b, i) => ({ le: b, n: 0 })), by = { model: {}, src: {}, user: {} }, heat = Array.from({ length: 7 }, () => Array(24).fill(0)), ms = [];
+  for (const e of L) {
+    const t = Date.parse(e.t); if (!t) continue; const d = new Date(t);
+    const hi = 23 - Math.floor((now - t) / H); if (hi >= 0 && hi < 24) { const x = hours[hi]; x.n++; x.tok += e.tokens || 0; x.ms += e.ms || 0; if (e.status >= 400) x.err++; }
+    const di = days.findIndex((x) => x.d === d.toISOString().slice(0, 10)); if (di >= 0) { days[di].n++; days[di].tok += e.tokens || 0; if (e.status >= 400) days[di].err++; }
+    heat[d.getDay()][d.getHours()]++; const s = (e.ms || 0) / 1000; ms.push(e.ms || 0); const b = hist.find((h) => s <= h.le); if (b) b.n++;
+    for (const [k, v] of [['model', e.model || '?'], ['src', e.src || 'direct'], ['user', e.user || 'anonymous']]) { const o = by[k][v] || (by[k][v] = { n: 0, tok: 0, ms: 0, err: 0 }); o.n++; o.tok += e.tokens || 0; o.ms += e.ms || 0; if (e.status >= 400) o.err++; }
+  }
+  const top = (o) => Object.entries(o).map(([k, v]) => ({ k, n: v.n, tok: v.tok, avgMs: v.n ? Math.round(v.ms / v.n) : 0, err: v.err })).sort((a, b) => b.n - a.n).slice(0, 12);
+  ms.sort((a, b) => a - b); const p = (q) => ms[Math.min(ms.length - 1, Math.floor(ms.length * q))] || 0;
+  const slow = L.slice().sort((a, b) => (b.ms || 0) - (a.ms || 0)).slice(0, 8).map((e) => ({ t: e.t, ms: e.ms, model: e.model, user: e.user, src: e.src, tokens: e.tokens, prompt: e.prompt }));
+  const totTok = L.reduce((a, e) => a + (e.tokens || 0), 0), totMs = L.reduce((a, e) => a + (e.ms || 0), 0);
+  return { total: L.length, errors: L.filter((e) => e.status >= 400).length, hours, days, hist, heat, byModel: top(by.model), bySrc: top(by.src), byUser: top(by.user), p50: p(0.5), p95: p(0.95), p99: p(0.99), tokPerSec: totMs ? +(totTok / (totMs / 1000)).toFixed(1) : 0, slow, since: L[0] && L[0].t };
+}
 http.createServer(async (req, res) => {
   const h = cors(req), u = req.url.split('?')[0];
   if (req.method === 'OPTIONS') { res.writeHead(204, h); return res.end(); }
@@ -64,6 +85,8 @@ http.createServer(async (req, res) => {
       const r = await fetch(W.replace(/\/+$/, '') + '/api/node/admin?what=' + what + extra, { method: post ? 'POST' : 'GET', headers: { 'x-node-secret': NS, 'content-type': 'application/json' }, body: post ? bd : undefined });
       return J(res, h, r.status, await r.json().catch(() => ({ error: 'bad response' })));
     }
+    if (u === '/admin/history') return J(res, h, 200, { points: HIST });
+    if (u === '/admin/analytics') return J(res, h, 200, analytics());
     if (u === '/admin/system') {
       const sh = (c) => { try { return require('child_process').execSync(c, { timeout: 4000, encoding: 'utf8' }).trim(); } catch { return ''; } };
       const df = sh("df -k / | tail -1").split(/\s+/), du = (p) => { try { return fs.statSync(p).size; } catch { return 0; } };

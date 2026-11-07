@@ -425,6 +425,21 @@ async function nodeAdmin(env, req, url) {
     const apps = await q("SELECT id, owner, title, price, status, downloads, sales, earned FROM apps ORDER BY sales DESC LIMIT 30");
     return R({ purchases: rows, apps });
   }
+  if (what === 'analytics') {
+    const d30 = iso(30 * 86400e3);
+    const dau = await q("SELECT substr(at,1,10) AS d, COUNT(DISTINCT email) AS u, COUNT(*) AS n, COALESCE(SUM(input),0) AS i, COALESCE(SUM(output),0) AS o, COALESCE(SUM(credits),0) AS c FROM usage WHERE at>=? GROUP BY d ORDER BY d", d30);
+    const heat = await q("SELECT CAST(strftime('%w',at) AS INTEGER) AS w, CAST(strftime('%H',at) AS INTEGER) AS h, COUNT(*) AS n FROM usage WHERE at>=? GROUP BY w,h", d30);
+    const spenders = await q('SELECT email, COUNT(*) AS n, COALESCE(SUM(credits),0) AS c, COALESCE(SUM(input+output),0) AS t FROM usage GROUP BY email ORDER BY c DESC LIMIT 10');
+    const buyers = await one('SELECT COUNT(DISTINCT email) AS n, COALESCE(SUM(usd),0) AS usd, COUNT(*) AS orders FROM purchases');
+    const users = await one('SELECT COUNT(*) AS n, COALESCE(SUM(CASE WHEN requests>0 THEN 1 ELSE 0 END),0) AS active, COALESCE(SUM(credits),0) AS cr FROM users');
+    const apiDaily = await q("SELECT strftime('%Y-%m-%d', at/1000,'unixepoch') AS d, COUNT(*) AS n, COALESCE(SUM(credits),0) AS c FROM api_usage WHERE at>=? GROUP BY d ORDER BY d", now - 30 * 86400e3);
+    const tot = await one('SELECT COUNT(*) AS n, COALESCE(SUM(input),0) AS i, COALESCE(SUM(output),0) AS o, COALESCE(SUM(credits),0) AS c FROM usage');
+    const wau = await one('SELECT COUNT(DISTINCT email) AS n FROM usage WHERE at>=?', iso(7 * 86400e3));
+    const mau = await one('SELECT COUNT(DISTINCT email) AS n FROM usage WHERE at>=?', d30);
+    const ret = await one("SELECT COUNT(*) AS n, COALESCE(SUM(CASE WHEN julianday(last)-julianday(created)>=1 THEN 1 ELSE 0 END),0) AS r1, COALESCE(SUM(CASE WHEN julianday(last)-julianday(created)>=7 THEN 1 ELSE 0 END),0) AS r7 FROM users WHERE created<=? AND created>=?", iso(86400e3), d30);
+    const sizes = await one('SELECT COALESCE(AVG(input),0) AS i, COALESCE(AVG(output),0) AS o FROM usage WHERE at>=?', d30);
+    return R({ dau: dau.map((r) => ({ day: r.d, users: r.u, requests: r.n, input: r.i, output: r.o, credits: +Number(r.c).toFixed(3) })), heat, spenders: spenders.map((r) => ({ email: r.email, requests: r.n, tokens: r.t, credits: +Number(r.c).toFixed(2) })), funnel: { users: users.n, activated: users.active, buyers: buyers.n, orders: buyers.orders, revenue: +Number(buyers.usd).toFixed(2), creditsHeld: +Number(users.cr).toFixed(1) }, apiDaily: apiDaily.map((r) => ({ day: r.d, requests: r.n, credits: +Number(r.c).toFixed(3) })), totals: { requests: tot.n, input: tot.i, output: tot.o, credits: +Number(tot.c).toFixed(2) }, wau: wau.n, mau: mau.n, retention: { cohort: ret.n, d1: ret.r1, d7: ret.r7 }, avgTokens: { input: Math.round(sizes.i), output: Math.round(sizes.o) } });
+  }
   if (what === 'backups') {
     await ensureBackups(env);
     return R({ backups: await q("SELECT id, at, rows, bytes, kind, (length(data)>0) AS stored FROM backups ORDER BY id DESC LIMIT 20"), nextAuto: 'every 24 hours (checked each 5 minutes)' });
