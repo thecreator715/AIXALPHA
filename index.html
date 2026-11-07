@@ -509,6 +509,7 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
 <button class="tg" id="askb" title="Question mode: when AIX is unsure it asks multiple-choice questions first, then runs your choice"></button>
         <select class="tg" id="imgm" title="Image model: FLUX.1 schnell 1 credit · FLUX.2 3 credits (free for admin)" style="height:auto;padding:4px 8px"><option value="flux">FLUX · 1 cr</option><option value="flux2">FLUX.2 · 3 cr</option></select>
         <button class="tg" id="imgb" title="Image mode: every message you send becomes an image. 1 credit per image (free for admin). Sign in required."></button>
+        <button class="tg" id="turbob" title="Turbo: app and website builds run on Claude Haiku 5.5 in the cloud instead of your Mac node. Same credits as normal."></button>
         <button class="tg" id="vidb" title="Video mode: every message becomes a short AI video clip. Text prompts first make an image, then animate it (about 4 credits). Attach an image to animate it directly (3 credits). Free for admin. Beta."></button>
         <button class="tg" id="webb" title="Live web search: the model may search the internet for current info. About 7 credits per search (max 3 per reply). Needs 8+ credits."></button>
         <button class="tg" id="estb" title="Estimated credits per reply for each mode"></button><div class="meter" id="meter" role="img" aria-label="Credits used this chat"><svg class="mring" viewBox="0 0 36 36" aria-hidden="true"><circle class="mrb" cx="18" cy="18" r="15"/><circle class="mrf" id="fill" cx="18" cy="18" r="15" transform="rotate(-90 18 18)"/></svg><span id="spent">0</span></div>
@@ -586,7 +587,7 @@ const CR=0.0014; // 1 credit = 0.0014 of spend; the UI only ever shows credits
 const capCr=x=>Math.floor(x/CR+1e-9);
 const usd=n=>{const c=n/CR;return c===0?'0 cr':c<0.01?'<0.01 cr':(c<10?c.toFixed(2):c<100?c.toFixed(1):String(Math.round(c)))+' cr'};
 const BREV={MICRO:'Style: reply in at most 4 sentences.',STANDARD:'Style: be concise; use a list only to compare or sequence.',DEEP:'Style: complete but economical. No restating the question, no closing summary unless asked.'};
-const S={vid:store.get('aix3_vid',false),imgm:store.get('aix3_imgm','flux'),img:store.get('aix3_img',false),web:store.get('aix3_web',false),auto:store.get('aix3_auto',false),mode:store.get('aix3_mode','eco'),verify:store.get('aix3_verify','local'),caps:store.get('aix3_caps',{req:0.01,ses:0.25,day:2}),
+const S={turbo:store.get('aix3_turbo',false),vid:store.get('aix3_vid',false),imgm:store.get('aix3_imgm','flux'),img:store.get('aix3_img',false),web:store.get('aix3_web',false),auto:store.get('aix3_auto',false),mode:store.get('aix3_mode','eco'),verify:store.get('aix3_verify','local'),caps:store.get('aix3_caps',{req:0.01,ses:0.25,day:2}),
  chats:store.get('aix3_chats',[]),cur:null,pid:store.get('aix3_pid','aix-alpha-v3'),busy:false,ws:store.get('aix3_wsa',''),cache:{},ledger:store.get('aix3_ledger',{})};
 const today=()=>new Date().toISOString().slice(0,10);
 const daySpend=()=>S.ledger[today()]||0;
@@ -723,13 +724,13 @@ function liveEv(e,st){const em=S.emitStep;if(!em)return;
   else if(e.type==='content_block_delta'&&e.delta&&e.delta.type==='input_json_delta'&&st.tool&&e.index===st.tool.i){st.tool.json+=e.delta.partial_json||''}
   else if(e.type==='content_block_stop'&&st.tool&&e.index===st.tool.i){try{const q=JSON.parse(st.tool.json).query;if(q)em('Web search: “'+q+'”','a')}catch{}st.tool=null}}
 
-let viaNodeFlag=false,NODEUP=false,NODEMODEL='',BSF=null;
+let TURBONOW=false,viaNodeFlag=false,NODEUP=false,NODEMODEL='',BSF=null;
 async function pollNode(){try{if(!BACKEND())return;const j=await fetch(BACKEND()+'/api/node/status').then(r=>r.json());NODEUP=!!j.online;NODEMODEL=j.model||'';try{updateMeter()}catch{}}catch{}}
 setInterval(pollNode,60000);setTimeout(pollNode,1500);
 function backendSample(){
   const f=async(prompt,o)=>{o=o||{};const tok=store.get(TOKK,'');if(!tok)throw new Error('Sign in to use AIX.');
     const images=[];for(const im of(o.images||[])){try{const b=im.blob||im;const data=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(String(fr.result).split(',')[1]);fr.readAsDataURL(b)});images.push({media_type:b.type||'image/png',data})}catch{}}
-    const res=await fetch(BACKEND()+'/api/sample',{method:'POST',signal:o.signal,headers:{'content-type':'application/json',authorization:'Bearer '+tok},body:JSON.stringify({prompt,images,stream:!!o.onText,max_tokens:4096,search:!!o.search,mode:S.mode})});
+    const res=await fetch(BACKEND()+'/api/sample',{method:'POST',signal:o.signal,headers:{'content-type':'application/json',authorization:'Bearer '+tok},body:JSON.stringify({prompt,images,stream:!!o.onText,max_tokens:4096,search:!!o.search,mode:(S.turbo&&TURBONOW)?'turbo':S.mode})});
     if(!res.ok){let m='';try{m=(await res.json()).error}catch{}if(res.status===401){store.set(TOKK,'');store.set('aix3_user','');UNAME='';sampleFn=null;setStatus();setTimeout(()=>openAccount(true),60);throw new Error('Your session expired. Please sign in again.')}if(res.status===402){BAL=0;setStatus();setTimeout(()=>openCredits('out'),60);throw new Error('You are out of credits. Add credits to keep going (a window just opened).')}throw new Error(m||('Server '+res.status))}
     if(!o.onText){const j=await res.json();if(j.credits!=null){BAL=j.credits;setStatus()}return{text:j.text||'',truncated:!!j.truncated,searches:j.searches||0,spentCr:j.spentCredits||0,node:j.engine==='node'}}
     const rd=res.body.getReader(),dec=new TextDecoder();const lst={};let buf='',text='',trunc=false,sr=0,spc=0;
@@ -916,6 +917,7 @@ async function runLoop0(chat,prompt,onText,onStep){
   if(r.conn&&!(r.plug&&S.curTools&&S.curTools.length)){S.curTools=await connTools();if(!S.curTools.length){step('Connector needed — none enabled','bad');t.saved=100;return out('That needs a connector. Plug one in with a single tap, then ask again:',{ui:'connect'})}step('🔌 Connectors attached ('+S.curTools.length+' tools)','ok')}
   chat.notes=chat.notes||[];for(const n of notesFrom(prompt))if(!chat.notes.some(x=>x.toLowerCase()===n.toLowerCase()))chat.notes.push(n);chat.notes=chat.notes.slice(-12);
   const pers=personas().find(p=>p.id===S.pid)||PRESETS[0];
+  TURBONOW=!!(S.turbo&&(r.build||r.app));
   const wsx=(typeof WSLIST!=='undefined'&&WSLIST().find(w=>w.id===(chat&&chat.ws)))||null;const core=(pers.core||pers.prompt||PRESETS[0].core)+(wsx&&wsx.inst?'\nWORKSPACE "'+wsx.name+'" INSTRUCTIONS (always follow):\n'+wsx.inst.slice(0,3000):'')+'\n'+todayLine()+(r.intent==='chat'&&!r.build?'\n'+CHATRULE:'')+(r.build?'\n'+GUIRULE:'')+(TARGETRULE[targetMode()]?'\n'+TARGETRULE[targetMode()]:'');if(TARGETRULE[targetMode()])step('Mode: '+targetMode().toUpperCase()+' — chat knows what it is making from the start','ok');if(r.build)step('Build request → will design a full GUI with live preview','ok');
   if(pers.thinking==='MINIMAL')r.refines=0;else if(pers.thinking==='LOW')r.refines=Math.min(r.refines,1);
   const all=chat.msgs.filter(m=>m.role==='user'||m.role==='assistant').map(m=>({role:m.role,content:m.content}));
@@ -1060,7 +1062,7 @@ function updateMeter(){if($('#estline'))refreshEst(false);const c=curChat(),sp=c
   $('#sub').textContent=c&&c.calls?`${c.calls} model calls · ${free} replies at $0 · today ${usd(daySpend())} (estimates)`:'';
   $('#ps').textContent=(personas().find(p=>p.id===S.pid)||PRESETS[0]).name;
   document.querySelectorAll('#modes button').forEach(b=>b.classList.toggle('on',S.auto?b.dataset.m==='auto':b.dataset.m===S.mode));
-  $('#evalb').classList.toggle('on',S.verify==='llm');$('#vidb').classList.toggle('on',!!S.vid);$('#vidb').innerHTML=ico('play')+'<span class="lbl"> VIDEO '+(S.vid?'ON':'OFF')+'</span>';$('#imgb').classList.toggle('on',!!S.img);$('#imgb').innerHTML=ico('image')+'<span class="lbl"> IMAGE '+(S.img?'ON':'OFF')+'</span>';$('#webb').classList.toggle('on',!!S.web);$('#webb').innerHTML=ico('sites')+'<span class="lbl"> WEB '+(S.web?'ON':'OFF')+'</span>'+(S.web?'<span class="wc">+7</span>':'');$('#evalb').innerHTML=ico('shield')+'<span class="lbl"> EVAL '+(S.verify==='llm'?'ON':'OFF')+'</span>';{const tb=$('#tgtb');if(tb){const t=targetMode();tb.classList.toggle('on',t!=='auto');tb.innerHTML=ico(t==='app'?'app':t==='chat'?'chat':'site')+'<span class="lbl"> '+(t==='auto'?'TARGET AUTO':t.toUpperCase())+'</span>'}}{const ab=$('#askb');if(ab){ab.classList.toggle('on',askOn());ab.innerHTML=ico('help')+'<span class="lbl"> ASK '+(askOn()?'ON':'OFF')+'</span>'}}
+  $('#evalb').classList.toggle('on',S.verify==='llm');$('#turbob').classList.toggle('on',!!S.turbo);$('#turbob').innerHTML=ico('play')+'<span class="lbl"> TURBO '+(S.turbo?'ON':'OFF')+'</span>';$('#vidb').classList.toggle('on',!!S.vid);$('#vidb').innerHTML=ico('play')+'<span class="lbl"> VIDEO '+(S.vid?'ON':'OFF')+'</span>';$('#imgb').classList.toggle('on',!!S.img);$('#imgb').innerHTML=ico('image')+'<span class="lbl"> IMAGE '+(S.img?'ON':'OFF')+'</span>';$('#webb').classList.toggle('on',!!S.web);$('#webb').innerHTML=ico('sites')+'<span class="lbl"> WEB '+(S.web?'ON':'OFF')+'</span>'+(S.web?'<span class="wc">+7</span>':'');$('#evalb').innerHTML=ico('shield')+'<span class="lbl"> EVAL '+(S.verify==='llm'?'ON':'OFF')+'</span>';{const tb=$('#tgtb');if(tb){const t=targetMode();tb.classList.toggle('on',t!=='auto');tb.innerHTML=ico(t==='app'?'app':t==='chat'?'chat':'site')+'<span class="lbl"> '+(t==='auto'?'TARGET AUTO':t.toUpperCase())+'</span>'}}{const ab=$('#askb');if(ab){ab.classList.toggle('on',askOn());ab.innerHTML=ico('help')+'<span class="lbl"> ASK '+(askOn()?'ON':'OFF')+'</span>'}}
 }
 
 /* ============ send ============ */
@@ -1176,6 +1178,7 @@ $('#modes').onclick=e=>{const b=e.target.closest('button');if(!b)return;if(b.dat
 const SEARCH_CR=7.2;
 function setWeb(on){S.web=on;store.set('aix3_web',on);updateMeter();refreshEst(false);toast(on?'Live web ON · about 7 credits per search':'Live web off')}
 $('#imgm').value=S.imgm;$('#imgm').onchange=e=>{S.imgm=e.target.value;store.set('aix3_imgm',S.imgm);toast({flux:'FLUX.1 · 1 credit per image',flux2:'FLUX.2 · 3 credits per image'}[S.imgm])};
+$('#turbob').onclick=()=>{S.turbo=!S.turbo;store.set('aix3_turbo',S.turbo);updateMeter();toast(S.turbo?'Turbo ON · app and website builds use Claude Haiku 5.5 in the cloud (same credits)':'Turbo OFF')};
 $('#vidb').onclick=()=>{S.vid=!S.vid;store.set('aix3_vid',S.vid);if(S.vid&&S.img){S.img=false;store.set('aix3_img',false)}updateMeter();toast(S.vid?'Video mode ON · each message becomes a short AI clip (beta)':'Video mode off')};
 $('#imgb').onclick=()=>{if(!S.img&&S.vid){S.vid=false;store.set('aix3_vid',false)}S.img=!S.img;store.set('aix3_img',S.img);updateMeter();toast(S.img?'Image mode ON · every message becomes an image · 1 credit each':'Image mode off')};
 $('#webb').onclick=()=>{if(S.web)return setWeb(false);
@@ -1799,7 +1802,7 @@ function agentContext(maxChars){const act=P.active,order=[act,PAGE,...P.files.fi
   return out.join('\n')}
 function parseAgent(t){const re=/^=== (EDIT|FILE|DELETE) ([^\s=][^\n]*?)(?: ===)?[ \t]*$/gm,hits=[];let m;while((m=re.exec(t)))hits.push({op:m[1],path:m[2].trim().replace(/^\/+/,''),i:m.index,e:re.lastIndex});
   return hits.map((h,k)=>({op:h.op,path:h.path,body:t.slice(h.e,k+1<hits.length?hits[k+1].i:t.length)}))}
-async function studioAgent(instr,opts={}){ensureProj();const depth=opts.depth||0;const L=opts.log||startLog(depth?'Auto-fixing errors':'Working on “'+proj().title+'”');
+async function studioAgent(instr,opts={}){TURBONOW=!!S.turbo;ensureProj();const depth=opts.depth||0;const L=opts.log||startLog(depth?'Auto-fixing errors':'Working on “'+proj().title+'”');
   const tree=P.files.map(f=>`- ${f.name} (${f.bin?'binary asset':f.content.split('\n').length+' lines'})${f.name===P.active?' [open in editor]':''}${f.name===PAGE?' [preview page]':''}`).join('\n');
   const errs=LOGS.filter(l=>l.level==='error').slice(-6).map(l=>'- '+String(l.args).slice(0,300)).join('\n');
   L.step(`Reading ${P.files.length} file(s) in the project`);
