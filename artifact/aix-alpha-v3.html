@@ -444,6 +444,42 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
 .bento .snip{white-space:pre-wrap;word-break:break-all;font-size:11.5px;padding:10px;border:1px solid var(--b);border-radius:10px;background:var(--bg,#09090b);margin:0;overflow:auto}
 .bento input,.bento select{max-width:100%}.bento a.btn2{color:var(--t);display:inline-flex;align-items:center}.bento .stp a{color:var(--ac)}
 @media(max-width:700px){.bento{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.bento .bc{grid-column:span 1;padding:12px}.bento .bc.h,.bento .bc.f{grid-column:1/-1}.bento .bv{font-size:19px}.bento .steps{grid-template-columns:1fr}}
+</style><style>#vabout .pad{padding:0!important}
+.ap{--apc:var(--ac,#34d399);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Helvetica Neue",Arial,sans-serif;color:#f5f5f7;max-width:1120px;margin:0 auto;padding:0 clamp(16px,4vw,32px) 40px;letter-spacing:-.011em;-webkit-font-smoothing:antialiased}
+.ap *{box-sizing:border-box}
+.ap .rv{opacity:0;transform:translateY(22px);transition:opacity .8s cubic-bezier(.2,.7,.2,1),transform .8s cubic-bezier(.2,.7,.2,1)}.ap .rv.in{opacity:1;transform:none}
+.ap-hero{position:relative;text-align:center;padding:clamp(48px,9vw,110px) 0 clamp(24px,5vw,56px);overflow:hidden}
+.ap-orb{position:absolute;left:50%;top:-10%;width:min(900px,120vw);height:min(900px,120vw);transform:translateX(-50%);background:radial-gradient(closest-side,rgba(52,211,153,.28),rgba(96,165,250,.14) 45%,transparent 72%);filter:blur(30px);pointer-events:none;z-index:0}
+.ap-hero>*:not(.ap-orb){position:relative;z-index:1}
+.ap-eyebrow{font-size:clamp(13px,1.6vw,17px);font-weight:600;color:var(--apc);letter-spacing:.01em;margin-bottom:10px}
+.ap h1{font-size:clamp(60px,19vw,128px)!important;font-weight:700!important;letter-spacing:-.045em!important;line-height:1!important;margin:0!important;max-width:none!important;background:linear-gradient(180deg,#fff 30%,#a1a1aa);-webkit-background-clip:text;background-clip:text;color:transparent}
+.ap-sub{font-size:clamp(22px,4.2vw,40px);font-weight:600;letter-spacing:-.025em;margin:14px auto 0;max-width:20ch;line-height:1.15;color:#f5f5f7}
+.ap-lead{font-size:clamp(16px,2vw,21px);line-height:1.5;color:#a1a1aa;max-width:46ch;margin:16px auto 0;font-weight:400}
+.ap-cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:28px}
+.ap-btn{appearance:none;border:0;cursor:pointer;font:inherit;font-weight:600;font-size:17px;padding:13px 26px;border-radius:980px;background:#f5f5f7;color:#1d1d1f;transition:transform .2s,background .2s}.ap-btn:hover{transform:scale(1.03)}.ap-btn:active{transform:scale(.98)}
+.ap-btn.ghost{background:rgba(255,255,255,.1);color:#f5f5f7;backdrop-filter:blur(20px)}.ap-btn.ghost:hover{background:rgba(255,255,255,.16)}
+.ap-mock{margin:clamp(34px,6vw,64px) auto 0;max-width:460px;text-align:left;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:28px;padding:16px;backdrop-filter:blur(30px);box-shadow:0 40px 100px -30px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.08)}
+.ap-mbar{display:flex;align-items:center;gap:6px;padding:2px 4px 14px;font-size:13px;color:#a1a1aa}.ap-mbar i{width:11px;height:11px;border-radius:50%;background:#3f3f46}.ap-mbar i:nth-child(1){background:#ff5f57}.ap-mbar i:nth-child(2){background:#febc2e}.ap-mbar i:nth-child(3){background:#28c840}.ap-mbar span{flex:1;text-align:center;font-weight:600;color:#e4e4e7}.ap-mbar b{font:600 11px ui-monospace,Menlo,monospace;color:var(--apc);background:rgba(52,211,153,.12);padding:3px 8px;border-radius:99px}
+.ap-mb{max-width:82%;padding:10px 14px;border-radius:20px;margin:8px 0;font-size:15px;line-height:1.4}.ap-mb.u{margin-left:auto;background:linear-gradient(145deg,#34d399,#059669);color:#04130c;border-bottom-right-radius:6px;font-weight:500}.ap-mb.a{background:rgba(255,255,255,.09);border-bottom-left-radius:6px;color:#e4e4e7}
+.ap-mb.typing{display:flex;gap:5px;width:60px}.ap-mb.typing span{width:7px;height:7px;border-radius:50%;background:#a1a1aa;animation:apd 1.2s infinite}.ap-mb.typing span:nth-child(2){animation-delay:.15s}.ap-mb.typing span:nth-child(3){animation-delay:.3s}@keyframes apd{0%,60%,100%{opacity:.3;transform:none}30%{opacity:1;transform:translateY(-3px)}}
+.ap-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin:clamp(24px,5vw,56px) 0;border-top:1px solid rgba(255,255,255,.1);border-bottom:1px solid rgba(255,255,255,.1)}
+.ap-stats>div{text-align:center;padding:clamp(18px,3vw,34px) 8px}.ap-stats b{display:block;font-size:clamp(30px,6vw,56px);font-weight:700;letter-spacing:-.04em;line-height:1.05;background:linear-gradient(180deg,#fff,#a1a1aa);-webkit-background-clip:text;background-clip:text;color:transparent}.ap-stats span{font-size:clamp(12px,1.5vw,15px);color:#a1a1aa}
+.ap-sec{padding:clamp(40px,8vw,96px) 0}.ap-center{text-align:center}
+.ap h2{font-size:clamp(32px,6.2vw,60px)!important;font-weight:700!important;letter-spacing:-.035em!important;line-height:1.06!important;margin:0;color:#f5f5f7}
+.ap-head{text-align:center;margin-bottom:clamp(24px,4vw,48px)}.ap-head h2{max-width:18ch;margin:0 auto}
+.ap-pills{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:28px}.ap-pills span{font-size:14px;color:#d4d4d8;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);padding:8px 14px;border-radius:99px}
+.ap-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:14px}
+.ap-card{grid-column:span 2;background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.03));border:1px solid rgba(255,255,255,.09);border-radius:28px;padding:clamp(20px,3vw,32px);min-height:200px;transition:transform .35s cubic-bezier(.2,.7,.2,1),border-color .3s}.ap-card.s3{grid-column:span 3}.ap-card:hover{transform:translateY(-4px);border-color:rgba(255,255,255,.2)}
+.ap-ic{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:16px;box-shadow:0 8px 20px -6px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.35)}
+.ap-card h3{font-size:clamp(20px,2.4vw,26px);font-weight:700;letter-spacing:-.025em;margin:0 0 8px}.ap-card p{font-size:clamp(14px,1.6vw,16.5px);line-height:1.5;color:#a1a1aa;margin:0}
+.ap-three{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.ap-col{background:rgba(255,255,255,.045);border-radius:28px;padding:clamp(22px,3vw,36px);border:1px solid rgba(255,255,255,.08)}
+.ap-k{font-size:13px;font-weight:600;color:var(--apc);letter-spacing:.02em}.ap-col h3{font-size:clamp(30px,4.5vw,48px);font-weight:700;letter-spacing:-.04em;margin:8px 0 10px}.ap-col p{font-size:16px;line-height:1.5;color:#a1a1aa;margin:0}
+.ap-dark{text-align:center;background:radial-gradient(120% 120% at 50% 0%,rgba(52,211,153,.18),rgba(0,0,0,.4) 60%),#0a0a0b;border:1px solid rgba(255,255,255,.1);border-radius:36px;padding:clamp(40px,8vw,88px) 20px;margin:clamp(20px,4vw,40px) 0}
+.ap-price{margin:22px 0 4px}.ap-price b{font-size:clamp(64px,16vw,150px);font-weight:700;letter-spacing:-.06em;line-height:1;background:linear-gradient(180deg,#fff 20%,var(--apc));-webkit-background-clip:text;background-clip:text;color:transparent}.ap-price span{display:block;font-size:clamp(15px,2vw,20px);color:#a1a1aa;margin-top:2px}
+.ap-list{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}.ap-list>div{padding:clamp(18px,2.5vw,28px);border-radius:24px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.08)}.ap-list b{display:block;font-size:clamp(17px,2vw,21px);letter-spacing:-.02em;margin-bottom:6px}.ap-list span{font-size:15px;line-height:1.5;color:#a1a1aa}
+.ap-end{padding-bottom:20px}.ap-foot{font-size:12.5px;color:#71717a;margin-top:44px}
+@media(max-width:760px){.ap-stats{grid-template-columns:repeat(2,1fr)}.ap-stats>div:nth-child(-n+2){border-bottom:1px solid rgba(255,255,255,.1)}.ap-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.ap-card,.ap-card.s3{grid-column:span 2}.ap-three,.ap-list{grid-template-columns:1fr}.ap-card{min-height:0;border-radius:24px}}
+@media(prefers-reduced-motion:reduce){.ap .rv{transition:none;opacity:1;transform:none}.ap-mb.typing span{animation:none}}
 </style></head>
 <body>
 <aside id="prog"><div class="pgtop"><b>Progress</b><button class="btn2" id="progx">✕</button></div><div id="progbody"></div></aside><div id="scrim"></div><nav id="bnav"></nav><div id="siteview"></div><div id="pal"><div class="box"><input id="pin" placeholder="Type a command…"><div id="pl"></div></div></div><div id="toast"></div>
@@ -1966,72 +2002,94 @@ function costFor(model,mode,ev){const p=personas().find(x=>x.id===model)||PRESET
   for(const t of ['MICRO','STANDARD','DEEP']){const b=TYP[t],inT=Math.max(60,b.i-190+coreT),base=cost(inT,b.o*sc),rf=t==='DEEP'?cost(inT+700,b.o*0.5*sc):cost(inT,b.o*0.7*sc),j=ev&&t==='DEEP'?cost(900,40):0;r[t]={typ:(base+j)/CR,max:(base+j+rf*(cap+(j?1:0)))/CR}}return r}
 const abAvg=(model,mode,ev,mix)=>{const c=costFor(model,mode,ev),w=AB_MIXES[mix].w;return Object.keys(w).reduce((a,t)=>a+w[t]*c[t].typ,0)};
 function renderAbout(skip){
-  const rows=ledgerRows(),n=rows.length,free=rows.filter(r=>r.free).length,cr=rows.reduce((a,r)=>a+r.credits,0),sv=n?Math.round(rows.reduce((a,r)=>a+r.saved,0)/n):0;
-  const core=id=>est((PRESETS.find(p=>p.id===id)||{core:''}).core);
-  const sizes=[['AIX-ALPHA-QUANTUM-V1.0',1796,core('aix-alpha-quantum-v1')],['AIX-ALPHA-LE-V1.0',465,core('aix-alpha-le')],['AIX ALPHA v3.0',null,core('aix-alpha-v3')]];
-  const bar=(v,mx,c)=>`<div class="ab2bar"><i style="width:${Math.max(2,v/mx*100)}%;background:${c}"></i></div>`;
-  const ps=personas().filter(p=>p.preset),CM=Object.fromEntries(ps.map(p=>[p.id,costFor(p.id,ABM.mode,ABM.ev)]));
-  const stds=ps.map(p=>CM[p.id].STANDARD.typ).sort((a,b)=>a-b),lvl=v=>v<=stds[Math.floor(stds.length*.25)]?'Lowest':v<=stds[Math.floor(stds.length*.5)]?'Low':v<=stds[Math.floor(stds.length*.75)]?'Medium':'Higher';
-  const fam=[['AIX-ALPHA-V1.0','Generation 1','Cinematic video prompt engine','Disciplined, shot-by-shot prompt construction aimed at Google Veo. A separate engine, not metered in this workspace.'],
-   ['AIX-ALPHA-QUANTUM-V1.0','Generation 1','Multi-path reasoning engine','Holds several solution paths at once and weighs them by evidence before committing to one.'],
-   ['AIX-ALPHA-LE-V1.0','Generation 1','Lightweight edition','Distilled from the V1.0, ALPHA AGI V2.0 and QUANTUM models: maximum signal at minimum tokens.'],
-   ['AIX-VISUAL-V1.0','Generation 1','Image generation model','The fine-tuned image model built on the AIX line. A separate engine, not metered in this workspace.'],
-   ['AIX ALPHA v2.0 Suite','Generation 2','AI workstation','Chat, multi-file App Studio, Persona Hub, MCP server, hosted sites and wallet billing.'],
-   ['AIX ALPHA v3.0','Generation 3 — current','Loop engine','Routing, caching, deterministic verification and append-only repair, metered in credits and built for phones.']];
-  const yes=v=>v?'Yes':'<span style="color:#52525b">—</span>';
-  const matrix=[['Chat with personas and notes',1,1,1],['Multi-file App Studio',0,1,1],['Visual edit mode',0,1,1],['MCP tool runtime',0,1,1],['Hosted sites',0,1,1],['Loop engine with local verification',0,0,1],['Version history with minimal edits',0,0,1],['Smart debugger with sample API data',0,0,1],['Credit metering and cost estimates',0,0,1],['Shared users database',0,0,1],['Connectors used directly from chat',0,0,1],['Mobile layout',0,0,1]];
-  const mdl=personas().find(p=>p.id===ABM.model)||PRESETS[0],avg=abAvg(ABM.model,ABM.mode,ABM.ev,ABM.mix),perDay=avg*ABM.rpd,seg=(items,cur,key)=>`<div class="ab2seg">${items.map(([v,l])=>`<button data-${key}="${v}" class="${v===cur?'on':''}">${l}</button>`).join('')}</div>`;
-  const modeSeg=seg([['eco','Eco'],['balanced','Balanced'],['thorough','Thorough']],ABM.mode,'abm'),evBtn=`<button class="ab2tg ${ABM.ev?'on':''}" data-abev="1">Evaluator ${ABM.ev?'on':'off'}</button>`;
-  $('#aboutbody').innerHTML=`<div class="ab2">
-  <header class="ab2hero"><div class="ab2kick">AIX ALPHA · V3.0 · LOOP ENGINE</div><h1>Models and tooling built to do more with less.</h1><p class="ab2lead">AIX Alpha is a family of purpose-built language models and a loop engine that routes, verifies and repairs every answer, so you spend credits only where a model call is genuinely needed.</p>
-   <div class="row" style="margin-top:22px"><button class="ab2btn" data-go="chat">Open AIX Alpha</button><button class="ab2btn ghost" data-go="members">Members and pricing</button><button class="ab2btn ghost" data-go="connect">Connectors</button></div>
-   <div class="ab2fig">${[[6,'Models and releases'],[ps.length,'Runnable personas'],[MCP_T.length,'MCP tools'],[PRESETS_P.length,'Studio templates'],[LIVE.length,'Connectors']].map(([v,l])=>`<div><b data-count="${v}">0</b><span>${l}</span></div>`).join('')}</div></header>
+  const el=$('#aboutbody');
+  const nPers=(()=>{try{return personas().filter(p=>p.preset).length}catch{return 8}})();
+  const tile=(emoji,c1,c2)=>`<div class="ap-ic" style="background:linear-gradient(145deg,${c1},${c2})">${emoji}</div>`;
+  const cards=[
+   ['💬','#34d399','#059669','Chat','Eight personas, voice, memory, tasks and attachments. It knows when you are chatting and when you want something built.','s2'],
+   ['🛠','#60a5fa','#2563eb','Studio','Describe an app and watch it build with a live preview, a multi-file agent and one-tap fixes. Works on your phone.','s2'],
+   ['🔑','#fbbf24','#d97706','API','Your own OpenAI-compatible keys with live usage. Set up in three steps for Cursor, Open WebUI, Python and more.','s2'],
+   ['🔗','#f472b6','#db2777','Chat pages','Share a mini Alpha with its own link and your own look. Visitors chat on your credits, with limits you set.','s3'],
+   ['🧩','#a78bfa','#7c3aed','Plug-ins','Weather, Wikipedia, web pages, GitHub and any MCP server. Works with every model, including Ollama.','s3'],
+   ['🤖','#2dd4bf','#0d9488','Bring your model','Hugging Face, OpenRouter, Groq, Together, OpenAI, LM Studio or any OpenAI-compatible URL.','s2'],
+   ['🖥','#94a3b8','#475569','Alpha Node','Run replies on your own Mac with Ollama. Includes a control panel, analytics, daily backups and auto-updates.','s2'],
+   ['◈','#fb923c','#ea580c','Credits','One meter for everything. Pay as you go, no subscription, and an estimate before you run anything.','s2']];
+  el.innerHTML=`<div class="ap">
+  <section class="ap-hero">
+    <div class="ap-orb"></div>
+    <div class="ap-eyebrow rv">Introducing</div>
+    <h1 class="rv">AIX Alpha.</h1>
+    <p class="ap-sub rv">The AI workspace that thinks before it spends.</p>
+    <p class="ap-lead rv">Chat, build apps, share your own assistant and plug in any model. On the cloud, on your Mac, or on a model you bring.</p>
+    <div class="ap-cta rv"><button class="ap-btn" data-go="chat">Open AIX Alpha</button><button class="ap-btn ghost" data-go="credits">Get credits</button></div>
+    <div class="ap-mock rv" aria-hidden="true">
+      <div class="ap-mbar"><i></i><i></i><i></i><span>AIX Alpha</span><b>0.07 cr</b></div>
+      <div class="ap-mb u">Do you know what today's date is?</div>
+      <div class="ap-mb a">It is <b>Saturday, November 7</b>. Want me to plan your day?</div>
+      <div class="ap-mb u">Build me a habit tracker app</div>
+      <div class="ap-mb a typing"><span></span><span></span><span></span></div>
+    </div>
+  </section>
 
-  <section class="ab2s rv"><div class="ab2n">01</div><div><h2>The model family</h2><p class="ab2p">Each AIX model is defined by its own system prompt and tuned for a specific job. They share one engine.</p>
-   <div class="ab2list">${fam.map(([nm,gen,role,d],k)=>`<div class="ab2row ${k===5?'cur':''}"><div><div class="ab2nm">${nm}</div><div class="ab2gen">${gen}</div></div><div><div class="ab2role">${role}</div><div class="ab2d">${d}</div></div></div>`).join('')}</div></div></section>
+  <section class="ap-stats rv">
+    <div><b data-count="4">4</b><span>routing tiers</span></div>
+    <div><b data-count="${nPers}">${nPers}</b><span>personas</span></div>
+    <div><b data-count="${PLUGINS.length}">${PLUGINS.length}</b><span>plug-ins</span></div>
+    <div><b>$0.10</b><span>per credit</span></div>
+  </section>
 
-  <section class="ab2s rv"><div class="ab2n">02</div><div><h2>Which model for which job, and what it costs</h2><p class="ab2p">Credits per reply for every model you can run here. A model's cost depends on its prompt size, how long its answers tend to be, and how many repair passes its thinking level allows.</p>
-   <div class="ab2ctl">${modeSeg}${evBtn}</div>
-   <div style="overflow:auto"><table class="ab2t wide"><tr><th>Model</th><th>Best for</th><th>Thinking</th><th>Prompt</th><th>Answer length*</th><th>Short</th><th>Standard</th><th>Deep</th><th>Deep, max</th><th>Cost level</th></tr>
-   ${ps.map(p=>{const c=CM[p.id],st=AB_STYLE[p.id]||['Standard',1];return `<tr class="${p.id===ABM.model?'sel':''}" data-abmodelrow="${p.id}"><td><b>${esc(p.name)}</b></td><td>${esc(AB_BEST[p.id]||p.tagline||'')}</td><td>${p.thinking||'LOW'}</td><td>${est(p.core)} tok</td><td>${st[0]}</td><td>${f1(c.MICRO.typ)}</td><td>${f1(c.STANDARD.typ)}</td><td>${f1(c.DEEP.typ)}</td><td>${f1(c.DEEP.max)}</td><td><span class="ab2lvl ${lvl(c.STANDARD.typ).toLowerCase()}">${lvl(c.STANDARD.typ)}</span></td></tr>`}).join('')}</table></div>
-   <p class="ab2note">Credits per reply in ${ABM.mode} mode${ABM.ev?' with the evaluator':''}. *Answer length is an estimate used for planning, not a measurement. Replies that finish locally (greetings, commands, cache hits, 3D meshes) cost 0. Select a row to use that model in the estimator below.</p></div></section>
+  <section class="ap-sec ap-center">
+    <div class="ap-eyebrow rv">The loop engine</div>
+    <h2 class="rv">Smart before it's expensive.</h2>
+    <p class="ap-lead rv">Every message goes through a local engine first. It decides how little context, how few tokens and how few model calls the answer really needs, then checks the result before you see it.</p>
+    <div class="ap-pills rv"><span>Local router · 0 tokens</span><span>Intent aware</span><span>Context diet</span><span>Response cache</span><span>Verify and repair</span></div>
+  </section>
 
-  <section class="ab2s rv"><div class="ab2n">03</div><div><h2>Estimate your spend</h2><p class="ab2p">Pick a model, mode and how much you use it. Figures update as you change them.</p>
-   <div class="ab2calc"><div class="ab2in"><label>Model</label><select id="abmodel">${ps.map(p=>`<option value="${p.id}" ${p.id===ABM.model?'selected':''}>${esc(p.name)}</option>`).join('')}</select><label>Mode</label>${modeSeg}<label>Usage pattern</label>${seg(Object.keys(AB_MIXES).map(k=>[k,AB_MIXES[k].l]),ABM.mix,'abx')}<label>Replies per day: <b id="abrv">${ABM.rpd}</b></label><input type="range" id="abrpd" min="5" max="300" step="5" value="${ABM.rpd}">${evBtn}</div>
-   <div class="ab2out"><div class="ab2big"><span>${f1(perDay)}</span> credits per day</div><div class="ab2money">${usdp(perDay*PPC)} per day · ${usdp(perDay*PPC*30)} per month</div>
-    <div class="ab2kv"><div><span>Average per reply</span><b>${f1(avg)} cr · ${usdp(avg*PPC)}</b></div><div><span>Starter pack (100 cr) lasts</span><b>${(100/Math.max(perDay,1e-9)).toFixed(1)} days</b></div><div><span>Top-up (50 cr) adds</span><b>${(50/Math.max(perDay,1e-9)).toFixed(1)} days</b></div><div><span>Mix</span><b>${Object.entries(AB_MIXES[ABM.mix].w).map(([t,w])=>Math.round(w*100)+'% '+t.toLowerCase()).join(' · ')}</b></div></div></div></div></div></section>
+  <section class="ap-sec">
+    <div class="ap-head rv"><div class="ap-eyebrow">Everything in one place</div><h2>One workspace. Every way to build.</h2></div>
+    <div class="ap-grid">${cards.map(c=>`<article class="ap-card ${c[5]} rv">${tile(c[0],c[1],c[2])}<h3>${c[3]}</h3><p>${c[4]}</p></article>`).join('')}</div>
+  </section>
 
-  <section class="ab2s rv"><div class="ab2n">04</div><div><h2>Credits and payments</h2><p class="ab2p">One price per credit, whatever the model or mode: ${usdp(PPC)}. Heavier modes and longer answers simply use more credits.</p>
-   <div class="ab2packs">${PLANS.map(pl=>`<div class="ab2pack"><div class="ab2gen">${pl.tag}</div><div class="ab2nm" style="font-size:16px">${pl.name}</div><div class="ab2price">$${pl.usd}<span> for ${pl.credits} credits</span></div><div class="ab2d">${pl.note}</div><div class="ab2d" style="margin-top:8px">${mdl.name} in ${ABM.mode} mode: about <b>${Math.floor(pl.credits/costFor(ABM.model,ABM.mode,ABM.ev).MICRO.typ).toLocaleString()}</b> short, <b>${Math.floor(pl.credits/costFor(ABM.model,ABM.mode,ABM.ev).STANDARD.typ).toLocaleString()}</b> standard or <b>${Math.floor(pl.credits/costFor(ABM.model,ABM.mode,ABM.ev).DEEP.typ).toLocaleString()}</b> deep replies.</div></div>`).join('')}</div>
-   <div style="overflow:auto;margin-top:16px"><table class="ab2t"><tr><th>What is included</th><th>Cost</th></tr><tr><td>Greetings, slash commands, cached answers, 3D meshes</td><td>0 credits</td></tr><tr><td>Routing, context trimming, local verification, version history</td><td>0 credits</td></tr><tr><td>First model draft</td><td>Main cost of each reply</td></tr><tr><td>Repair passes (only when a check fails)</td><td>Fraction of a draft</td></tr><tr><td>Evaluator pass on deep answers (optional)</td><td>About +0.07 credits</td></tr><tr><td>Connector results (PayPal, Gmail, Docs)</td><td>Added to input size</td></tr></table></div>
-   <div style="margin-top:14px"><button class="ab2btn ghost" data-go="members">Open Members</button></div></div></section>
+  <section class="ap-sec">
+    <div class="ap-head rv"><div class="ap-eyebrow">Runs where you want</div><h2>Your models. Your machine. Your call.</h2></div>
+    <div class="ap-three">
+      <div class="ap-col rv"><span class="ap-k">Cloud</span><h3>Instant.</h3><p>Nothing to install. Sign in and start. Fast replies, billed in credits.</p></div>
+      <div class="ap-col rv"><span class="ap-k">Your Mac</span><h3>Private.</h3><p>Point AIX at an Ollama node on your own hardware. Same app, replies run at home.</p></div>
+      <div class="ap-col rv"><span class="ap-k">Your model</span><h3>Open.</h3><p>Paste a Hugging Face or OpenRouter key and chat with any model, using your own account.</p></div>
+    </div>
+  </section>
 
-  <section class="ab2s rv"><div class="ab2n">05</div><div><h2>Smaller prompts on every call</h2><p class="ab2p">System-prompt size per call, in estimated tokens. Version 3 sends a distilled core for each model.</p>
-   <div class="ab2tbl">${sizes.map(([nm,raw,c])=>`<div class="ab2brow"><div class="ab2bl">${nm}</div><div class="ab2bb">${raw?`<div class="ab2cap">Version 2 · ${raw.toLocaleString()} tokens</div>${bar(raw,1796,'#52525b')}`:''}<div class="ab2cap">Version 3 core · ${c} tokens${raw?` · ${Math.round((1-c/raw)*100)}% smaller`:''}</div>${bar(c,1796,'#e4e4e7')}</div></div>`).join('')}</div></div></section>
+  <section class="ap-sec ap-dark rv">
+    <div class="ap-eyebrow">Credits</div>
+    <h2>Pay for what you use.</h2>
+    <div class="ap-price"><b>$0.10</b><span>per credit</span></div>
+    <p class="ap-lead">No subscription. One unit across chat, Studio, media, the API and shared chat pages. You see an estimate before you run anything, and caps keep spending in check.</p>
+    <div class="ap-cta"><button class="ap-btn" data-go="credits">See packs</button><button class="ap-btn ghost" data-go="api">Open the API</button></div>
+  </section>
 
-  <section class="ab2s rv"><div class="ab2n">06</div><div><h2>Capabilities by generation</h2>
-   <div style="overflow:auto"><table class="ab2t"><tr><th>Capability</th><th>Generation 1</th><th>Generation 2</th><th>Generation 3</th></tr>${matrix.map(([f,a,b,c])=>`<tr><td>${f}</td><td>${yes(a)}</td><td>${yes(b)}</td><td>${yes(c)}</td></tr>`).join('')}</table></div></div></section>
+  <section class="ap-sec">
+    <div class="ap-head rv"><div class="ap-eyebrow">Built with care</div><h2>Yours, and kept that way.</h2></div>
+    <div class="ap-list">
+      <div class="rv"><b>Keys stay with you</b><span>Provider keys live in your browser and calls go straight to the provider.</span></div>
+      <div class="rv"><b>Limits you control</b><span>Daily and per-visitor caps on shared pages. Revoke a key and everything on it stops.</span></div>
+      <div class="rv"><b>Backed up daily</b><span>Accounts, credits and usage are backed up automatically every 24 hours.</span></div>
+      <div class="rv"><b>Always current</b><span>The Mac node updates itself, and its control panel shows live usage, health and analytics.</span></div>
+    </div>
+  </section>
 
-  <section class="ab2s rv"><div class="ab2n">07</div><div><h2>Connectors</h2><p class="ab2p">Enable a connector once, then ask for what you need in chat. AIX calls the tool and replies in the conversation. Actions that create data ask for your approval first.</p>
-   <div class="ab2list">${LIVE.map(l=>`<div class="ab2row"><div><div class="ab2nm">${l.server}</div></div><div><div class="ab2role">${CONN_META[l.server].blurb}</div><div class="ab2d">Example: “${CONN_META[l.server].examples[0]}”</div></div></div>`).join('')}</div><div style="margin-top:14px"><button class="ab2btn ghost" data-go="connect">Set up connectors</button></div></div></section>
-
-  <section class="ab2s rv"><div class="ab2n">08</div><div><h2>Your workspace</h2><p class="ab2p">Figures from your own usage in this browser.</p>
-   <div class="ab2fig flat">${[[n,'Replies'],[free,'Replies at 0 credits'],[Math.round(cr),'Credits used'],[sv,'Average saving, %']].map(([v,l])=>`<div><b data-count="${v}">0</b><span>${l}</span></div>`).join('')}</div></div></section>
-
-  <footer class="ab2foot">Features that need a server — external MCP endpoints, public hosting, wallet billing, live web search, image and video generation, and camera capture — are included in the server build. Credit figures are estimates; each reply shows its own cost.</footer></div>`;
-  aboutFx(skip)}
-function abRerender(){const sc=$('#vabout .pad'),y=sc?sc.scrollTop:0;renderAbout(true);if(sc)sc.scrollTop=y}
-function aboutFx(skip){const root=$('#aboutbody');
-  const fill=el=>{el.dataset.done=1;el.textContent=el.dataset.count};
-  if(skip){root.querySelectorAll('.rv').forEach(e=>e.classList.add('in'));root.querySelectorAll('[data-count]').forEach(fill);return}
-  const io=new IntersectionObserver(es=>es.forEach(e=>{if(!e.isIntersecting)return;e.target.classList.add('in');e.target.querySelectorAll('[data-count]').forEach(el=>{if(el.dataset.done)return;el.dataset.done=1;const to=+el.dataset.count,t0=performance.now();const tick=t=>{const p=Math.min(1,(t-t0)/700);el.textContent=Math.round(to*(1-Math.pow(1-p,3)));if(p<1)requestAnimationFrame(tick)};requestAnimationFrame(tick)});io.unobserve(e.target)}),{threshold:.1});
-  root.querySelectorAll('.rv,.ab2hero').forEach(el=>io.observe(el))}
-$('#aboutbody').onclick=e=>{const t=e.target;const g=t.closest('[data-go]');if(g)return setView(g.dataset.go);
-  const m=t.closest('[data-abm]');if(m){ABM.mode=m.dataset.abm;return abRerender()}const x=t.closest('[data-abx]');if(x){ABM.mix=x.dataset.abx;return abRerender()}
-  if(t.closest('[data-abev]')){ABM.ev=!ABM.ev;return abRerender()}const r=t.closest('[data-abmodelrow]');if(r){ABM.model=r.dataset.abmodelrow;return abRerender()}};
-$('#aboutbody').addEventListener('change',e=>{if(e.target.id==='abmodel'){ABM.model=e.target.value;abRerender()}});
-$('#aboutbody').addEventListener('input',e=>{if(e.target.id==='abrpd'){ABM.rpd=+e.target.value;abRerender();const el=$('#abrpd');if(el)el.focus()}});
-
+  <section class="ap-sec ap-center ap-end">
+    <h2 class="rv">Start building.</h2>
+    <div class="ap-cta rv"><button class="ap-btn" data-go="chat">Open AIX Alpha</button><button class="ap-btn ghost" data-go="studio">Try Studio</button></div>
+    <p class="ap-foot rv">AIX Alpha v3.0 · BONSAI Division of AIX · November 2026</p>
+  </section>
+  </div>`;
+  const root=el;
+  const fill=e=>{e.dataset.done=1};
+  if(skip||!('IntersectionObserver' in window)){root.querySelectorAll('.rv').forEach(e=>e.classList.add('in'));return}
+  const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}}),{threshold:.12});
+  root.querySelectorAll('.rv').forEach(e=>io.observe(e));
+}
+$('#aboutbody').onclick=e=>{const g=e.target.closest('[data-go]');if(g)setView(g.dataset.go)};
 
 /* ============ activity timeline + progress panel ============ */
 function stepDetail(x){
