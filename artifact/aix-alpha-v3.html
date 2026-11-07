@@ -550,6 +550,17 @@ dialog#dlg.sheet::backdrop{background:rgba(0,0,0,.6);backdrop-filter:blur(6px)}
 .mnu-srch{display:grid;grid-template-columns:2fr 1fr;gap:8px;margin:0 0 10px}.mnu-srch .mnu-b{padding:12px 8px}
 .pl-r{display:flex;gap:6px;align-items:center;padding:8px 10px;border:1px solid var(--b);border-radius:12px;background:rgba(255,255,255,.03)}.pl-t{font-size:12px;color:var(--m);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .gl-tg{font:10px var(--mono,monospace);color:#67e8f9;display:block;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+@media(max-width:860px){
+#vstudio .stbar{padding:8px;border-radius:18px;border:1px solid rgba(255,255,255,.09);background:linear-gradient(165deg,rgba(255,255,255,.06),rgba(255,255,255,.015));align-items:center;gap:8px}
+#vstudio #pj{order:1;flex:1 1 calc(100% - 104px);min-width:0;width:auto}#vstudio #stmore{order:2;flex:none}
+#vstudio #pjcloud{order:3;flex:none;width:40px;height:36px;padding:0;font-size:0;display:grid;place-items:center;border-radius:12px}#vstudio #pjcloud:before{content:"☁";font-size:17px}
+#vstudio .stbar .sp{display:none}#vstudio .stbar .tg{order:4;flex:1 1 22%;text-align:center;padding:9px 2px;border-radius:12px}
+#vstudio .stbar+.stbar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}#vstudio .stbar+.stbar #fw,#vstudio .stbar+.stbar #stl{grid-column:span 2;min-width:0;width:100%}#vstudio #gen{grid-column:span 3;min-width:0;width:100%}#vstudio #gengo{grid-column:span 1;width:100%;padding:0}
+}
+}
+
+}
 .gl-top{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:10px;margin:4px 0 16px}
 .gl-b{border:1px solid var(--b);border-radius:18px;background:linear-gradient(160deg,rgba(255,255,255,.05),rgba(255,255,255,.015));padding:10px 12px;min-width:0;display:flex;align-items:center;gap:8px}
 .gl-title{grid-column:span 5;flex-direction:column;align-items:flex-start;justify-content:center;gap:2px}.gl-title b{font-size:clamp(18px,4.6vw,24px);letter-spacing:-.02em}.gl-title span{font-size:11px;color:var(--m);line-height:1.3}
@@ -604,6 +615,14 @@ dialog#dlg.sheet::backdrop{background:rgba(0,0,0,.6);backdrop-filter:blur(6px)}
 @media(max-width:1149px){#venterprise #entmid .entbento>.pn{grid-column:1/-1!important}#venterprise #entrp,#venterprise #entrp>.pn,#venterprise #entrp>.pn.fx{height:auto!important;min-height:0!important;max-height:none!important;overflow:visible!important;display:block!important;flex:none!important}#venterprise #entrp .scr{overflow:auto!important;max-height:46vh;flex:none!important}#venterprise #entrp>.pn{margin-bottom:10px!important}}
 @media(max-width:1149px){
 #venterprise #entmid .entbento{align-items:stretch!important}#venterprise #entmid .entbento>.bn-a{display:flex}#venterprise #entmid .entbento>.bn-a>*{flex:1;min-width:0}#venterprise #entmid .entbento>.bn-a.wide{grid-column:1/-1}
+@media(max-width:1149px){
+#venterprise #entmid .entbento>.pn.bn-s,#venterprise #entmid .entbento>.pn.bn-t{grid-column:span 1!important;padding:12px}
+#venterprise #entlp .sth{display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto auto;gap:8px;padding:10px 12px}
+#venterprise #entlp .sth>b{grid-column:1/-1}#venterprise #entlp .sth .grow,#venterprise #entlpst{display:none}
+#venterprise #entlp #entlpp,#venterprise #entlp #entlpm{min-width:0;width:100%}
+#venterprise #entlpf{height:210px!important;min-height:0!important}
+#venterprise #entlp,#venterprise #entlpw{height:auto!important;min-height:0!important;max-height:none!important}#venterprise #entlp{border-radius:22px;overflow:hidden}
+#venterprise #entrp>.pn{border-radius:22px;padding:14px}
 #venterprise select,#venterprise input:not([type=checkbox]):not([type=color]),#venterprise textarea{background:#111113!important;color:var(--t)!important;border:1px solid var(--b)!important;border-radius:11px!important;padding:8px 10px;font-size:13px;min-width:0;box-sizing:border-box}
 #venterprise #entview .sth,#venterprise #entview .stc>.sth{flex-wrap:wrap!important;gap:6px!important}#venterprise #entview .sth .grow{display:none}#venterprise #entview .sth .btn2{flex:1 1 auto;white-space:nowrap}
 #venterprise #entview .stc{min-height:0!important}#venterprise #entview .pvw{min-height:300px;height:52vh}#venterprise #entview #entpv{min-height:0!important;height:100%!important}
