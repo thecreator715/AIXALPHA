@@ -433,7 +433,18 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
 @media(max-width:600px){.mkrow{grid-template-columns:2fr 1fr 1fr}.mkrow span:nth-child(2),.mkrow span:nth-child(5){display:none}}
 </style>
 <style id="askcss">.askc{border:1px solid var(--b,#27272a);border-radius:14px;padding:12px 14px;background:rgba(255,255,255,.03);max-width:640px}.askq{margin-bottom:12px}.askt{font-weight:600;margin-bottom:8px}.askm{font-weight:400;opacity:.6;font-size:12px}.askopts{display:flex;flex-wrap:wrap;gap:8px}.askopt{border:1px solid var(--b,#3f3f46);background:transparent;color:inherit;border-radius:999px;padding:8px 14px;font:inherit;cursor:pointer;transition:background .15s,border-color .15s,transform .15s}.askopt:hover{border-color:var(--ac,#7c9cff);transform:translateY(-1px)}.askopt.on{background:var(--ac,#7c9cff);color:#000;border-color:var(--ac,#7c9cff);font-weight:600}.askoth{flex:1 1 160px;min-width:0;background:transparent;color:inherit;border:1px dashed var(--b,#3f3f46);border-radius:999px;padding:8px 14px;font:inherit}.askbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}.askbar .btn[disabled]{opacity:.45;cursor:not-allowed}</style>
-</head>
+<style>.bento{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;grid-auto-flow:dense;align-items:stretch}
+.bento .bc{grid-column:span 2;background:var(--p2);border:1px solid var(--b);border-radius:14px;padding:14px;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:2px}
+.bento .bc.h{grid-column:span 3;justify-content:flex-start}.bento .bc.f{grid-column:1/-1;justify-content:flex-start}
+.bento .bv{font-size:22px;line-height:1.15}.bento .bs{font-size:10.5px;color:var(--m)}.bento .bh{font:600 12px/1 var(--mono,ui-monospace,monospace);letter-spacing:.08em;margin:0 0 10px;color:var(--t)}
+.bento .rw{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:9px 0;border-top:1px solid var(--b)}.bento .rw:first-of-type{border-top:0}
+.bento .steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.bento .stp{display:flex;gap:10px;align-items:flex-start;min-width:0}
+.bento .num{flex:none;width:24px;height:24px;border-radius:50%;background:var(--p3,#27272a);display:flex;align-items:center;justify-content:center;font:600 12px var(--mono,monospace)}.bento .stp.ok .num{background:#065f46;color:#6ee7b7}
+.bento .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.bento .chip{background:var(--p2);border:1px solid var(--b);border-radius:999px;color:var(--t);padding:5px 11px;font:inherit;font-size:12px;cursor:pointer}.bento .chip.on{background:var(--ac);border-color:var(--ac);color:#fff}
+.bento .snip{white-space:pre-wrap;word-break:break-all;font-size:11.5px;padding:10px;border:1px solid var(--b);border-radius:10px;background:var(--bg,#09090b);margin:0;overflow:auto}
+.bento input,.bento select{max-width:100%}.bento a.btn2{color:var(--t);display:inline-flex;align-items:center}.bento .stp a{color:var(--ac)}
+@media(max-width:700px){.bento{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.bento .bc{grid-column:span 1;padding:12px}.bento .bc.h,.bento .bc.f{grid-column:1/-1}.bento .bv{font-size:19px}.bento .steps{grid-template-columns:1fr}}
+</style></head>
 <body>
 <aside id="prog"><div class="pgtop"><b>Progress</b><button class="btn2" id="progx">✕</button></div><div id="progbody"></div></aside><div id="scrim"></div><nav id="bnav"></nav><div id="siteview"></div><div id="pal"><div class="box"><input id="pin" placeholder="Type a command…"><div id="pl"></div></div></div><div id="toast"></div>
 <div id="app">
@@ -553,14 +564,27 @@ const FUNCRULE=`QUALITY BAR (apps must really work and feel smart): every button
 const BUILDINT=/\b(build|create|make|code|write|develop|program|design|script)\b[^.?!]{0,70}\b(app|application|apps|tool|tracker|dashboard|calculator|game|bot|website|site|page|widget|ticker|program|software|ui|gui|interface|converter|timer|planner|monitor|viewer|editor|generator|platform|system)\b/i;
 const BUILDFU=/^\s*(ok(ay)?[,. ]*)?(yes[,. ]*)?(please\s+)?(go ahead and\s+)?(build|make|code|create|write|do|start)\s+(it|that|this|them|one)\b|^\s*(go ahead|do it|let'?s (build|do) it|build)\W*$/i;
 const GUIRULE=`BUILD RULE (always): when the user asks to build, code or make any app, tool, bot, tracker, game or program, in any language, ALWAYS design the app's full GUI and deliver it as ONE complete, self-contained, runnable HTML file (inline CSS and JS, no build step, no external files) in a single \`\`\`html fence so it can be previewed immediately. Make it polished and responsive: dark modern UI, clear layout, working buttons and inputs, loading and error states, and live data via fetch() from public CORS-friendly APIs when the app needs data (refresh on a timer). If the app needs several pages or files (multiple screens, shared CSS or JS, data), output EACH file as its own fenced block whose fence label carries the file name, like \`\`\`html:index.html, \`\`\`html:about.html, \`\`\`css:style.css, \`\`\`js:app.js, \`\`\`json:data.json. Link pages with relative hrefs, CSS with <link rel="stylesheet" href="style.css">, scripts with <script src="app.js">, and keep index.html the entry page. Small apps stay in ONE html file. If the user also wants Python, Node or another backend, put the GUI first, then add the backend code in a second fence. Never reply with only a script. Keep prose to 1-2 sentences. ${FUNCRULE}`;
+/* ---- intent: is the user chatting, asking for code, or asking for an app? (local, 0 tokens) ---- */
+const CODEASK=/\b(write|build|make|create|generate|code|program|script|implement|develop|design|fix|debug|refactor|convert|optimi[sz]e|add)\b[^.?!\n]{0,70}\b(app|application|website|web ?site|site|page|landing|dashboard|game|bot|tool|tracker|calculator|script|function|class|component|api|endpoint|program|code|css|html|sql|query|regex|snippet|module|library|extension|plugin|cli|server|database|schema|form|widget|ui|gui|bug|error|test|loop|algorithm)\b/i;
+const CODEHINT=/```|\b(traceback|stack ?trace|syntax ?error|typeerror|referenceerror|compile error|segfault|npm install|pip install|git (?:commit|push|rebase))\b|\.(?:js|ts|tsx|py|html|css|json|sh|go|rs|java|cpp|swift)\b/i;
+function intentOf(p,r){
+  const t=p.trim();if(r&&(r.build||r.app))return'app';if(r&&r.code)return'code';
+  if(CODEASK.test(t)||CODEHINT.test(t))return/\b(app|website|web ?site|landing|dashboard|game|page)\b/i.test(t)&&/\b(build|make|create|generate)\b/i.test(t)?'app':'code';
+  try{const ms=(typeof curChat==='function'&&curChat()?.msgs)||[];const la=[...ms].reverse().find(m=>m.role==='assistant');if(la&&/```/.test(la.content)&&t.split(/\s+/).length<=30&&/\b(change|make it|add|remove|update|fix|rename|use|instead|also|bigger|smaller|color|colour|again|try)\b/i.test(t))return'code'}catch{}
+  return'chat';
+}
+const CHATRULE='INTENT: the user is chatting or asking a question, NOT asking for code or an app. Reply in plain, natural language (usually 1 to 6 sentences). Do not write code, scripts, HTML or file contents, and do not offer to build anything, unless the user asks for it.';
+const todayLine=()=>'Today is '+new Date().toLocaleDateString([],{weekday:'long',year:'numeric',month:'long',day:'numeric'})+' ('+Intl.DateTimeFormat().resolvedOptions().timeZone+'). Use this when the user asks about the date or anything time-relative.';
 function route(p,att){const r=route0(p,att);
   if(!S.noBuild&&!r.command&&!r.reflex&&!r.m3&&(BUILDINT.test(p)||(BUILDFU.test(p)&&((typeof curChat==='function'&&curChat()?.msgs)||[]).some(m=>m.role==='assistant')))){r.build=true;r.app=true;if(r.tier!=='DEEP')r.tier='DEEP'}
 {const tg=targetMode();if(!r.command&&!r.reflex&&!r.m3){if(tg==='site'||tg==='app'){r.build=true;r.app=true;r.tier='DEEP'}else if(tg==='chat'){r.build=false}}}
+r.intent=intentOf(p,r);if(r.intent==='chat'&&!r.command&&!r.reflex&&!r.m3&&!r.build){r.app=false;r.code=false;if(r.tier==='DEEP'&&p.length<500&&!/\b(essay|report|analy[sz]e|compare|in depth|deep dive|comprehensive|audit|detailed|long)\b/i.test(p))r.tier='STANDARD'}
 r.conn=!r.command&&!r.reflex&&typeof CONNRE!=='undefined'&&CONNRE.test(p);if(r.conn&&r.tier==='MICRO')r.tier='STANDARD';return r}
 function route0(p,att){
   const t=p.trim(),w=t.split(/\s+/).filter(Boolean).length;
   const cmd=[[/^\/(budget|cost|usage)\b/i,'budget'],[/^\/notes\b/i,'notes'],[/^\/(forget|clear)\b/i,'forget'],[/^\/(help|\?)\b/i,'help'],[/^\/(connect|connectors|plug)\b/i,'connect'],[/^\/mode\b/i,'mode'],[/^\/memory\b/i,'memory'],[/^\/tasks?\b/i,'tasks']].find(([r])=>r.test(t));
   if(cmd)return{tier:'NANO',command:cmd[1]};
+  if(w<=12&&!/\b(write|script|code|program|python|javascript|function|build|make|create|generate|format)\b/i.test(t)&&/\b(what(?:'s| is) (?:the |today'?s )?(?:date|time|day)|what (?:time|day|date) is (?:it|today)|what day is it|today'?s date|current (?:date|time)|do you know what (?:today'?s |the )?(?:date|time|day))/i.test(t)){const n=new Date();return{tier:'NANO',reflex:'It is **'+n.toLocaleDateString([],{weekday:'long',year:'numeric',month:'long',day:'numeric'})+'**, '+n.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+' ('+Intl.DateTimeFormat().resolvedOptions().timeZone+').'}}
   const rf=[[/^(hi|hey|hello|yo|sup|hola|gm)\b[\s.!?]*$/i,'AIX Alpha v3 online. What are we building?'],[/^(thanks|thank you|thx|ty)\b[\s.!?]*$/i,'Anytime. Send the next task when ready.'],[/^(ok|okay|cool|nice|great|got it|perfect|k)[\s.!?]*$/i,'Acknowledged. Standing by.']].find(([r])=>t.length<=24&&r.test(t));
   if(rf)return{tier:'NANO',reflex:rf[1]};
   const code=(BV.test(t)&&BO.test(t))||/```/.test(t);
@@ -714,10 +738,11 @@ function openKey(force){if(!force)return openAccount();
   $('#aclr').onclick=()=>{store.set(KEYK,'');if(sampleFn&&!window.claude)sampleFn=null;setStatus();d.close()};
 }
 async function ask(promptStr,onText,signal,images,tools){
-  let eng=null;if(nodeForMode()&&!(images&&images.length))eng=nodeWrap();
+  let eng=null;if(PROVON()&&!(images&&images.length))eng=provWrap();
+  if(!eng&&nodeForMode()&&!(images&&images.length))eng=nodeWrap();
   if(!eng&&NODEUP&&BACKEND()&&store.get(TOKK,'')&&(S.mode==='eco'||S.mode==='balanced')&&!(images&&images.length)&&!(S.web&&onText))eng=BSF||(BSF=backendSample());
   if(!eng){if(!sampleFn)sampleFn=pickEngine();eng=sampleFn;if(!eng&&nodeOn())eng=nodeWrap()}
-  if(eng&&BACKEND()&&store.get(TOKK,'')&&!OWNF()&&BAL!=null&&BAL<=0&&!embKey()){setTimeout(()=>openCredits('out'),60);throw new Error('You are out of credits. Add credits or claim your free credit to continue (a window just opened).')}
+  if(eng&&!eng.prov&&BACKEND()&&store.get(TOKK,'')&&!OWNF()&&BAL!=null&&BAL<=0&&!embKey()){setTimeout(()=>openCredits('out'),60);throw new Error('You are out of credits. Add credits or claim your free credit to continue (a window just opened).')}
   if(!eng){try{openKey()}catch{}throw new Error('AIX is offline. Add your API key (Settings, or tap OFFLINE) to bring it online.')}
   const o={modelTier:'quick',cache:false,onText,signal,search:!!onText&&!!S.web&&(!BACKEND()||OWNF()||BAL==null||BAL>=8)};
   if(S.web&&onText&&BACKEND()&&!OWNF()&&BAL!=null&&BAL<8){try{toast('Live web needs 8+ credits. Answering without it.')}catch{}}
@@ -760,7 +785,7 @@ async function runLoop0(chat,prompt,onText,onStep){
     ;try{onStep&&onStep(x,k||'')}catch{}};
   if(S.autoNote)step(S.autoNote,'ok');
   S.emitStep=step;{const wc=String(prompt).trim().split(/\s+/).filter(Boolean).length;step(`Reading your message (${wc} word${wc==1?'':'s'}${(S.curImages&&S.curImages.length)?', '+S.curImages.length+' image'+(S.curImages.length>1?'s':''):''})`)}
-  const r=route(prompt);t.tier=r.tier;step(`Router → ${r.tier} tier (local, 0 tokens)`);S.toolLog=[];S.toolTok=0;S.curTools=[];t.app=!!r.app;if(r.hist)step(`Context: keeping the last ${r.hist} messages plus your notes`);if(S.web)step('Live web search is ON: the model may search (about 7 credits each)','a');
+  const r=route(prompt);t.tier=r.tier;step(`Router → ${r.tier} tier · ${r.intent||'chat'} intent (local, 0 tokens)`);S.toolLog=[];S.toolTok=0;S.curTools=[];t.app=!!r.app;if(r.hist)step(`Context: keeping the last ${r.hist} messages plus your notes`);if(S.web)step('Live web search is ON: the model may search (about 7 credits each)','a');
   const out=(text,extra={})=>({text,t,...extra});
   if(r.command){step(`Local command /${r.command} (0 tokens)`,'ok');t.saved=100;
     if(r.command==='connect'){await loadLive();return out('**Plug-and-play connectors** — tap *Enable in chat* on any card, then just ask for what you need and I will reply right here.',{ui:'connect'})}
@@ -797,7 +822,7 @@ async function runLoop0(chat,prompt,onText,onStep){
   if(r.conn){S.curTools=await connTools();if(!S.curTools.length){step('Connector needed — none enabled','bad');t.saved=100;return out('That needs a connector. Plug one in with a single tap, then ask again:',{ui:'connect'})}step('🔌 Connectors attached ('+S.curTools.length+' tools)','ok')}
   chat.notes=chat.notes||[];for(const n of notesFrom(prompt))if(!chat.notes.some(x=>x.toLowerCase()===n.toLowerCase()))chat.notes.push(n);chat.notes=chat.notes.slice(-12);
   const pers=personas().find(p=>p.id===S.pid)||PRESETS[0];
-  const core=(pers.core||pers.prompt||PRESETS[0].core)+(r.build?'\n'+GUIRULE:'')+(TARGETRULE[targetMode()]?'\n'+TARGETRULE[targetMode()]:'');if(TARGETRULE[targetMode()])step('Mode: '+targetMode().toUpperCase()+' — chat knows what it is making from the start','ok');if(r.build)step('Build request → will design a full GUI with live preview','ok');
+  const core=(pers.core||pers.prompt||PRESETS[0].core)+'\n'+todayLine()+(r.intent==='chat'&&!r.build?'\n'+CHATRULE:'')+(r.build?'\n'+GUIRULE:'')+(TARGETRULE[targetMode()]?'\n'+TARGETRULE[targetMode()]:'');if(TARGETRULE[targetMode()])step('Mode: '+targetMode().toUpperCase()+' — chat knows what it is making from the start','ok');if(r.build)step('Build request → will design a full GUI with live preview','ok');
   if(pers.thinking==='MINIMAL')r.refines=0;else if(pers.thinking==='LOW')r.refines=Math.min(r.refines,1);
   const all=chat.msgs.filter(m=>m.role==='user'||m.role==='assistant').map(m=>({role:m.role,content:m.content}));
   const origTok=all.reduce((s,m)=>s+est(m.content),0);
@@ -2335,59 +2360,178 @@ async function loadSched(){
 }
 
 /* ============ API page: keys, usage, credits (OpenAI-compatible, billed to the key's account) ============ */
+/* ===== Custom models (bring your own LLM): any OpenAI-compatible endpoint ===== */
+const PROVK='aix3_prov',PROVSELK='aix3_provsel';
+const PROVPRESETS=[
+ {id:'hf',name:'Hugging Face',url:'https://router.huggingface.co/v1',model:'meta-llama/Llama-3.3-70B-Instruct',keyUrl:'https://huggingface.co/settings/tokens',help:'Make a token with the "Inference Providers" permission. Use any chat model id from huggingface.co/models (add :fastest or :cheapest after the id to pick a provider).'},
+ {id:'or',name:'OpenRouter',url:'https://openrouter.ai/api/v1',model:'openai/gpt-4o-mini',keyUrl:'https://openrouter.ai/keys',help:'One key for hundreds of models. Copy a model id from openrouter.ai/models.'},
+ {id:'groq',name:'Groq',url:'https://api.groq.com/openai/v1',model:'llama-3.3-70b-versatile',keyUrl:'https://console.groq.com/keys',help:'Very fast open models. Free tier available.'},
+ {id:'tg',name:'Together AI',url:'https://api.together.xyz/v1',model:'meta-llama/Llama-3.3-70B-Instruct-Turbo',keyUrl:'https://api.together.ai/settings/api-keys',help:'Open models. Copy the model id from the Together model page.'},
+ {id:'oa',name:'OpenAI',url:'https://api.openai.com/v1',model:'gpt-4o-mini',keyUrl:'https://platform.openai.com/api-keys',help:'Your own OpenAI key.'},
+ {id:'ol',name:'Ollama (local)',url:'http://localhost:11434/v1',model:'llama3.2',keyUrl:'https://ollama.com/download',nokey:1,help:'Runs on your own computer. Start Ollama with OLLAMA_ORIGINS=* so the browser may call it. No key needed.'},
+ {id:'lm',name:'LM Studio (local)',url:'http://localhost:1234/v1',model:'local-model',keyUrl:'https://lmstudio.ai',nokey:1,help:'In LM Studio open the Developer tab, start the server and enable CORS. No key needed.'},
+ {id:'cu',name:'Custom URL',url:'',model:'',keyUrl:'',help:'Any server that speaks the OpenAI chat API (vLLM, llama.cpp, LiteLLM, your own). Paste its base URL, usually ending in /v1.'}
+];
+const provList=()=>store.get(PROVK,[])||[];
+const provActive=()=>{const id=store.get(PROVSELK,'');return provList().find(p=>p.id===id)||null};
+const PROVON=()=>!!provActive();
+let PROVFN=null;
+async function provStream(res,onText){const rd=res.body.getReader(),dec=new TextDecoder();let buf='',text='',trunc=false;
+  for(;;){const{done,value}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});const lines=buf.split('\n');buf=lines.pop();
+    for(const ln of lines){if(!ln.startsWith('data:')||ln.includes('[DONE]'))continue;try{const e=JSON.parse(ln.slice(5)),ch=(e.choices||[])[0]||{};const t=ch.delta&&ch.delta.content;if(t){text+=t;onText&&onText({text})}if(ch.finish_reason==='length')trunc=true}catch{}}}
+  return{text,truncated:trunc}}
+function provSample(){const f=async(prompt,o)=>{const c=provActive();if(!c)throw new Error('No custom model selected');
+  const res=await fetch(c.url.replace(/\/+$/,'')+'/chat/completions',{method:'POST',signal:o.signal,headers:{'content-type':'application/json',...(c.key?{authorization:'Bearer '+c.key}:{})},body:JSON.stringify({model:c.model,stream:!!o.onText,max_tokens:4096,messages:[{role:'user',content:prompt}]})});
+  if(!res.ok){let m='';try{const j=await res.json();m=(j.error&&(j.error.message||j.error))||j.message||''}catch{}throw new Error(c.name+' '+res.status+(m?': '+String(m).slice(0,200):''))}
+  if(!o.onText){const j=await res.json();const ch=(j.choices||[])[0]||{};return{text:(ch.message&&ch.message.content)||'',truncated:ch.finish_reason==='length'}}
+  return provStream(res,o.onText)};
+  f.limits=async()=>({images:false});f.prov=true;return f}
+const provWrap=()=>PROVFN||(PROVFN=provSample());
+function openProvider(p){
+  const cur=p||{id:'p'+Date.now().toString(36),name:'',url:'',key:'',model:''};
+  const d=dialog(`<h3 style="margin:0 0 6px">${p?'Edit':'Add'} custom model</h3><p style="font-size:12px;color:var(--m);margin:0 0 8px">Use any model that speaks the OpenAI chat API. Your key stays in this browser and calls go straight to the provider, so no AIX credits are used.</p>
+  <div class="mono" style="font-size:11px;color:var(--m);margin-bottom:4px">Start from a preset</div>
+  <div id="ppre" style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:8px">${PROVPRESETS.map(x=>`<button class="btn2" data-pp="${x.id}" style="padding:8px 6px;font-size:12px">${esc(x.name)}</button>`).join('')}</div>
+  <div id="phelp" class="mono" style="font-size:11px;color:var(--m);margin-bottom:6px;min-height:14px"></div>
+  <label>Name</label><input id="pn" value="${esc(cur.name)}" placeholder="My Hugging Face model">
+  <label>Base URL</label><input id="pu" value="${esc(cur.url)}" placeholder="https://…/v1">
+  <label>API key <a id="pkl" href="#" target="_blank" rel="noopener" style="font-size:11px;display:none">get a key</a></label><input id="pk" type="password" value="${esc(cur.key)}" placeholder="paste key (leave empty for local servers)" autocomplete="off">
+  <label>Model id</label><input id="pm2" value="${esc(cur.model)}" placeholder="provider/model-name">
+  <div id="pst" class="mono" style="font-size:11px;margin:8px 0;min-height:14px"></div>
+  <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button class="btn2" id="ptest">Test</button><button class="btn2" data-close>Cancel</button><button class="btn" id="psave">Save and use</button></div>`);
+  const rd=()=>({id:cur.id,name:$('#pn').value.trim(),url:$('#pu').value.trim().replace(/\/+$/,''),key:$('#pk').value.trim(),model:$('#pm2').value.trim()});
+  d.querySelectorAll('[data-pp]').forEach(b=>b.onclick=()=>{const x=PROVPRESETS.find(y=>y.id===b.dataset.pp);$('#pn').value=x.name==='Custom URL'?'':x.name;$('#pu').value=x.url;$('#pm2').value=x.model;$('#phelp').textContent=x.help||'';const a=$('#pkl');if(x.keyUrl&&!x.nokey){a.href=x.keyUrl;a.style.display='inline'}else a.style.display='none'});
+  $('#ptest').onclick=async()=>{const v=rd(),st=$('#pst');if(!v.url||!v.model){st.style.color='var(--bad)';st.textContent='Fill in the base URL and model id first.';return}st.style.color='var(--m)';st.textContent='Testing…';
+    try{const r=await fetch(v.url+'/chat/completions',{method:'POST',headers:{'content-type':'application/json',...(v.key?{authorization:'Bearer '+v.key}:{})},body:JSON.stringify({model:v.model,max_tokens:12,messages:[{role:'user',content:'Reply with OK'}]})});const j=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(r.status+' '+String((j.error&&(j.error.message||j.error))||j.message||'').slice(0,160));
+      st.style.color='#34d399';st.textContent='Works: '+String(((j.choices||[])[0]||{}).message&&j.choices[0].message.content||'(empty reply)').slice(0,60)}
+    catch(e){st.style.color='var(--bad)';st.textContent=/Failed to fetch|NetworkError|Load failed/i.test(e.message)?'Could not reach it from the browser. Check the URL, or the server blocks browser calls (CORS).':e.message}};
+  $('#psave').onclick=()=>{const v=rd();if(!v.name)v.name=v.model||'Custom model';if(!/^https?:\/\//.test(v.url))return toast('Base URL must start with http:// or https://');if(!v.model)return toast('Enter a model id');
+    const L=provList().filter(x=>x.id!==v.id);L.push(v);store.set(PROVK,L.slice(-12));store.set(PROVSELK,v.id);PROVFN=null;toast('Using '+v.name);d.close();try{renderApi()}catch{}};
+}
+/* ===== Shared mini chat (opened from a #p=slug link) ===== */
+const SHARED=location.hash.match(/^#p=([a-z0-9-]{3,40})$/);
+function openShared(slug){
+  const KEY='aixpg_'+slug;let H=[];try{H=JSON.parse(localStorage.getItem(KEY)||'[]')}catch{}
+  const ov=document.createElement('div');ov.id='shpg';
+  ov.style.cssText='position:fixed;inset:0;z-index:2147483000;background:#09090b;color:#fafafa;display:flex;flex-direction:column;font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
+  ov.innerHTML=`<style>#shpg *{box-sizing:border-box}#shpg .m{max-width:min(720px,92%);padding:10px 14px;border-radius:16px;margin:6px 0;word-wrap:break-word;overflow-wrap:anywhere}#shpg .u{align-self:flex-end;background:var(--c);color:#fff;white-space:pre-wrap;border-bottom-right-radius:4px}#shpg .a{align-self:flex-start;background:#18181b;border:1px solid #27272a;border-bottom-left-radius:4px}#shpg .a p{margin:0 0 8px}#shpg .a p:last-child{margin:0}#shpg pre{background:#09090b;padding:10px;border-radius:8px;overflow:auto;font-size:12.5px}#shpg code{font-family:ui-monospace,Menlo,monospace}#shpg textarea{flex:1;resize:none;background:#18181b;border:1px solid #27272a;border-radius:14px;color:#fafafa;padding:11px 14px;font:inherit;outline:0;max-height:140px}#shpg button{border:0;border-radius:14px;background:var(--c);color:#fff;font:inherit;font-weight:600;padding:0 18px;cursor:pointer}#shpg button:disabled{opacity:.5}</style>
+  <div id="shh" style="padding:14px 18px;border-bottom:1px solid #27272a;display:flex;align-items:center;gap:10px;padding-top:max(14px,env(safe-area-inset-top))"><div id="shd" style="width:10px;height:10px;border-radius:50%;background:var(--c)"></div><b id="shn" style="font-size:16px">Loading…</b></div>
+  <div id="shm" style="flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;-webkit-overflow-scrolling:touch"></div>
+  <div style="padding:10px 12px;border-top:1px solid #27272a;padding-bottom:max(10px,env(safe-area-inset-bottom))"><div style="display:flex;gap:8px;max-width:760px;margin:0 auto"><textarea id="shq" rows="1" placeholder="Type a message…"></textarea><button id="shs">Send</button></div><div style="text-align:center;font-size:11px;color:#71717a;margin-top:6px">Powered by <a href="${location.pathname}" style="color:#a1a1aa">AIX Alpha</a></div></div>`;
+  document.body.appendChild(ov);ov.style.setProperty('--c','#8b5cf6');
+  const M=ov.querySelector('#shm'),Q=ov.querySelector('#shq'),B=ov.querySelector('#shs');let welcome='Hi!',busy=false;
+  const bub=(r,t)=>{const e=document.createElement('div');e.className='m '+(r==='user'?'u':'a');if(r==='user')e.textContent=t;else e.innerHTML=md(t);M.appendChild(e);M.scrollTop=M.scrollHeight;return e};
+  const draw=()=>{M.innerHTML='';bub('assistant',welcome);H.forEach(m=>bub(m.role,m.content))};
+  fetch(BACKEND()+'/api/page/'+slug).then(r=>r.json().then(j=>({ok:r.ok,j}))).then(({ok,j})=>{if(!ok)throw new Error(j.error||'Not available');ov.style.setProperty('--c',j.color||'#8b5cf6');ov.querySelector('#shn').textContent=j.name||'Chat';document.title=j.name||'Chat';welcome=j.welcome||'Hi!';draw()}).catch(e=>{ov.querySelector('#shn').textContent='Chat unavailable';M.innerHTML='';bub('assistant',e.message==='Failed to fetch'?'Could not reach the server. Try again.':e.message);B.disabled=true;Q.disabled=true});
+  const send=async()=>{const t=Q.value.trim();if(!t||busy)return;busy=true;B.disabled=true;Q.value='';Q.style.height='auto';H.push({role:'user',content:t});bub('user',t);const el=bub('assistant','…');let text='';
+    try{const res=await fetch(BACKEND()+'/api/page/'+slug+'/chat',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({messages:H.slice(-20)})});
+      if(!res.ok){const j=await res.json().catch(()=>({}));throw new Error(j.error&&j.error.message||j.error||'Error '+res.status)}
+      const rd=res.body.getReader(),dec=new TextDecoder();let buf='';
+      for(;;){const{done,value}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});const ls=buf.split('\n');buf=ls.pop();for(const ln of ls){if(!ln.startsWith('data:')||ln.includes('[DONE]'))continue;try{const e=JSON.parse(ln.slice(5)),d=e.choices&&e.choices[0]&&e.choices[0].delta&&e.choices[0].delta.content;if(d){text+=d;el.innerHTML=md(text);M.scrollTop=M.scrollHeight}}catch{}}}
+      if(!text)el.textContent='(no reply)';else{H.push({role:'assistant',content:text});try{localStorage.setItem(KEY,JSON.stringify(H.slice(-30)))}catch{}}
+    }catch(e){el.textContent=e.message==='Failed to fetch'?'Connection problem. Try again.':e.message;H.pop()}
+    busy=false;B.disabled=false;Q.focus()};
+  B.onclick=send;Q.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}};Q.oninput=()=>{Q.style.height='auto';Q.style.height=Math.min(140,Q.scrollHeight)+'px'};
+}
+if(SHARED)setTimeout(()=>openShared(SHARED[1]),0);
+/* ===== Chat pages editor ===== */
+const SHBASE=/github\.io$/.test(location.hostname)?location.origin+location.pathname:'https://thecreator715.github.io/AIXALPHA/';
+const pageLink=s=>SHBASE+'#p='+s;
+function openPageEditor(pg,keys){
+  const c=pg||{name:'',welcome:'Hi! How can I help?',system:'',color:'#8b5cf6',model:'aix-alpha',day_cap:200,ip_cap:20,key:(keys[0]||{}).id,enabled:true};
+  const d=dialog(`<h3 style="margin:0 0 6px">${pg?'Edit':'New'} chat page</h3><p style="font-size:12px;color:var(--m);margin:0 0 6px">A mini AIX chat with its own link. Anyone with the link can chat, and every reply is paid from the credits of the API key you pick.</p>
+  <label>Name</label><input id="cpn" value="${esc(c.name)}" maxlength="60" placeholder="Support bot">
+  <label>Welcome message</label><input id="cpw" value="${esc(c.welcome)}" maxlength="300">
+  <label>Instructions (how it should behave)</label><textarea id="cps" rows="4" maxlength="4000" placeholder="You are a friendly assistant for my bakery. Keep answers short.">${esc(c.system)}</textarea>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div><label>API key that pays</label><select id="cpk">${keys.map(k=>`<option value="${k.id}" ${k.id===c.key?'selected':''}>${esc(k.name||k.prefix)}</option>`).join('')}</select></div><div><label>Model</label><select id="cpm"><option value="aix-alpha" ${c.model==='aix-alpha'?'selected':''}>aix-alpha (node first)</option><option value="aix-alpha-cloud" ${c.model==='aix-alpha-cloud'?'selected':''}>aix-alpha-cloud</option></select></div>
+  <div><label>Color</label><input id="cpc" type="color" value="${c.color}" style="height:38px;padding:2px"></div><div><label>Status</label><select id="cpe"><option value="1" ${c.enabled?'selected':''}>Live</option><option value="0" ${c.enabled?'':'selected'}>Paused</option></select></div>
+  <div><label>Max messages per day</label><input id="cpd" type="number" min="10" max="5000" value="${c.day_cap}"></div><div><label>Per visitor per hour</label><input id="cpi" type="number" min="3" max="200" value="${c.ip_cap}"></div></div>
+  <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px"><button class="btn2" data-close>Cancel</button><button class="btn" id="cpsv">${pg?'Save':'Create page'}</button></div>`);
+  $('#cpsv').onclick=async()=>{const b=$('#cpsv');b.disabled=true;try{const r=await jobApi('/api/pages',{slug:pg&&pg.slug,name:$('#cpn').value.trim()||'My chat',welcome:$('#cpw').value,system:$('#cps').value,key:$('#cpk').value,model:$('#cpm').value,color:$('#cpc').value,enabled:$('#cpe').value==='1',day_cap:+$('#cpd').value,ip_cap:+$('#cpi').value});d.close();toast(pg?'Saved':'Page created. Copy its link from the list.');renderApi()}catch(e){toast(e.message);b.disabled=false}};
+}
+/* ===== API page ===== */
 const fmtN=n=>Number(n||0).toLocaleString();const fmtC=n=>Number(n||0).toFixed(n>=100?0:n>=1?2:3);
 let apiTimer=0;
+const APPSETUP=[
+ {n:'Cursor',link:'https://docs.cursor.com',t:'Settings → Models → turn on "OpenAI API Key". Paste your AIX key, switch on "Override OpenAI Base URL" and paste the base URL. Add a custom model named aix-alpha.'},
+ {n:'Continue',link:'https://docs.continue.dev',code:(b,k)=>`# config.yaml (Continue, VS Code / JetBrains)\nmodels:\n  - name: AIX Alpha\n    provider: openai\n    model: aix-alpha\n    apiBase: ${b}\n    apiKey: ${k}`},
+ {n:'Open WebUI',link:'https://docs.openwebui.com',t:'Admin Panel → Settings → Connections → OpenAI → add a connection. URL = the base URL, key = your AIX key. The model aix-alpha then shows in the model picker.'},
+ {n:'LibreChat',link:'https://www.librechat.ai/docs',code:(b,k)=>`# librechat.yaml\nendpoints:\n  custom:\n    - name: "AIX Alpha"\n      apiKey: "${k}"\n      baseURL: "${b}"\n      models:\n        default: ["aix-alpha"]\n      titleConvo: true`},
+ {n:'TypingMind',link:'https://www.typingmind.com',t:'Models → Add custom model. API endpoint = base URL + /chat/completions, model ID = aix-alpha, add the header Authorization: Bearer your AIX key.'},
+ {n:'Python',link:'https://github.com/openai/openai-python',code:(b,k)=>`# pip install openai\nfrom openai import OpenAI\nc = OpenAI(base_url="${b}", api_key="${k}")\nr = c.chat.completions.create(model="aix-alpha", messages=[{"role":"user","content":"Hello"}])\nprint(r.choices[0].message.content)`},
+ {n:'JavaScript',link:'https://github.com/openai/openai-node',code:(b,k)=>`// npm i openai\nimport OpenAI from "openai";\nconst c = new OpenAI({ baseURL: "${b}", apiKey: "${k}" });\nconst r = await c.chat.completions.create({ model: "aix-alpha", messages: [{ role: "user", content: "Hello" }] });\nconsole.log(r.choices[0].message.content);`},
+ {n:'curl',link:'',code:(b,k)=>`curl ${b}/chat/completions \\\n  -H "Authorization: Bearer ${k}" -H "Content-Type: application/json" \\\n  -d '{"model":"aix-alpha","messages":[{"role":"user","content":"Hello"}]}'`}
+];
 async function renderApi(){
   const el=$('#apibody');clearInterval(apiTimer);
   if(!jobOn()){el.innerHTML='<div class="ab" style="max-width:760px;margin:0 auto"><h2 class="mono">API</h2><div class="mono" style="font-size:12px;color:var(--m)">Sign in (menu, AIX account) to create API keys. Every call made with a key is billed to your account credits.</div></div>';return}
   const base=BACKEND()+'/v1';
-  el.innerHTML='<div class="ab" style="max-width:860px;margin:0 auto"><h2 class="mono">API</h2><div class="mono" style="color:var(--m);font-size:12px">Loading…</div></div>';
+  el.innerHTML='<div class="ab" style="max-width:980px;margin:0 auto"><h2 class="mono">API</h2><div class="mono" style="color:var(--m);font-size:12px">Loading…</div></div>';
+  const cp=(t)=>{try{navigator.clipboard.writeText(t);toast('Copied')}catch{toast('Select and copy it')}};
   const draw=async()=>{
-    let st,ks;try{[st,ks]=await Promise.all([jobApi('/api/keys/stats'),jobApi('/api/keys')])}catch(e){el.innerHTML='<div class="ab"><h2 class="mono">API</h2><div class="mono" style="color:var(--bad)">'+esc(e.message)+'</div></div>';return}
-    const card=(a,b,c)=>`<div class="card" style="min-width:120px"><small class="mono">${a}</small><b style="font-size:20px">${b}</b>${c?`<div class="mono" style="font-size:10px;color:var(--m)">${c}</div>`:''}</div>`;
+    let st,ks,pgs;try{[st,ks,pgs]=await Promise.all([jobApi('/api/keys/stats'),jobApi('/api/keys'),jobApi('/api/pages').catch(()=>({pages:[]}))])}catch(e){el.innerHTML='<div class="ab"><h2 class="mono">API</h2><div class="mono" style="color:var(--bad)">'+esc(e.message)+'</div></div>';return}
+    const card=(a,b,c)=>`<div class="bc"><small class="mono">${a}</small><b class="bv">${b}</b>${c?`<div class="mono bs">${c}</div>`:''}</div>`;
     const per=(r)=>`${fmtN(r.requests)} calls · ${fmtN(r.tokens)} tok`;
     const maxC=Math.max(0.001,...st.daily.map(d=>d.credits));
-    const days=st.daily.length?st.daily.map(d=>`<div title="${d.day}: ${fmtN(d.requests)} calls, ${fmtN(d.tokens)} tokens, ${fmtC(d.credits)} cr" style="flex:1;min-width:10px;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:3px"><div style="width:100%;background:var(--ac);border-radius:3px 3px 0 0;height:${Math.max(3,Math.round(d.credits/maxC*70))}px"></div><span class="mono" style="font-size:9px;color:var(--m)">${d.day.slice(5)}</span></div>`).join(''):'<div class="mono" style="font-size:12px;color:var(--m)">No API usage yet.</div>';
-    const key0=window.__newKey||'YOUR_AIX_KEY';
-    el.innerHTML=`<div class="ab" style="max-width:860px;margin:0 auto">
+    const days=st.daily.length?st.daily.map(d=>`<div title="${d.day}: ${fmtN(d.requests)} calls, ${fmtN(d.tokens)} tokens, ${fmtC(d.credits)} cr" style="flex:1;min-width:8px;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:3px"><div style="width:100%;background:var(--ac);border-radius:3px 3px 0 0;height:${Math.max(3,Math.round(d.credits/maxC*70))}px"></div><span class="mono" style="font-size:9px;color:var(--m)">${d.day.slice(8)}</span></div>`).join(''):'<div class="mono" style="font-size:12px;color:var(--m)">No API usage yet.</div>';
+    const hasKey=ks.keys.length>0,keyShown=window.__newKey||'YOUR_AIX_KEY';
+    const appI=Math.min(window.__appI||0,APPSETUP.length-1),app=APPSETUP[appI];
+    const appBody=app.code?`<pre id="snip" class="snip">${esc(app.code(base,keyShown))}</pre><button class="btn2" id="snipcp" style="margin-top:6px">Copy snippet</button>`:`<div style="font-size:12.5px;line-height:1.5;margin-bottom:6px">${esc(app.t)}</div><div class="mono" style="font-size:11px;color:var(--m)">Base URL: <b>${esc(base)}</b><br>Key: ${esc(keyShown)}<br>Model: <b>aix-alpha</b></div>`;
+    const provs=provList(),pa=provActive();
+    const pages=pgs.pages||[];
+    const keyRow=k=>`<div class="rw"><div style="min-width:0"><b style="font-size:13px">${esc(k.name||'Key')}</b><div class="mono bs">${esc(k.prefix||'')}</div></div><div class="mono bs" style="text-align:right;flex:none">${fmtN(k.requests)} calls<br>${fmtC(k.credits)} cr · ${k.last?new Date(k.last).toLocaleDateString([], {month:'short',day:'numeric'}):'never used'}</div><button class="btn2" data-rev="${k.id}" style="flex:none">Revoke</button></div>`;
+    const pageRow=p=>`<div class="rw" style="flex-wrap:wrap"><div style="min-width:0;flex:1 1 180px"><b style="font-size:13px"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${esc(p.color)};margin-right:6px"></span>${esc(p.name)}</b>${p.enabled?'':' <span class="mono bs">(paused)</span>'}<div class="mono bs" style="word-break:break-all">${esc(pageLink(p.slug))}</div><div class="mono bs">${fmtN(p.hits)} messages · ${p.day_cap}/day cap</div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn2" data-pcp="${p.slug}">Copy link</button><a class="btn2" href="${esc(pageLink(p.slug))}" target="_blank" rel="noopener" style="text-decoration:none">Open</a><button class="btn2" data-ped="${p.slug}">Edit</button><button class="btn2" data-pdel="${p.slug}">Delete</button></div></div>`;
+    const provRow=p=>`<div class="rw" style="flex-wrap:wrap"><label style="display:flex;gap:8px;align-items:center;min-width:0;flex:1 1 180px;margin:0;cursor:pointer"><input type="radio" name="provsel" data-psel="${p.id}" ${pa&&pa.id===p.id?'checked':''} style="width:auto;margin:0"><span style="min-width:0"><b style="font-size:13px">${esc(p.name)}</b><span class="mono bs" style="display:block;word-break:break-all">${esc(p.model)} · ${esc(p.url.replace(/^https?:\/\//,''))}</span></span></label><div style="display:flex;gap:6px"><button class="btn2" data-ped2="${p.id}">Edit</button><button class="btn2" data-pdel2="${p.id}">Remove</button></div></div>`;
+    el.innerHTML=`<div class="ab" style="max-width:980px;margin:0 auto">
     <h2 class="mono" style="margin:0 0 4px">API</h2>
-    <div class="mono" style="font-size:11px;color:var(--m);margin-bottom:12px">Use AIX Alpha as the LLM in any OpenAI-compatible app. Each call runs on the Alpha node (your Mac) when it is online, otherwise on the cloud model, and is billed to the account that owns the key.</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">${card('BALANCE',st.unlimited?'unlimited':fmtC(st.balance)+' cr',st.unlimited?'owner account (not deducted)':'left on your account')}${card('LAST 24H',fmtC(st.d1.credits)+' cr',per(st.d1))}${card('LAST 7 DAYS',fmtC(st.d7.credits)+' cr',per(st.d7))}${card('LAST 30 DAYS',fmtC(st.d30.credits)+' cr',per(st.d30))}${card('ALL TIME',fmtC(st.all.credits)+' cr',per(st.all))}${card('API KEYS',ks.keys.length+' / 10','active')}</div>
-    <h3 class="mono" style="font-size:13px;margin:0 0 6px">YOUR KEYS</h3>
-    <div style="display:flex;gap:8px;margin-bottom:8px"><input id="kname" placeholder="Key name (e.g. my website)" style="flex:1;${pgCss}"><button class="btn" id="kmake">Create key</button></div>
-    <div id="knew" style="display:none;margin-bottom:10px;padding:10px;border:1px solid var(--ac);border-radius:10px"><div class="mono" style="font-size:11px;color:var(--m);margin-bottom:4px">Copy this key now. It is shown only once.</div><div style="display:flex;gap:8px;align-items:center"><code id="kval" style="flex:1;word-break:break-all;font-size:12px"></code><button class="btn2" id="kcopy">Copy</button></div></div>
-    <div style="overflow:auto;margin-bottom:14px"><table class="ab2t"><tr><th>Name</th><th>Key</th><th>Calls</th><th>Tokens</th><th>Credits used</th><th>Last used</th><th></th></tr>${st.byKey.length?st.byKey.map(k=>`<tr><td>${esc(k.name||'')}</td><td class="mono">${esc(k.prefix||'')}</td><td>${fmtN(k.requests)}</td><td>${fmtN(k.tokens)}</td><td>${fmtC(k.credits)}</td><td>${k.last?new Date(k.last).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'never'}</td><td><button class="btn2" data-rev="${k.id}">Revoke</button></td></tr>`).join(''):'<tr><td colspan="7" style="color:var(--m)">No keys yet.</td></tr>'}</table></div>
-    <h3 class="mono" style="font-size:13px;margin:0 0 6px">CREDITS PER DAY (last 14 days)</h3>
-    <div style="display:flex;gap:4px;align-items:flex-end;height:96px;margin-bottom:6px">${days}</div>
-    <div class="mono" style="font-size:11px;color:var(--m);margin-bottom:14px">By engine: ${st.byEngine.length?st.byEngine.map(e=>`${e.engine==='node'?'Alpha node':'cloud'} ${fmtN(e.requests)} calls · ${fmtN(e.tokens)} tok · ${fmtC(e.credits)} cr`).join('  |  '):'none yet'}</div>
-    <h3 class="mono" style="font-size:13px;margin:0 0 6px">RECENT CALLS</h3>
-    <div style="overflow:auto;margin-bottom:14px"><table class="ab2t"><tr><th>Time</th><th>Key</th><th>Engine</th><th>In</th><th>Out</th><th>Credits</th></tr>${st.recent.length?st.recent.map(r=>`<tr><td>${new Date(r.at).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit'})}</td><td>${esc(r.key||'')}</td><td>${r.engine==='node'?'Alpha node':'cloud'}</td><td>${fmtN(r.input)}</td><td>${fmtN(r.output)}</td><td>${fmtC(r.credits)}</td></tr>`).join(''):'<tr><td colspan="6" style="color:var(--m)">No calls yet.</td></tr>'}</table></div>
-    <h3 class="mono" style="font-size:13px;margin:0 0 6px">PRICING</h3>
-    <div class="mono" style="font-size:12px;margin-bottom:14px">About <b>71 credits per 1M input tokens</b> and <b>357 credits per 1M output tokens</b> (1 credit = $0.0014), the same on the Alpha node and the cloud. A short reply is a fraction of a credit.</div>
-    <h3 class="mono" style="font-size:13px;margin:0 0 6px">QUICK START</h3>
-    <div class="mono" style="font-size:11px;color:var(--m);margin-bottom:4px">Base URL: <b>${esc(base)}</b> · models: <b>aix-alpha</b> (node first, cloud fallback), <b>aix-alpha-cloud</b> (cloud only)</div>
-    <pre id="snip" style="white-space:pre-wrap;word-break:break-all;font-size:11.5px;padding:10px;border:1px solid var(--b);border-radius:10px;background:var(--p2);overflow:auto">curl ${esc(base)}/chat/completions \\
-  -H "Authorization: Bearer ${esc(key0)}" -H "Content-Type: application/json" \\
-  -d '{"model":"aix-alpha","messages":[{"role":"user","content":"Hello"}]}'
-
-# Python (pip install openai)
-from openai import OpenAI
-c = OpenAI(base_url="${esc(base)}", api_key="${esc(key0)}")
-print(c.chat.completions.create(model="aix-alpha", messages=[{"role":"user","content":"Hello"}]).choices[0].message.content)
-
-// JavaScript (npm i openai)
-import OpenAI from "openai";
-const c = new OpenAI({ baseURL: "${esc(base)}", apiKey: "${esc(key0)}" });
-const r = await c.chat.completions.create({ model: "aix-alpha", messages: [{ role: "user", content: "Hello" }] });
-console.log(r.choices[0].message.content);</pre>
-    <div class="mono" style="font-size:11px;color:var(--m)">Streaming ("stream": true) is supported. Out of credits returns HTTP 402. Revoke a key any time and it stops working immediately.</div></div>`;
+    <div class="mono" style="font-size:11px;color:var(--m);margin-bottom:12px">Use AIX Alpha as the LLM in any OpenAI-compatible app, share a chat page, or plug in your own models. Calls run on the Alpha node when it is online, otherwise the cloud model, and bill the key's account.</div>
+    <div class="bento">
+      ${card('BALANCE',st.unlimited?'unlimited':fmtC(st.balance)+' cr',st.unlimited?'owner, not deducted':'on your account')}
+      ${card('LAST 24H',fmtC(st.d1.credits)+' cr',per(st.d1))}
+      ${card('LAST 7 DAYS',fmtC(st.d7.credits)+' cr',per(st.d7))}
+      ${card('LAST 30 DAYS',fmtC(st.d30.credits)+' cr',per(st.d30))}
+      ${card('ALL TIME',fmtC(st.all.credits)+' cr',per(st.all))}
+      ${card('KEYS · PAGES',ks.keys.length+' · '+pages.length,'of 10 · of 10')}
+      <div class="bc f"><h3 class="bh">SET UP IN 3 STEPS</h3>
+        <div class="steps">
+          <div class="stp ${hasKey?'ok':''}"><span class="num">${hasKey?'✓':'1'}</span><div style="min-width:0;flex:1"><b>Create a key</b><div class="bs mono">${hasKey?'You have '+ks.keys.length+'. Make more below.':'Name it after the app that will use it.'}</div>
+            <div style="display:flex;gap:6px;margin-top:6px"><input id="kname" placeholder="Key name (e.g. my website)" style="flex:1;min-width:0;${pgCss}"><button class="btn" id="kmake">Create</button></div>
+            <div id="knew" style="display:none;margin-top:8px;padding:8px;border:1px solid var(--ac);border-radius:10px"><div class="mono bs" style="margin-bottom:4px">Copy this key now. It is shown only once.</div><div style="display:flex;gap:6px;align-items:center"><code id="kval" style="flex:1;word-break:break-all;font-size:11.5px"></code><button class="btn2" id="kcopy">Copy</button></div></div></div></div>
+          <div class="stp"><span class="num">2</span><div style="min-width:0;flex:1"><b>Copy the base URL</b><div style="display:flex;gap:6px;margin-top:6px;align-items:center"><code style="flex:1;word-break:break-all;font-size:11.5px">${esc(base)}</code><button class="btn2" id="bcopy">Copy</button></div><div class="bs mono" style="margin-top:4px">Model: aix-alpha (node first) or aix-alpha-cloud</div></div></div>
+          <div class="stp"><span class="num">3</span><div style="min-width:0;flex:1"><b>Pick your app</b>
+            <div class="chips">${APPSETUP.map((a,i)=>`<button class="chip ${i===appI?'on':''}" data-app="${i}">${a.n}</button>`).join('')}</div>
+            <div style="margin-top:8px">${appBody}</div>${app.link?`<div style="margin-top:6px;font-size:12px"><a href="${esc(app.link)}" target="_blank" rel="noopener">${esc(app.n)} docs and download ↗</a></div>`:''}</div></div>
+        </div></div>
+      <div class="bc f"><h3 class="bh">YOUR KEYS</h3>${st.byKey.length?st.byKey.map(keyRow).join(''):'<div class="mono bs">No keys yet. Create one in step 1.</div>'}</div>
+      <div class="bc f"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px"><h3 class="bh" style="margin:0">SHAREABLE CHAT PAGES</h3><button class="btn" id="pnew" ${hasKey?'':'disabled title="Create an API key first"'}>+ New chat page</button></div>
+        <div class="mono bs" style="margin-bottom:8px">A mini version of Alpha with its own link. Customize the name, colors and instructions. It runs on one of your API keys, so visitors spend your credits. Set daily and per-visitor limits to stay in control.</div>
+        ${pages.length?pages.map(pageRow).join(''):'<div class="mono bs">No chat pages yet.'+(hasKey?'':' Create an API key first.')+'</div>'}</div>
+      <div class="bc f"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px"><h3 class="bh" style="margin:0">CUSTOM MODELS (bring your own LLM)</h3><button class="btn" id="provnew">+ Add model</button></div>
+        <div class="mono bs" style="margin-bottom:8px">Not listed? Add any OpenAI-compatible model: Hugging Face, OpenRouter, Groq, Together, OpenAI, Ollama, LM Studio, or your own URL. The selected model answers your chats in this browser using your own provider key, so it uses no AIX credits.</div>
+        ${provs.length?`<div class="rw"><label style="display:flex;gap:8px;align-items:center;margin:0;cursor:pointer"><input type="radio" name="provsel" data-psel="" ${pa?'':'checked'} style="width:auto;margin:0"><span><b style="font-size:13px">AIX Alpha (default)</b><span class="mono bs" style="display:block">Node or cloud, billed in credits</span></span></label></div>`+provs.map(provRow).join(''):'<div class="mono bs">No custom models yet. Tap "+ Add model" and choose Hugging Face to start.</div>'}</div>
+      <div class="bc h"><h3 class="bh">CREDITS PER DAY</h3><div style="display:flex;gap:3px;align-items:flex-end;height:96px;margin-bottom:6px">${days}</div><div class="mono bs">By engine: ${st.byEngine.length?st.byEngine.map(e=>`${e.engine==='node'?'Alpha node':'cloud'} ${fmtN(e.requests)} calls · ${fmtC(e.credits)} cr`).join('  |  '):'none yet'}</div></div>
+      <div class="bc h"><h3 class="bh">PRICING</h3><div style="font-size:13px;line-height:1.5">About <b>71 credits per 1M input tokens</b> and <b>357 credits per 1M output tokens</b>. 1 credit = $0.0014, the same on the Alpha node and the cloud. A short reply costs a fraction of a credit.</div><div class="mono bs" style="margin-top:8px">Streaming is supported. Out of credits returns HTTP 402. Revoking a key stops it at once, and any chat page using it stops too.</div></div>
+      <div class="bc f"><h3 class="bh">RECENT CALLS</h3>${st.recent.length?st.recent.map(r=>`<div class="rw"><div style="min-width:0"><div class="mono" style="font-size:12px">${new Date(r.at).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit'})}</div><div class="mono bs">${esc(r.key||'')} · ${r.engine==='node'?'Alpha node':'cloud'} · ${fmtN(r.input)} in / ${fmtN(r.output)} out</div></div><b style="flex:none;font-size:13px">${fmtC(r.credits)} cr</b></div>`).join(''):'<div class="mono bs">No calls yet.</div>'}</div>
+    </div></div>`;
     if(window.__newKey){$('#knew').style.display='block';$('#kval').textContent=window.__newKey}
     $('#kmake').onclick=async()=>{const b=$('#kmake');b.disabled=true;try{const r=await jobApi('/api/keys',{name:$('#kname').value.trim()||'My key'});window.__newKey=r.key;await draw()}catch(e){toast(e.message)}b.disabled=false};
-    $('#kcopy')&&($('#kcopy').onclick=()=>{try{navigator.clipboard.writeText(window.__newKey);toast('Copied')}catch{toast('Select and copy the key')}});
-    el.querySelectorAll('[data-rev]').forEach(b=>b.onclick=async()=>{if(confirm('Revoke this key? Apps using it will stop working.')){try{await jobApi('/api/keys/delete',{id:b.dataset.rev});window.__newKey='';await draw()}catch(e){toast(e.message)}}});
+    $('#kcopy')&&($('#kcopy').onclick=()=>cp(window.__newKey));
+    $('#bcopy').onclick=()=>cp(base);
+    $('#snipcp')&&($('#snipcp').onclick=()=>cp($('#snip').textContent));
+    el.querySelectorAll('[data-app]').forEach(b=>b.onclick=()=>{window.__appI=+b.dataset.app;draw()});
+    el.querySelectorAll('[data-rev]').forEach(b=>b.onclick=async()=>{if(confirm('Revoke this key? Apps and chat pages using it will stop working.')){try{await jobApi('/api/keys/delete',{id:b.dataset.rev});window.__newKey='';await draw()}catch(e){toast(e.message)}}});
+    $('#pnew').onclick=()=>openPageEditor(null,ks.keys);
+    el.querySelectorAll('[data-pcp]').forEach(b=>b.onclick=()=>cp(pageLink(b.dataset.pcp)));
+    el.querySelectorAll('[data-ped]').forEach(b=>b.onclick=()=>openPageEditor(pages.find(p=>p.slug===b.dataset.ped),ks.keys));
+    el.querySelectorAll('[data-pdel]').forEach(b=>b.onclick=async()=>{if(confirm('Delete this chat page? Its link stops working.')){try{await jobApi('/api/pages/delete',{slug:b.dataset.pdel});await draw()}catch(e){toast(e.message)}}});
+    $('#provnew').onclick=()=>openProvider(null);
+    el.querySelectorAll('[data-psel]').forEach(r=>r.onchange=()=>{store.set(PROVSELK,r.dataset.psel);PROVFN=null;toast(r.dataset.psel?'Using '+(provActive()||{}).name:'Using AIX Alpha');try{setStatus()}catch{}});
+    el.querySelectorAll('[data-ped2]').forEach(b=>b.onclick=()=>openProvider(provList().find(p=>p.id===b.dataset.ped2)));
+    el.querySelectorAll('[data-pdel2]').forEach(b=>b.onclick=()=>{if(confirm('Remove this custom model?')){store.set(PROVK,provList().filter(p=>p.id!==b.dataset.pdel2));if(store.get(PROVSELK,'')===b.dataset.pdel2)store.set(PROVSELK,'');PROVFN=null;draw()}});
   };
   await draw();
-  apiTimer=setInterval(()=>{if(!$('#vapi').classList.contains('on')){clearInterval(apiTimer);return}if(document.activeElement&&document.activeElement.id==='kname')return;draw()},30000);
+  apiTimer=setInterval(()=>{if(!$('#vapi').classList.contains('on')){clearInterval(apiTimer);return}const a=document.activeElement;if(a&&el.contains(a)&&/INPUT|TEXTAREA|SELECT/.test(a.tagName))return;if(document.querySelector('#dlg[open]'))return;draw()},30000);
 }
 function renderMemory(){
   const el=$('#membody'),L=store.get(MEMK,[])||[];
@@ -2705,7 +2849,7 @@ buildPersonaSel();setStatus();if(S.chats.length)S.cur=S.chats[0].id;renderThread
   try{const hm=location.hash.match(/[#&]t=(aix_[a-f0-9]+)/);if(hm){store.set(TOKK,hm[1]);history.replaceState(null,'',location.pathname+location.search)}}catch{}
   if(!sampleFn)sampleFn=pickEngine();
   if(BACKEND()&&store.get(TOKK,'')){try{const mr=await fetch(BACKEND()+'/api/account/me',{headers:{authorization:'Bearer '+store.get(TOKK,'')}});if(mr.ok){const mj=await mr.json();BAL=mj.credits;UNAME=mj.username||'';EMAIL=mj.email||'';store.set('aix3_email',EMAIL);ISOWNER=!!mj.owner;store.set('aix3_owner',ISOWNER);FREE=!!mj.free_claimed;store.set('aix3_free',FREE);store.set('aix3_user',UNAME)}else if(mr.status===401){store.set(TOKK,'');sampleFn=null}}catch{}}
-  setStatus();if(!sampleFn&&BACKEND()&&!store.get(TOKK,'')&&!embKey()){setTimeout(()=>{try{openAccount(true)}catch{}},400)}
+  setStatus();if(!SHARED&&!sampleFn&&BACKEND()&&!store.get(TOKK,'')&&!embKey()){setTimeout(()=>{try{openAccount(true)}catch{}},400)}
   if(!sampleFn){const pm=$('#pm');pm.style.cursor='pointer';pm.onclick=()=>openKey()}initDb();loadLive().then(()=>{try{rerenderConnCards()}catch{}})})();
 </script>
 </body>

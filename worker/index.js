@@ -306,7 +306,9 @@ async function v1Api(env, req, path) {
   const a = await getUser(env, kr.email);
   if (!a) return oaiErr(env, req, 401, 'Account not found.', 'invalid_api_key');
   if (a.credits <= 0 && !owners(env).includes(a.email)) return oaiErr(env, req, 402, 'Out of credits. Add credits to your AIX account.', 'insufficient_credits');
-  const b = await req.json().catch(() => null);
+  return v1Run(env, req, kr, a, await req.json().catch(() => null));
+}
+async function v1Run(env, req, kr, a, b) {
   if (!b || !Array.isArray(b.messages) || !b.messages.length) return oaiErr(env, req, 400, 'messages array required');
   const txt = (c) => typeof c === 'string' ? c : Array.isArray(c) ? c.map((p) => (p && p.type === 'text' ? p.text : '')).join('') : '';
   const msgs = b.messages.slice(-100).map((m) => ({ role: ['system', 'assistant'].includes(m.role) ? m.role : 'user', content: txt(m.content) })).filter((m) => m.content);
@@ -517,6 +519,77 @@ async function nodeAdmin(env, req, url) {
   return json(env, req, { error: 'unknown view' }, 404);
 }
 
+// ---- Shareable chat pages: a mini AIX chat bound to one of the owner's API keys; visitors spend the owner's credits ----
+let PAGES_READY = false;
+async function ensurePages(env) {
+  if (PAGES_READY) return; await ensureKeys(env);
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS chat_pages(slug TEXT PRIMARY KEY, email TEXT NOT NULL, key_hash TEXT NOT NULL, name TEXT, welcome TEXT, system TEXT, color TEXT, model TEXT, day_cap INTEGER DEFAULT 200, ip_cap INTEGER DEFAULT 20, enabled INTEGER DEFAULT 1, created INTEGER, hits INTEGER DEFAULT 0)').run();
+  await env.DB.prepare('CREATE INDEX IF NOT EXISTS chat_pages_email ON chat_pages(email)').run();
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS page_hits(id INTEGER PRIMARY KEY AUTOINCREMENT, slug TEXT, ip TEXT, at INTEGER)').run();
+  await env.DB.prepare('CREATE INDEX IF NOT EXISTS page_hits_s ON page_hits(slug, at)').run();
+  PAGES_READY = true;
+}
+const pageView = (r) => ({ slug: r.slug, name: r.name, welcome: r.welcome, system: r.system, color: r.color, model: r.model, day_cap: r.day_cap, ip_cap: r.ip_cap, enabled: !!r.enabled, hits: r.hits || 0, created: r.created, key: r.key_hash.slice(0, 12) });
+async function pagesApi(env, req, path) {
+  await ensurePages(env);
+  const m = path.match(/^\/api\/page\/([a-z0-9-]{3,40})(\/chat)?$/);
+  if (m) {
+    const r = await env.DB.prepare('SELECT * FROM chat_pages WHERE slug=?').bind(m[1]).first();
+    if (!r || !r.enabled) return json(env, req, { error: 'This chat page is not available.' }, 404);
+    if (!m[2]) return json(env, req, { name: r.name, welcome: r.welcome, color: r.color });
+    if (req.method !== 'POST') return json(env, req, { error: 'POST only' }, 405);
+    const b = await req.json().catch(() => null);
+    if (!b || !Array.isArray(b.messages)) return json(env, req, { error: 'messages required' }, 400);
+    const ip = req.headers.get('cf-connecting-ip') || 'x', now = Date.now();
+    const day = (await env.DB.prepare('SELECT COUNT(*) AS n FROM page_hits WHERE slug=? AND at>?').bind(r.slug, now - 86400000).first()).n;
+    if (day >= (r.day_cap || 200)) return json(env, req, { error: 'This chat has reached its daily limit. Try again tomorrow.' }, 429);
+    const iph = (await sha(ip)).slice(0, 16);
+    const ipn = (await env.DB.prepare('SELECT COUNT(*) AS n FROM page_hits WHERE slug=? AND ip=? AND at>?').bind(r.slug, iph, now - 3600000).first()).n;
+    if (ipn >= (r.ip_cap || 20)) return json(env, req, { error: 'Slow down: too many messages from you this hour.' }, 429);
+    const kr = await env.DB.prepare('SELECT * FROM api_keys WHERE key_hash=?').bind(r.key_hash).first();
+    if (!kr) return json(env, req, { error: 'This chat page lost its API key.' }, 410);
+    const a = await getUser(env, kr.email);
+    if (!a || (a.credits <= 0 && !owners(env).includes(a.email))) return json(env, req, { error: 'This chat is out of credits. Let the owner know.' }, 402);
+    const msgs = b.messages.slice(-20).filter((x) => x && ['user', 'assistant'].includes(x.role) && typeof x.content === 'string' && x.content.trim()).map((x) => ({ role: x.role, content: x.content.slice(0, 4000) }));
+    if (!msgs.length || msgs[msgs.length - 1].role !== 'user') return json(env, req, { error: 'empty message' }, 400);
+    await env.DB.batch([env.DB.prepare('INSERT INTO page_hits(slug,ip,at) VALUES(?,?,?)').bind(r.slug, iph, now), env.DB.prepare('UPDATE chat_pages SET hits=COALESCE(hits,0)+1 WHERE slug=?').bind(r.slug)]);
+    if (Math.random() < 0.02) { try { await env.DB.prepare('DELETE FROM page_hits WHERE at<?').bind(now - 172800000).run(); } catch (e) {} }
+    const sys = (r.system || '').slice(0, 4000) + '\n\nYou are the assistant of the chat page "' + (r.name || 'Chat') + '". Stay helpful and concise.';
+    return v1Run(env, req, kr, a, { model: r.model === 'aix-alpha-cloud' ? 'aix-alpha-cloud' : 'aix-alpha', stream: true, max_tokens: 900, messages: [{ role: 'system', content: sys }, ...msgs] });
+  }
+  const a = await authed(env, req);
+  if (!a) return json(env, req, { error: 'Sign in first.' }, 401);
+  if (path === '/api/pages' && req.method === 'GET') {
+    const rows = (await env.DB.prepare('SELECT * FROM chat_pages WHERE email=? ORDER BY created DESC').bind(a.email).all()).results || [];
+    return json(env, req, { pages: rows.map(pageView) });
+  }
+  const b = await req.json().catch(() => ({}));
+  if (path === '/api/pages' && req.method === 'POST') {
+    const clamp = (v, lo, hi, d) => Math.max(lo, Math.min(hi, Math.round(Number(v)) || d));
+    const kid = String(b.key || '').replace(/[^0-9a-f]/g, '').slice(0, 12);
+    const kr = kid.length === 12 ? await env.DB.prepare('SELECT key_hash FROM api_keys WHERE email=? AND key_hash LIKE ?').bind(a.email, kid + '%').first() : null;
+    if (!kr) return json(env, req, { error: 'Pick one of your API keys for this page.' }, 400);
+    const f = { name: String(b.name || 'My chat').slice(0, 60), welcome: String(b.welcome || 'Hi! How can I help?').slice(0, 300), system: String(b.system || '').slice(0, 4000), color: /^#[0-9a-f]{6}$/i.test(b.color || '') ? b.color : '#8b5cf6', model: b.model === 'aix-alpha-cloud' ? 'aix-alpha-cloud' : 'aix-alpha', day: clamp(b.day_cap, 10, 5000, 200), ip: clamp(b.ip_cap, 3, 200, 20), en: b.enabled === false ? 0 : 1 };
+    let slug = String(b.slug || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+    if (slug) {
+      const ex = await env.DB.prepare('SELECT email FROM chat_pages WHERE slug=?').bind(slug).first();
+      if (!ex || ex.email !== a.email) return json(env, req, { error: 'Page not found.' }, 404);
+      await env.DB.prepare('UPDATE chat_pages SET key_hash=?,name=?,welcome=?,system=?,color=?,model=?,day_cap=?,ip_cap=?,enabled=? WHERE slug=?').bind(kr.key_hash, f.name, f.welcome, f.system, f.color, f.model, f.day, f.ip, f.en, slug).run();
+      return json(env, req, { slug });
+    }
+    const n = (await env.DB.prepare('SELECT COUNT(*) AS n FROM chat_pages WHERE email=?').bind(a.email).first()).n;
+    if (n >= 10) return json(env, req, { error: 'Limit of 10 chat pages.' }, 400);
+    slug = (f.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 20) || 'chat') + '-' + hex(crypto.getRandomValues(new Uint8Array(3)));
+    await env.DB.prepare('INSERT INTO chat_pages(slug,email,key_hash,name,welcome,system,color,model,day_cap,ip_cap,enabled,created,hits) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0)').bind(slug, a.email, kr.key_hash, f.name, f.welcome, f.system, f.color, f.model, f.day, f.ip, f.en, Date.now()).run();
+    return json(env, req, { slug });
+  }
+  if (path === '/api/pages/delete' && req.method === 'POST') {
+    await env.DB.prepare('DELETE FROM chat_pages WHERE slug=? AND email=?').bind(String(b.slug || ''), a.email).run();
+    return json(env, req, { ok: true });
+  }
+  return json(env, req, { error: 'Unknown page endpoint' }, 404);
+}
+
 export default {
   async scheduled(ev, env, ctx) { ctx.waitUntil(runDueJobs(env).then(() => autoBackup(env))); },
   async fetch(req, env) {
@@ -524,6 +597,7 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(env, req) });
     if (path === '/api/node/admin' && (req.method === 'GET' || req.method === 'POST')) return nodeAdmin(env, req, url);
     if (path.startsWith('/api/keys')) return keysApi(env, req, path);
+    if (path.startsWith('/api/page')) return pagesApi(env, req, path);
     if (path.startsWith('/v1/')) return v1Api(env, req, path);
     if (path.startsWith('/api/jobs')) return jobsApi(env, req, path);
     if (path === '/api/health') return json(env, req, { status: 'ok', engine: 'aix-alpha-cloud', model: MODEL, hasApiKey: !!env.ANTHROPIC_API_KEY });
