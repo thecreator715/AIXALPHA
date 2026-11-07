@@ -8,21 +8,16 @@ die() { printf "\n\033[1;31mERROR: %s\033[0m\n" "$1"; read -n 1 -s -r -p "Press 
 
 [ "$(uname)" = "Darwin" ] || die "This launcher is for macOS."
 
-# 1) Ollama (latest)
+# 1) Ollama (latest). Uses the official prebuilt app, never Homebrew (brew tries to compile it on older macOS and fails)
 say "Checking Ollama"
-if ! command -v ollama >/dev/null 2>&1 && [ ! -x /Applications/Ollama.app/Contents/Resources/ollama ]; then
-  if command -v brew >/dev/null 2>&1; then
-    say "Installing Ollama with Homebrew"; brew install ollama || die "brew install ollama failed"
-  else
-    say "Downloading Ollama.app"
-    curl -fL --progress-bar -o /tmp/Ollama-darwin.zip https://ollama.com/download/Ollama-darwin.zip || die "Could not download Ollama"
-    rm -rf /tmp/ollama-unz && mkdir -p /tmp/ollama-unz && ditto -xk /tmp/Ollama-darwin.zip /tmp/ollama-unz || die "Unzip failed"
-    rm -rf /Applications/Ollama.app && mv /tmp/ollama-unz/Ollama.app /Applications/ || die "Could not move Ollama to Applications"
-  fi
-else
-  command -v brew >/dev/null 2>&1 && brew list ollama >/dev/null 2>&1 && { say "Updating Ollama"; brew upgrade ollama >/dev/null 2>&1; }
+if [ ! -x /Applications/Ollama.app/Contents/Resources/ollama ] && ! command -v ollama >/dev/null 2>&1; then
+  say "Downloading Ollama.app (official build)"
+  curl -fL --progress-bar -o /tmp/Ollama-darwin.zip https://ollama.com/download/Ollama-darwin.zip || die "Could not download Ollama"
+  rm -rf /tmp/ollama-unz && mkdir -p /tmp/ollama-unz && ditto -xk /tmp/Ollama-darwin.zip /tmp/ollama-unz || die "Unzip failed"
+  rm -rf /Applications/Ollama.app && mv /tmp/ollama-unz/Ollama.app /Applications/ || die "Could not move Ollama to Applications"
+  xattr -dr com.apple.quarantine /Applications/Ollama.app 2>/dev/null
 fi
-OLLAMA="$(command -v ollama || echo /Applications/Ollama.app/Contents/Resources/ollama)"
+if [ -x /Applications/Ollama.app/Contents/Resources/ollama ]; then OLLAMA=/Applications/Ollama.app/Contents/Resources/ollama; else OLLAMA="$(command -v ollama)"; fi
 [ -x "$OLLAMA" ] || die "Ollama binary not found"
 
 # 2) start Ollama server if not running
