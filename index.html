@@ -2168,6 +2168,22 @@ function renderAbout(skip){
   </section>
 
   <section class="ap-sec">
+    <div class="ap-head rv"><div class="ap-eyebrow">New in this update</div><h2>More you can do in chat.</h2></div>
+    <div class="ap-grid">${[
+     ['📄','#34d399','#059669','Create files','Ask for a PDF, Word, Excel, CSV, Markdown, text or ZIP file. It is built on your device, costs no credits, and shows a preview with a Download button.'],
+     ['🔎','#60a5fa','#2563eb','Read your files','Attach PDF, Word, Excel, text or code files and ask about them. Images work too from the paperclip or the camera button.'],
+     ['🗂','#a78bfa','#7c3aed','Workspaces','Group chats under a workspace with its own instructions, such as tone, audience or project facts, that every chat inside follows.'],
+     ['☁','#2dd4bf','#0d9488','Cloud sync','Signed in, your chats and workspaces follow you across phone and computer.'],
+     ['⚡','#fbbf24','#d97706','Turbo','App and website builds run on Claude Haiku 5.5 in the cloud instead of your Mac node, for the same credits.'],
+     ['🧊','#f472b6','#db2777','3D downloads','Download any 3D model from chat as STL, OBJ or FBX.'],
+     ['⑂','#fb923c','#ea580c','Branching','Copy a chat from any message into a new one and try another direction. The original stays put.'],
+     ['💡','#94a3b8','#475569','Follow-up chips','One-tap next steps after each reply, picked locally, so they cost nothing.'],
+     ['◧','#34d399','#059669','Canvas','Open any HTML app from a reply in a live side panel next to the chat.'],
+     ['🎙','#60a5fa','#2563eb','Talk mode','Hands-free voice conversation. It listens, answers aloud, then listens again.']
+    ].map(c=>`<article class="ap-card s2 rv" style="min-height:0">${tile(c[0],c[1],c[2])}<h3>${c[3]}</h3><p>${c[4]}</p></article>`).join('')}</div>
+  </section>
+
+  <section class="ap-sec">
     <div class="ap-head rv"><div class="ap-eyebrow">The chat bar</div><h2>What every button does.</h2></div>
     <div class="ap-grid">${[
      ['<b class="mono">AUTO · ECO · BALANCED · THOROUGH</b>','Reply depth. ECO is the cheapest and fastest. BALANCED is the everyday default. THOROUGH thinks hardest for tough questions. AUTO picks the right one for each message.'],
@@ -2181,6 +2197,13 @@ function renderAbout(skip){
      [ico('coins')+' Credits','Shows the estimated credit cost of a reply in each mode before you send.'],
      ['<b class="mono">0.0</b> meter','Credits spent in this chat so far. The green ring fills toward your per-chat cap.']
     ].map(c=>`<article class="ap-card s2 rv" style="min-height:0"><h3 style="display:flex;align-items:center;gap:8px;font-size:17px">${c[0]}</h3><p>${c[1]}</p></article>`).join('')}</div>
+  </section>
+
+  <section class="ap-sec">
+    <div class="ap-head rv"><div class="ap-eyebrow">How it compares</div><h2>AIX Alpha next to the big three.</h2></div>
+    <div class="rv" style="overflow-x:auto;border:1px solid rgba(255,255,255,.1);border-radius:24px;background:rgba(255,255,255,.03)">
+    <table style="width:100%;min-width:720px;border-collapse:collapse;font-size:14px;line-height:1.5"><thead><tr>${['', 'AIX Alpha','ChatGPT','Claude','Grok'].map((h,i)=>`<th style="text-align:left;padding:16px 18px;font-weight:700;color:${i===1?'#34d399':'#e4e4e7'};border-bottom:1px solid rgba(255,255,255,.1);${i===1?'background:rgba(52,211,153,.07)':''}">${h}</th>`).join('')}</tr></thead><tbody>${[["How you pay", "Credits. Pay as you go, no subscription", "Monthly subscription", "Monthly subscription", "Monthly subscription"], ["Typical entry price", "$9.99 for 100 credits", "Free, then $8 to $20 a month", "Free, then $20 a month ($17 on annual)", "Free, then about $8 to $30 a month"], ["Top consumer tier", "Just buy more credits", "$100 to $500 a month", "$100 or $200 a month", "$200 to $300 a month"], ["Cost shown before you send", "Yes, per mode and per reply", "No", "No", "No"], ["Free replies with no model call", "Yes: dates, math, 3D shapes, files, reminders (0 tokens)", "No", "No", "No"], ["Bring your own model or API key", "Yes: any OpenAI-compatible URL, Hugging Face, Groq and more", "No", "No", "No"], ["Run replies on your own machine", "Yes, with the Alpha Node", "No", "No", "No"], ["Share a chat page with your own look", "Yes, on your credits", "Share links only", "Share links only", "Share links only"], ["Pick the model and depth per reply", "Yes: Eco, Balanced, Thorough or Auto", "Model picker on paid plans", "Model picker", "Model picker"]].map(r=>`<tr>${r.map((c,i)=>`<td style="padding:14px 18px;vertical-align:top;border-bottom:1px solid rgba(255,255,255,.06);color:${i===0?'#a1a1aa':i===1?'#e4e4e7':'#9a9aa3'};${i===0?'font-weight:600;width:20%':''}${i===1?'background:rgba(52,211,153,.07)':''}">${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+    <p class="rv" style="margin:16px 4px 0;font-size:13px;line-height:1.6;color:#8b8b95">Where the others are stronger: ChatGPT, Claude and Grok are full products with their own frontier models, native mobile apps, and large ecosystems of connected tools. AIX Alpha is a workspace that routes to Claude Haiku 5.5 in the cloud, your Mac node, or a model you bring, so it is not a replacement for their largest models. Prices are public list prices checked on November 7, 2026 and change often, so check each vendor before you buy.</p>
   </section>
 
   <section class="ap-sec">
