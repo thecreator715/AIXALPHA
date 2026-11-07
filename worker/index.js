@@ -11,7 +11,7 @@ const cors = (env, req) => {
   const allow = (env.ALLOWED_ORIGINS || '*').split(',').map((s) => s.trim());
   const o = req.headers.get('origin') || '';
   const ok = allow.includes('*') ? '*' : allow.includes(o) ? o : '';
-  return { 'access-control-allow-origin': ok, 'access-control-allow-headers': 'content-type, authorization, x-admin-token', 'access-control-allow-methods': 'GET,POST,OPTIONS', vary: 'Origin' };
+  return { 'access-control-allow-origin': ok, 'access-control-allow-headers': 'content-type, authorization, x-admin-token, x-meter', 'access-control-allow-methods': 'GET,POST,OPTIONS', vary: 'Origin' };
 };
 const json = (env, req, body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...cors(env, req) } });
 const sha = async (s) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(s)))].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -27,6 +27,11 @@ const pbk = async (pw, salt) => hex(new Uint8Array(await crypto.subtle.deriveBit
 const newToken = () => 'aix_' + hex(crypto.getRandomValues(new Uint8Array(24)));
 async function startSession(env, email) { const t = newToken(); await env.DB.prepare('INSERT INTO sessions(token_hash,email,created) VALUES(?,?,?)').bind(await sha(t), email, new Date().toISOString()).run(); return t; }
 async function authed(env, req) {
+  const a = await authed0(env, req);
+  if (a && req.headers.get('x-meter') === '1') a.meter = true;   // owner opted to be charged like a member (for testing credits)
+  return a;
+}
+async function authed0(env, req) {
   const h = req.headers.get('authorization') || '';
   const t = h.startsWith('Bearer ') ? h.slice(7).trim() : '';
   if (!t) return null;
@@ -40,7 +45,7 @@ const costUsd = (u) => (u.searches || 0) * SEARCH_USD + ((u.input || 0) * PRICE.
 // Atomic in SQL: no lost updates when requests overlap.
 async function charge(env, a, usage) {
   const cr = costUsd(usage) / CREDIT_USD, now = new Date().toISOString(), tok = (usage.input || 0) + (usage.output || 0);
-  const owner = owners(env).includes(a.email);
+  const owner = owners(env).includes(a.email) && !a.meter;
   await env.DB.batch([
     env.DB.prepare('UPDATE users SET credits=' + (owner ? 'credits' : 'MAX(0,credits-?)') + ', tokens=tokens+?, requests=requests+1, last=? WHERE email=?').bind(...(owner ? [tok, now, a.email] : [cr, tok, now, a.email])),
     env.DB.prepare('INSERT INTO usage(email,at,input,output,credits) VALUES(?,?,?,?,?)').bind(a.email, now, usage.input || 0, usage.output || 0, owner ? 0 : cr),
@@ -52,11 +57,11 @@ async function charge(env, a, usage) {
 async function sample(env, req) {
   const a = await authed(env, req);
   if (!a) return json(env, req, { error: 'Sign in to use AIX.' }, 401);
-  if (a.credits <= 0 && !owners(env).includes(a.email)) return json(env, req, { error: 'Out of credits. Top up to continue.' }, 402);
+  if (a.credits <= 0 && !(owners(env).includes(a.email) && !a.meter)) return json(env, req, { error: 'Out of credits. Top up to continue.' }, 402);
   const b = await req.json().catch(() => ({}));
   const prompt = String(b.prompt || ''); if (!prompt) return json(env, req, { error: 'prompt required' }, 400);
   const stream = !!b.stream;
-  const owner = owners(env).includes(a.email);
+  const owner = owners(env).includes(a.email) && !a.meter;
   const search = !!b.search && (owner || a.credits >= SEARCH_MIN_CREDITS);
   const content = (Array.isArray(b.images) ? b.images.slice(0, 4) : []).map((i) => ({ type: 'image', source: { type: 'base64', media_type: String(i.media_type || 'image/png'), data: String(i.data || '') } }));
   content.push({ type: 'text', text: prompt });
@@ -236,7 +241,7 @@ async function image(env, req) {
   const prompt = String(b.prompt || '').slice(0, 1000).trim();
   if (!prompt) return json(env, req, { error: 'Describe the image' }, 400);
   const kind = IMG_MODELS[b.model] ? b.model : 'flux', cost = IMG_MODELS[kind].cr;
-  const owner = owners(env).includes(a.email);
+  const owner = owners(env).includes(a.email) && !a.meter;
   if (!owner) {
     const up = await env.DB.prepare('UPDATE users SET credits=credits-? WHERE email=? AND credits>=?').bind(cost, a.email, cost).run();
     if (!(up.meta && up.meta.changes > 0)) return json(env, req, { error: 'Out of credits. ' + IMG_MODELS[kind].label + ' costs ' + cost + ' credit' + (cost > 1 ? 's' : '') + '.' }, 402);
@@ -301,7 +306,7 @@ async function video(env, req) {
   let b; try { b = await req.json(); } catch { return json(env, req, { error: 'bad request' }, 400); }
   const prompt = String(b.prompt || '').slice(0, 500).trim();
   if (!b.image || String(b.image).length > 6e6) return json(env, req, { error: 'Add a start image (under ~4 MB).' }, 400);
-  const owner = owners(env).includes(a.email);
+  const owner = owners(env).includes(a.email) && !a.meter;
   if (!owner) {
     const up = await env.DB.prepare('UPDATE users SET credits=credits-? WHERE email=? AND credits>=?').bind(VIDEO_CR, a.email, VIDEO_CR).run();
     if (!(up.meta && up.meta.changes > 0)) return json(env, req, { error: 'Out of credits. A video clip costs ' + VIDEO_CR + ' credits.' }, 402);

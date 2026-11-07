@@ -616,6 +616,8 @@ function embKey(){const m=document.querySelector('meta[name=aix-embedded-key]');
 function pickEngine(){if(embKey()){store.set(KEYK,embKey());return directSample()}if(BACKEND()&&store.get(TOKK,''))return backendSample();if(store.get(KEYK,''))return directSample();return nodeOn()?nodeSample():null}
 
 /* ===== Local node: your own Mac Studio (Ollama) as the engine ===== */
+const METER=()=>store.get('aix3_meter',false);const OWNF=()=>ISOWNER&&!METER();
+const _fetch0=window.fetch.bind(window);window.fetch=(u,o)=>{try{if(METER()&&BACKEND()&&String(u).startsWith(BACKEND())){o={...(o||{}),headers:{...((o&&o.headers)||{}),'x-meter':'1'}}}}catch{}return _fetch0(u,o)};
 const NODEDEF={url:'http://localhost:8787',token:'',model:'qwen2.5-coder:32b',on:true,all:false,auto:true};const nodeCfg=()=>store.get('aix3_node',null)||(ISOWNER?NODEDEF:null);let NODEDOWN=0;const nodeOn=()=>{const c=nodeCfg();return !!(c&&c.on&&c.url&&c.model)};let NODEFN=null;const nodeForMode=()=>nodeOn()&&Date.now()-NODEDOWN>60000&&(nodeCfg().all||S.mode==='eco'||S.mode==='balanced');
 function nodeSample(){
   const f=async(prompt,o)=>{const c=nodeCfg();const base=c.url.replace(/\/+$/,'');
@@ -637,10 +639,11 @@ $('#npair').onclick=()=>{store.set('aix3_node',cfg);NODEFN=null;sampleFn=pickEng
 function openNode(){
   const c=nodeCfg()||{url:'http://localhost:8787',token:'',model:'qwen2.5-coder:32b',on:false};
   const d=dialog(`<h3 style="margin:0 0 8px">Local node (Mac Studio)</h3><p style="font-size:12.5px;color:var(--m);margin:0 0 8px">Point AIX at your own machine. Replies run on your hardware: no credits, no API key. Start it with <code>AIX_TOKEN=secret node server.js</code> (file: node/server.js in the repo) and keep Ollama running.</p>
-  <label>Node URL (https if you use Tailscale or a tunnel)</label><input id="nu" value="${esc(c.url)}"><label>Token (AIX_TOKEN)</label><input id="nt" type="password" value="${esc(c.token||'')}"><label>Model name (as in <code>ollama list</code>)</label><input id="nm" value="${esc(c.model)}">
+  <label>Paste pairing link (from aix-pair-link.txt, or copied by the launcher)</label><div style="display:flex;gap:6px"><input id="npl" placeholder="https://…#node=…&token=…"><button class="btn2" id="nplb">Fill</button></div><label>Node URL (https if you use Tailscale or a tunnel)</label><input id="nu" value="${esc(c.url)}"><label>Token (AIX_TOKEN)</label><input id="nt" type="password" value="${esc(c.token||'')}"><label>Model name (as in <code>ollama list</code>)</label><input id="nm" value="${esc(c.model)}">
   <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input id="non" type="checkbox" ${c.on?'checked':''} style="width:auto"> Use my node for ECO and BALANCED replies (same credits)</label><label style="display:flex;gap:8px;align-items:center;margin-top:6px"><input id="nall" type="checkbox" ${c.all?'checked':''} style="width:auto"> Also use it for THOROUGH and AUTO (cloud otherwise)</label><div class="mono" id="nst" style="font-size:11px;margin:8px 0;min-height:16px"></div>
   <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn2" id="ntest">Test</button><button class="btn2" data-close>Cancel</button><button class="btn" id="nsave">Save</button></div>`);
   const read=()=>({url:$('#nu').value.trim(),token:$('#nt').value.trim(),model:$('#nm').value.trim(),on:$('#non').checked,all:$('#nall').checked});
+  $('#nplb').onclick=()=>{try{const h=new URLSearchParams($('#npl').value.split('#')[1]||'');if(!h.get('node'))return toast('No node info in that link');$('#nu').value=h.get('node');$('#nt').value=h.get('token')||'';$('#nm').value=h.get('model')||$('#nm').value;$('#non').checked=true;toast('Filled. Press Test, then Save.')}catch{toast('Could not read the link')}};
   $('#ntest').onclick=async()=>{const v=read(),st=$('#nst');st.textContent='Testing…';try{const r=await fetch(v.url.replace(/\/+$/,'')+'/v1/chat/completions',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+v.token},body:JSON.stringify({model:v.model,max_tokens:8,messages:[{role:'user',content:'Say ok'}]})});const j=await r.json();st.innerHTML=r.ok?'<span style="color:#34d399">Connected. Model replied: '+esc(((j.choices||[])[0]||{}).message?.content||'')+'</span>':'<span style="color:#f87171">'+esc(JSON.stringify(j.error||j))+'</span>'}catch(e){st.innerHTML='<span style="color:#f87171">Cannot reach node: '+esc(e.message)+'</span>'}};
   $('#nsave').onclick=()=>{const v=read();store.set('aix3_node',v);NODEFN=null;sampleFn=pickEngine();setStatus();try{updateMeter()}catch{}toast(v.on?'Using your node: '+v.model:'Node saved (off)');d.close()}}
 let UNAME=store.get('aix3_user','');
@@ -653,7 +656,7 @@ async function loadPayLinks(){try{const r=await fetch(BACKEND()+'/api/config');i
 function payUrl(id){const u=PAYLINKS[id];if(!u)return '';try{const x=new URL(u);if(EMAIL)x.searchParams.set('client_reference_id',EMAIL);if(UNAME&&UNAME.includes('@'))x.searchParams.set('prefilled_email',UNAME);return x.toString()}catch{return u}}
 function pmClick(){
   if(!BACKEND()||!store.get(TOKK,'')||!UNAME)return openAccount(true);
-  if(!ISOWNER&&BAL!=null&&BAL<=0)return openCredits('pill');
+  if(!OWNF()&&BAL!=null&&BAL<=0)return openCredits('pill');
   openAccount()}
 async function openCredits(reason){
   if(!BACKEND()||!store.get(TOKK,'')||!UNAME)return openAccount(true);
@@ -702,10 +705,10 @@ function openKey(force){if(!force)return openAccount();
 async function ask(promptStr,onText,signal,images,tools){
   let eng=null;if(nodeForMode()&&!(images&&images.length))eng=nodeWrap();
   if(!eng){if(!sampleFn)sampleFn=pickEngine();eng=sampleFn;if(!eng&&nodeOn())eng=nodeWrap()}
-  if(eng&&BACKEND()&&store.get(TOKK,'')&&!ISOWNER&&BAL!=null&&BAL<=0&&!embKey()){setTimeout(()=>openCredits('out'),60);throw new Error('You are out of credits. Add credits or claim your free credit to continue (a window just opened).')}
+  if(eng&&BACKEND()&&store.get(TOKK,'')&&!OWNF()&&BAL!=null&&BAL<=0&&!embKey()){setTimeout(()=>openCredits('out'),60);throw new Error('You are out of credits. Add credits or claim your free credit to continue (a window just opened).')}
   if(!eng){try{openKey()}catch{}throw new Error('AIX is offline. Add your API key (Settings, or tap OFFLINE) to bring it online.')}
-  const o={modelTier:'quick',cache:false,onText,signal,search:!!onText&&!!S.web&&(!BACKEND()||ISOWNER||BAL==null||BAL>=8)};
-  if(S.web&&onText&&BACKEND()&&!ISOWNER&&BAL!=null&&BAL<8){try{toast('Live web needs 8+ credits. Answering without it.')}catch{}}
+  const o={modelTier:'quick',cache:false,onText,signal,search:!!onText&&!!S.web&&(!BACKEND()||OWNF()||BAL==null||BAL>=8)};
+  if(S.web&&onText&&BACKEND()&&!OWNF()&&BAL!=null&&BAL<8){try{toast('Live web needs 8+ credits. Answering without it.')}catch{}}
   try{if(images&&images.length&&eng.limits&&(await eng.limits()).images)o.images=images}catch{}
   if(tools&&tools.length)o.tools=tools;
   return eng(promptStr,o);
@@ -970,9 +973,9 @@ function openHub(){
 }
 function openSettings(){
   const d=dialog(`<h3 style="margin:0 0 8px">Credit caps</h3><label>Per request (credits)</label><input id="c1" type="number" step="1" value="${capCr(S.caps.req)}"><label>Per chat (credits)</label><input id="c2" type="number" step="1" value="${capCr(S.caps.ses)}"><label>Per day (credits)</label><input id="c3" type="number" step="10" value="${capCr(S.caps.day)}">
-  <button class="btn2" id="keyb" style="margin:4px 0 8px">Account / go online</button> <button class="btn2" id="nodeb" style="margin:4px 0 8px">Local node (Mac Studio)</button><div style="display:flex;gap:8px;justify-content:space-between"><button class="btn2" id="wipe">Delete all chats</button><span><button class="btn2" data-close>Cancel</button> <button class="btn" id="ssave">Save</button></span></div>`);
+  <button class="btn2" id="keyb" style="margin:4px 0 8px">Account / go online</button><label style="display:flex;gap:8px;align-items:center;margin:4px 0 8px"><input id="metr" type="checkbox" ${METER()?'checked':''} style="width:auto"> Charge my admin account like a member (test credits)</label> <button class="btn2" id="nodeb" style="margin:4px 0 8px">Local node (Mac Studio)</button><div style="display:flex;gap:8px;justify-content:space-between"><button class="btn2" id="wipe">Delete all chats</button><span><button class="btn2" data-close>Cancel</button> <button class="btn" id="ssave">Save</button></span></div>`);
   $('#ssave').onclick=()=>{S.caps={req:(+$('#c1').value||7)*CR,ses:(+$('#c2').value||178)*CR,day:(+$('#c3').value||1428)*CR};store.set('aix3_caps',S.caps);updateMeter();d.close()};
-  $('#keyb').onclick=()=>{d.close();openKey()};$('#nodeb').onclick=()=>{d.close();openNode()};
+  $('#keyb').onclick=()=>{d.close();openKey()};$('#metr').onchange=()=>{store.set('aix3_meter',$('#metr').checked);try{setStatus();updateMeter()}catch{}toast($('#metr').checked?'Admin is now metered like a member':'Admin is free again')};$('#nodeb').onclick=()=>{d.close();openNode()};
   $('#wipe').onclick=()=>{S.chats=[];S.cur=null;save();renderThreads();renderMsgs();d.close()};
 }
 function openAbout(){dialog(`<h3 style="margin:0 0 6px">AIX ALPHA v3.0</h3><div class="body" style="font-size:13px;color:#d4d4d8"><p>The full v2 suite rebuilt around a token-saving loop engine, running inside this page. Usage is shown in <b>credits</b>.</p>

@@ -86,6 +86,8 @@ cat <<MSG
 
   Leave this window open while you use the app. Close it (or press Ctrl+C) to stop.
 MSG
+printf %s "$LINK" | pbcopy 2>/dev/null
+echo "  (Pairing link copied to your clipboard: paste it in AIX Alpha > Settings > Local node)"
 open "$LINK"
 trap 'kill $NODE_PID 2>/dev/null' EXIT
 wait $NODE_PID
