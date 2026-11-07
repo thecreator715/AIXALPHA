@@ -74,11 +74,20 @@ if [ ! -x runtime/cloudflared ]; then
   mkdir -p runtime && curl -fL --progress-bar "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-$ARCH.tgz" | tar -xz -C runtime 2>/dev/null
 fi
 if [ -x runtime/cloudflared ]; then
-  : > tunnel.log
-  nohup runtime/cloudflared tunnel --no-autoupdate --url "http://localhost:$PORT" >> tunnel.log 2>&1 &
-  TUN_PID=$!
-  for i in $(seq 1 40); do T=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' tunnel.log | head -1); [ -n "$T" ] && break; sleep 1; done
-  [ -n "$T" ] && URL="$T"
+  chmod +x runtime/cloudflared; xattr -dr com.apple.quarantine runtime/cloudflared 2>/dev/null
+  # an empty config makes the quick tunnel ignore any ~/.cloudflared/config.yml (named tunnels such as LUMA's make quick tunnels fail otherwise)
+  printf '# intentionally empty: quick tunnel only\n' > runtime/empty.yml
+  for TRY in 1 2 3; do
+    : > tunnel.log; T=""
+    nohup runtime/cloudflared tunnel --config "$PWD/runtime/empty.yml" --no-autoupdate --url "http://localhost:$PORT" >> tunnel.log 2>&1 &
+    TUN_PID=$!
+    for i in $(seq 1 40); do T=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' tunnel.log | head -1); [ -n "$T" ] && break; kill -0 $TUN_PID 2>/dev/null || break; sleep 1; done
+    if [ -n "$T" ]; then URL="$T"; break; fi
+    echo "  Tunnel attempt $TRY did not start. cloudflared said:"; tail -4 tunnel.log | sed 's/^/    /'
+    kill $TUN_PID 2>/dev/null; TUN_PID=""; sleep 3
+  done
+else
+  echo "  cloudflared is missing (download failed?) - the cloud cannot reach this Mac without it."
 fi
 if [ -z "$TUN_PID" ] && { command -v tailscale >/dev/null 2>&1 || [ -x /Applications/Tailscale.app/Contents/MacOS/Tailscale ]; }; then
   TS=$(command -v tailscale || echo /Applications/Tailscale.app/Contents/MacOS/Tailscale)
