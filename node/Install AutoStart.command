@@ -18,4 +18,4 @@ EOF
 launchctl unload "$PLIST" 2>/dev/null; launchctl load "$PLIST"
 echo "AutoStart installed. The AIX node now runs in the background at login. Logs: $DIR/node.log"
 echo "To remove: launchctl unload \"$PLIST\" && rm \"$PLIST\""
-read -n 1 -s -r -p "Press any key to close"
+[ "$1" = "--silent" ] || read -n 1 -s -r -p "Press any key to close"
