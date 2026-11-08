@@ -76,3 +76,9 @@
 - Studio: template gallery, 🚀 Publish (opens site deploy prefilled), 🧪 Auto-test (clicks every control, reports errors, Fix with Alpha), 🕘 Timeline slider with live preview and restore.
 - Credits: 80%/100% cap alerts, low-balance reminder with one-tap Top up, usage CSV and printable PDF report, referral dashboard summary, team credits (`/api/team*`: owner allocates credits to members with a per-member limit).
 - Host: multiple hosts can register (`.aix-node-id`, optional `.aix-priority`); cloud uses the lowest priority online host and fails over to the next. Status page shows hosts, 24h uptime chart and response times.
+
+## Admin suite 2 + backend efficiency (node v15)
+- Control panel: new Ops, Growth, Money+, Controls and Security tabs covering live dashboard, host fleet (remote restart), incident timeline, SLA/error budget, slow & failed explorer, cohorts, funnel, saved segments + bulk actions, read-only view-as-user, revenue forecast, margin per mode, refunds/chargebacks, promo codes, affiliate payouts, safety overview, rate-limit rules, IP/device blocklist, suspicious logins, announcements, feature flags, scheduled admin jobs, two-person approval, 2-step admin sign-in with session list, export-everything and backup restore test.
+- Worker: buffered request log (one batch write instead of one write per request), new D1 indexes, hourly pruning + PRAGMA optimize, charge() uses RETURNING (one fewer read per reply), public /api/announcements, /api/flags, /api/promo/redeem.
+- Web search now bills ~3.5 credits (min balance 4).
+- App: announcements banner, redeem-code button, desktop More button, mobile menu scrolls and fits.

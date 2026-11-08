@@ -37,24 +37,27 @@ async function authed0(env, req) {
   const t = h.startsWith('Bearer ') ? h.slice(7).trim() : '';
   if (!t) return null;
   const th = await sha(t);
-  const hit = AUTH_C.get(th); if (hit && Date.now() - hit.t < 20000) return { ...hit.a };
+  const hit = AUTH_C.get(th); if (hit && Date.now() - hit.t < 20000) { A2W.set(req, hit.a.email); return { ...hit.a }; }
   const u = (await env.DB.prepare('SELECT u.* FROM sessions s JOIN users u ON u.email=s.email WHERE s.token_hash=?').bind(th).first()) || (await env.DB.prepare('SELECT * FROM users WHERE token_hash=?').bind(th).first());
-  if (u) { if (AUTH_C.size > 200) AUTH_C.clear(); AUTH_C.set(th, { t: Date.now(), a: u }); }
+  if (u) { if (AUTH_C.size > 200) AUTH_C.clear(); AUTH_C.set(th, { t: Date.now(), a: u }); A2W.set(req, u.email); }
   return u;
 }
-const SEARCH_USD = 0.01;            // Anthropic web search: $10 per 1,000 searches (~7 credits each)
-const SEARCH_MIN_CREDITS = 8;       // a user needs at least this balance to allow live search on a reply
+const SEARCH_USD = 0.0049;          // billed to users at ~3.5 credits per search (Anthropic's own cost is $0.01)
+const SEARCH_MIN_CREDITS = 4;       // a user needs at least this balance to allow live search on a reply
 const costUsd = (u) => (u.searches || 0) * SEARCH_USD + ((u.input || 0) * PRICE.in + (u.output || 0) * PRICE.out + (u.cacheRead || 0) * PRICE.cr + (u.cacheWrite || 0) * PRICE.cw) / 1e6;
 
 // Atomic in SQL: no lost updates when requests overlap.
 async function charge(env, a, usage) {
   const cr = costUsd(usage) / CREDIT_USD, now = new Date().toISOString(), tok = (usage.input || 0) + (usage.output || 0);
   const owner = owners(env).includes(a.email) && !a.meter;
-  await env.DB.batch([
-    env.DB.prepare('UPDATE users SET credits=' + (owner ? 'credits' : 'MAX(0,credits-?)') + ', tokens=tokens+?, requests=requests+1, last=? WHERE email=?').bind(...(owner ? [tok, now, a.email] : [cr, tok, now, a.email])),
+  const st = [
+    env.DB.prepare('UPDATE users SET credits=' + (owner ? 'credits' : 'MAX(0,credits-?)') + ', tokens=tokens+?, requests=requests+1, last=? WHERE email=? RETURNING credits').bind(...(owner ? [tok, now, a.email] : [cr, tok, now, a.email])),
     env.DB.prepare('INSERT INTO usage(email,at,input,output,credits) VALUES(?,?,?,?,?)').bind(a.email, now, usage.input || 0, usage.output || 0, owner ? 0 : cr),
-  ]);
-  const f = await getUser(env, a.email);
+  ];
+  if (usage.mode) { try { await ensureA2(env); st.push(env.DB.prepare('INSERT INTO mode_usage(day,mode,n,tokens,credits) VALUES(?,?,1,?,?) ON CONFLICT(day,mode) DO UPDATE SET n=n+1, tokens=tokens+excluded.tokens, credits=credits+excluded.credits').bind(now.slice(0, 10), usage.mode, tok, owner ? 0 : cr)); } catch (e) { /* tracking is optional */ } }
+  const rs = await env.DB.batch(st);
+  const row = rs && rs[0] && rs[0].results && rs[0].results[0];   // RETURNING saves a second read on every reply
+  const f = row && row.credits != null ? row : await getUser(env, a.email);
   return { credits: +Number(f.credits).toFixed(2), spentCredits: +cr.toFixed(3), searches: usage.searches || 0 };
 }
 
@@ -153,7 +156,7 @@ async function viaNode1(env, req, a, nd, prompt, stream, maxTok, mode, images) {
   const inTok = Math.ceil(prompt.length / 4);
   if (!stream) {
     const j = await up.json().catch(() => null); if (!j) return null; const ch = (j.choices || [])[0] || {}; const text = (ch.message && ch.message.content) || '';
-    const bill = await charge(env, a, { input: j.usage?.prompt_tokens || inTok, output: j.usage?.completion_tokens || Math.ceil(text.length / 4) });
+    const bill = await charge(env, a, { input: j.usage?.prompt_tokens || inTok, output: j.usage?.completion_tokens || Math.ceil(text.length / 4), mode });
     return json(env, req, { text, truncated: ch.finish_reason === 'length', engine: 'node', ...bill });
   }
   let buf = '', outChars = 0; const dec = new TextDecoder();
@@ -162,7 +165,7 @@ async function viaNode1(env, req, a, nd, prompt, stream, maxTok, mode, images) {
       buf += dec.decode(chunk, { stream: true }); const lines = buf.split('\n'); buf = lines.pop();
       for (const ln of lines) if (ln.startsWith('data:') && !ln.includes('[DONE]')) { try { const e = JSON.parse(ln.slice(5)); const t = e.choices?.[0]?.delta?.content; if (t) { outChars += t.length; ctl.enqueue(enc.encode('data: ' + JSON.stringify({ type: 'content_block_delta', delta: { type: 'text_delta', text: t } }) + '\n\n')); } } catch {} }
     },
-    async flush(ctl) { const bill = await charge(env, a, { input: inTok, output: Math.ceil(outChars / 4) }); ctl.enqueue(enc.encode('data: ' + JSON.stringify({ type: 'aix_balance', engine: 'node', ...bill }) + '\n\n')); },
+    async flush(ctl) { const bill = await charge(env, a, { input: inTok, output: Math.ceil(outChars / 4), mode }); ctl.enqueue(enc.encode('data: ' + JSON.stringify({ type: 'aix_balance', engine: 'node', ...bill }) + '\n\n')); },
   });
   return new Response(up.body.pipeThrough(ts), { headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', ...cors(env, req) } });
 }
@@ -546,6 +549,8 @@ async function nodeAdmin(env, req, url) {
   const R = (o) => { const s = JSON.stringify(o); if (GETQ) { if (NA_C.size > 40) NA_C.clear(); NA_C.set(ck, { t: Date.now(), b: s }); } return new Response(s, { headers: { 'content-type': 'application/json', ...cors(env, req) } }); };
   if (req.method === 'POST' && !['user_note', 'ticket_reply', 'alert_ack', 'alert_test', 'config_set', 'restore'].includes(what)) { let ad = ''; try { ad = JSON.stringify(await req.clone().json()).slice(0, 300); } catch (e) {} await audit(env, req, what, url.searchParams.get('email') || url.searchParams.get('id') || '', ad.replace(/"(password|pw|text)":"[^"]*"/g, '')); }
   if (req.method === 'POST' && ['user_note', 'ticket_reply'].includes(what)) await audit(env, req, what, url.searchParams.get('id') || '', '');
+  if (!GETQ) NA_C.clear();
+  { const t2 = await admin2(env, req, what, url, { q, one, R, iso, now }); if (t2) return t2; }
   { const t = await adminTools(env, req, what, url, { q, one, R, iso, now }); if (t) return t; }
   if (what === 'overview') {
     const us = await one('SELECT COUNT(*) AS n, COALESCE(SUM(credits),0) AS cr FROM users');
@@ -1331,6 +1336,482 @@ async function supportApi(env, req, path) {
   return json(env, req, { error: 'not found' }, 404);
 }
 // Admin-side handlers (called from nodeAdmin with its helpers). Returns a Response or null when `what` is not an admin-tools call.
+// ===== Admin suite 2: live ops, fleet, growth, money, safety and controls (25 panel features) + backend efficiency =====
+const A2W = new WeakMap();   // request -> signed-in email (set by authed0) so the request log can name users
+let A2_READY = false;
+const A2S = { t: 0, ips: new Map(), rules: [], buf: [], flushT: Date.now(), hits: new Map(), ann: null, annT: 0, flags: null, flagsT: 0 };
+async function ensureA2(env) {
+  if (A2_READY) return;
+  const T = [
+    'CREATE TABLE IF NOT EXISTS reqlog(id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, path TEXT, status INTEGER, ms INTEGER, email TEXT, ip TEXT, ua TEXT)',
+    'CREATE INDEX IF NOT EXISTS reqlog_at ON reqlog(at)', 'CREATE INDEX IF NOT EXISTS reqlog_st ON reqlog(status, at)',
+    'CREATE TABLE IF NOT EXISTS mode_usage(day TEXT, mode TEXT, n INTEGER DEFAULT 0, tokens INTEGER DEFAULT 0, credits REAL DEFAULT 0, PRIMARY KEY(day, mode))',
+    'CREATE TABLE IF NOT EXISTS grants(id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, at INTEGER, credits REAL, note TEXT)',
+    'CREATE TABLE IF NOT EXISTS backups(id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, rows INTEGER, bytes INTEGER, kind TEXT, data TEXT)',
+    'CREATE TABLE IF NOT EXISTS segments(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, filter TEXT, at TEXT, actor TEXT)',
+    'CREATE TABLE IF NOT EXISTS promo_codes(code TEXT PRIMARY KEY, credits REAL, max_uses INTEGER DEFAULT 0, uses INTEGER DEFAULT 0, expires INTEGER DEFAULT 0, active INTEGER DEFAULT 1, note TEXT, at TEXT, actor TEXT)',
+    'CREATE TABLE IF NOT EXISTS promo_redeems(code TEXT, email TEXT, at INTEGER, credits REAL, PRIMARY KEY(code, email))',
+    'CREATE TABLE IF NOT EXISTS refunds(id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, email TEXT, purchase_ref TEXT, usd REAL, credits REAL, kind TEXT, reason TEXT, actor TEXT)',
+    'CREATE INDEX IF NOT EXISTS refunds_ref ON refunds(purchase_ref)',
+    'CREATE TABLE IF NOT EXISTS payouts(id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT, usd REAL, method TEXT, note TEXT, status TEXT DEFAULT \'pending\', at INTEGER, paid_at INTEGER, ref TEXT, actor TEXT)',
+    'CREATE TABLE IF NOT EXISTS blocklist(id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, value TEXT, reason TEXT, at INTEGER, expires INTEGER, actor TEXT)',
+    'CREATE INDEX IF NOT EXISTS blocklist_v ON blocklist(kind, value)',
+    'CREATE TABLE IF NOT EXISTS logins(id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, who TEXT, ip TEXT, ok INTEGER, ua TEXT)', 'CREATE INDEX IF NOT EXISTS logins_at ON logins(at)',
+    'CREATE TABLE IF NOT EXISTS announcements(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, body TEXT, level TEXT DEFAULT \'info\', starts INTEGER DEFAULT 0, ends INTEGER DEFAULT 0, audience TEXT DEFAULT \'all\', active INTEGER DEFAULT 1, at TEXT, actor TEXT)',
+    'CREATE TABLE IF NOT EXISTS admin_jobs(id INTEGER PRIMARY KEY AUTOINCREMENT, run_at INTEGER, kind TEXT, payload TEXT, status TEXT DEFAULT \'pending\', result TEXT, at TEXT, actor TEXT)', 'CREATE INDEX IF NOT EXISTS admin_jobs_due ON admin_jobs(status, run_at)',
+    'CREATE TABLE IF NOT EXISTS approvals(id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT, payload TEXT, summary TEXT, requested_by TEXT, at INTEGER, status TEXT DEFAULT \'pending\', decided_by TEXT, decided_at INTEGER, result TEXT)',
+    // speed-ups for the hottest existing queries
+    'CREATE INDEX IF NOT EXISTS usage_email_at ON usage(email, at)', 'CREATE INDEX IF NOT EXISTS usage_at ON usage(at)',
+    'CREATE INDEX IF NOT EXISTS users_last ON users(last)', 'CREATE INDEX IF NOT EXISTS users_created ON users(created)',
+    'CREATE INDEX IF NOT EXISTS purchases_at ON purchases(at)', 'CREATE INDEX IF NOT EXISTS purchases_email ON purchases(email)',
+  ];
+  try { await env.DB.batch(T.map((s) => env.DB.prepare(s))); } catch (e) { for (const s of T) { try { await env.DB.prepare(s).run(); } catch (e2) { /* table may not exist yet */ } } }
+  A2_READY = true;
+}
+const a2Ip = (req) => req.headers.get('cf-connecting-ip') || '';
+async function a2Load(env) {
+  if (Date.now() - A2S.t < 30000) return; A2S.t = Date.now();
+  try {
+    await ensureA2(env);
+    const rows = (await env.DB.prepare('SELECT kind, value FROM blocklist WHERE expires=0 OR expires>?').bind(Date.now()).all()).results || [];
+    A2S.ips = new Map(rows.map((r) => [r.kind + ':' + r.value, 1]));
+    const r = await env.DB.prepare("SELECT v FROM settings WHERE k='ratelimits'").first(); A2S.rules = r ? (JSON.parse(r.v) || []) : [];
+  } catch (e) { /* keep the previous lists */ }
+}
+async function a2Guard(env, req, path) {   // IP/device blocklist + admin-set rate limits (best effort, per server instance)
+  if (req.method === 'OPTIONS' || path.startsWith('/api/node/') || path === '/api/health') return null;
+  await a2Load(env);
+  const ip = a2Ip(req), dev = req.headers.get('x-aix-device') || '';
+  if ((ip && A2S.ips.has('ip:' + ip)) || (dev && A2S.ips.has('device:' + dev))) return json(env, req, { error: 'Access from this network or device is blocked. Contact support if you think this is a mistake.', blocked: true }, 403);
+  for (const r of A2S.rules) {
+    if (!r || !r.prefix || !path.startsWith(r.prefix)) continue;
+    const key = r.prefix + '|' + (ip || '?'), m = Math.floor(Date.now() / 60000); let h = A2S.hits.get(key);
+    if (!h || h.m !== m) h = { m, n: 0 }; h.n++; if (A2S.hits.size > 5000) A2S.hits.clear(); A2S.hits.set(key, h);
+    if (h.n > r.perMin) { const res = json(env, req, { error: 'Too many requests. Please slow down and try again in a minute.', limited: true }, 429); res.headers.set('retry-after', '60'); return res; }
+  }
+  return null;
+}
+async function a2Flush(env) {
+  const rows = A2S.buf.splice(0, 200); if (!rows.length) return; A2S.flushT = Date.now();
+  try {
+    await ensureA2(env);
+    const st = env.DB.prepare('INSERT INTO reqlog(at,path,status,ms,email,ip,ua) VALUES(?,?,?,?,?,?,?)');
+    await env.DB.batch(rows.map((r) => st.bind(...r)));
+  } catch (e) { /* logging is best effort */ }
+}
+function a2Log(env, ctx, req, res, ms, path, login) {   // one buffered batch write instead of a D1 write per request
+  if (!(path.startsWith('/api/') || path.startsWith('/v1/')) || path === '/api/node/admin' || path === '/api/health' || path === '/api/node/register') return;
+  const ip = a2Ip(req), ua = (req.headers.get('user-agent') || '').slice(0, 80);
+  A2S.buf.push([Date.now(), path.slice(0, 80), res.status, ms, A2W.get(req) || '', ip, ua]);
+  if (login) A2S.buf.login = (A2S.buf.login || []).concat([[Date.now(), String(login).slice(0, 80), ip, res.status < 400 ? 1 : 0, ua]]);
+  if (A2S.buf.length >= 20 || Date.now() - A2S.flushT > 15000) ctx && ctx.waitUntil && ctx.waitUntil(a2FlushAll(env));
+}
+async function a2FlushAll(env) {
+  const lg = A2S.buf.login; A2S.buf.login = null;
+  await a2Flush(env);
+  if (lg && lg.length) { try { await ensureA2(env); const st = env.DB.prepare('INSERT INTO logins(at,who,ip,ok,ua) VALUES(?,?,?,?,?)'); await env.DB.batch(lg.map((r) => st.bind(...r))); } catch (e) { /* best effort */ } }
+}
+async function a2Cron(env) {   // runs every 5 minutes with the existing cron
+  try {
+    await ensureA2(env); const now = Date.now();
+    await a2FlushAll(env);
+    await a2RunJobs(env);
+    if (Math.floor(now / 300000) % 12 === 0) {   // hourly housekeeping keeps the database small and fast
+      await env.DB.batch([
+        env.DB.prepare('DELETE FROM reqlog WHERE at<?').bind(now - 7 * 86400e3),
+        env.DB.prepare('DELETE FROM logins WHERE at<?').bind(now - 30 * 86400e3),
+        env.DB.prepare('DELETE FROM mode_usage WHERE day<?').bind(new Date(now - 400 * 86400e3).toISOString().slice(0, 10)),
+        env.DB.prepare('DELETE FROM blocklist WHERE expires>0 AND expires<?').bind(now - 86400e3),
+        env.DB.prepare("DELETE FROM alerts WHERE ack=1 AND at<?").bind(new Date(now - 90 * 86400e3).toISOString()),
+        env.DB.prepare('DELETE FROM admin_log WHERE at<?').bind(new Date(now - 400 * 86400e3).toISOString()),
+      ]).catch(() => 0);
+      try { await env.DB.prepare('PRAGMA optimize').run(); } catch (e) { /* optional */ }
+    }
+    const s = await a2Suspicious(env);
+    if (s.flagged.length) await raiseAlert(env, 'susp_login', 'Suspicious sign-in activity: ' + s.flagged.slice(0, 3).map((f) => f.why).join('; ') + '. See Security → Suspicious logins.', 'warn', 6 * 3600e3);
+  } catch (e) { /* best effort */ }
+}
+async function a2Suspicious(env) {
+  const now = Date.now(), since = now - 3600e3, day = now - 86400e3, flagged = [];
+  const qa = async (sql, ...p) => { try { return (await env.DB.prepare(sql).bind(...p).all()).results || []; } catch (e) { return []; } };
+  for (const r of await qa('SELECT ip, COUNT(*) n FROM logins WHERE ok=0 AND at>=? AND ip<>\'\' GROUP BY ip HAVING n>=5', since)) flagged.push({ kind: 'failures', ip: r.ip, n: r.n, why: r.n + ' failed sign-ins from ' + r.ip + ' in the last hour' });
+  for (const r of await qa('SELECT ip, COUNT(DISTINCT who) n FROM logins WHERE at>=? AND ip<>\'\' GROUP BY ip HAVING n>=4', since)) flagged.push({ kind: 'many_accounts', ip: r.ip, n: r.n, why: r.n + ' different accounts tried from ' + r.ip + ' in the last hour' });
+  for (const r of await qa('SELECT who, COUNT(DISTINCT ip) n FROM logins WHERE ok=1 AND at>=? AND ip<>\'\' GROUP BY who HAVING n>=3', day)) flagged.push({ kind: 'many_ips', who: r.who, n: r.n, why: r.who + ' signed in from ' + r.n + ' different networks in 24h' });
+  return { flagged, recent: await qa('SELECT at, who, ip, ok, ua FROM logins ORDER BY id DESC LIMIT 100') };
+}
+
+// ---- segment filters ----
+function a2SegSql(f) {
+  f = f || {}; const w = ['1=1'], p = [], now = Date.now(), iso = (d) => new Date(now - d * 86400e3).toISOString(), num = (v) => (isFinite(Number(v)) && v !== '' && v != null ? Number(v) : null);
+  if (num(f.minCredits) != null) { w.push('credits>=?'); p.push(num(f.minCredits)); }
+  if (num(f.maxCredits) != null) { w.push('credits<=?'); p.push(num(f.maxCredits)); }
+  if (num(f.minRequests) != null) { w.push('requests>=?'); p.push(num(f.minRequests)); }
+  if (num(f.maxRequests) != null) { w.push('requests<=?'); p.push(num(f.maxRequests)); }
+  if (num(f.inactiveDays) != null) { w.push("COALESCE(NULLIF(last,''),created)<?"); p.push(iso(num(f.inactiveDays))); }
+  if (num(f.activeDays) != null) { w.push("COALESCE(NULLIF(last,''),created)>=?"); p.push(iso(num(f.activeDays))); }
+  if (num(f.createdWithinDays) != null) { w.push('created>=?'); p.push(iso(num(f.createdWithinDays))); }
+  if (f.purchased === 'yes') w.push('email IN (SELECT email FROM purchases)'); else if (f.purchased === 'no') w.push('email NOT IN (SELECT email FROM purchases)');
+  return { where: w.join(' AND '), params: p };
+}
+const a2Hash = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0; return h; };
+const a2Pct = (arr, p) => { if (!arr.length) return 0; const s = arr.slice().sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(s.length * p))]; };
+const A2_COST = { eco: 0.0004, balanced: 0.0008, thorough: 0.0016 };   // default compute cost per 1,000 tokens; editable in the panel
+const A2_RISKY = { refund_create: 1, payout_paid: 1, segment_grant: 1, grant_big: 1, pause: 1 };
+
+async function a2Setting(env, k, def) { try { const r = await env.DB.prepare('SELECT v FROM settings WHERE k=?').bind(k).first(); return r ? { ...def, ...JSON.parse(r.v) } : def; } catch (e) { return def; } }
+async function a2SetSetting(env, k, v) { await env.DB.prepare('INSERT OR REPLACE INTO settings(k,v) VALUES(?,?)').bind(k, JSON.stringify(v)).run(); }
+const a2Actor = (req) => String(req.headers.get('x-admin-actor') || 'owner').slice(0, 60);
+
+// ---- actions that can need a second person ----
+async function a2Do(env, action, p, actor) {
+  const now = Date.now();
+  if (action === 'grant_big') {
+    await env.DB.batch([env.DB.prepare('UPDATE users SET credits=MAX(0,credits+?) WHERE email=?').bind(p.credits, p.email), env.DB.prepare('INSERT INTO grants(email,at,credits,note) VALUES(?,?,?,?)').bind(p.email, now, p.credits, String(p.note || '').slice(0, 200))]);
+    AUTH_C.clear(); return { ok: true, email: p.email, credits: p.credits };
+  }
+  if (action === 'refund_create') {
+    const pu = await env.DB.prepare('SELECT * FROM purchases WHERE ref=?').bind(p.ref).first(); if (!pu) throw new Error('Purchase not found');
+    const done = await env.DB.prepare('SELECT COALESCE(SUM(usd),0) s FROM refunds WHERE purchase_ref=?').bind(p.ref).first();
+    if (p.usd + (done.s || 0) > pu.usd + 0.005) throw new Error('That would refund more than the purchase ($' + pu.usd + ', already refunded $' + (done.s || 0).toFixed(2) + ')');
+    const cr = p.reverse ? +(pu.credits * p.usd / pu.usd).toFixed(2) : 0;
+    await env.DB.batch([env.DB.prepare('INSERT INTO refunds(at,email,purchase_ref,usd,credits,kind,reason,actor) VALUES(?,?,?,?,?,?,?,?)').bind(now, pu.email, p.ref, p.usd, cr, p.kind, String(p.reason || '').slice(0, 200), actor), ...(cr ? [env.DB.prepare('UPDATE users SET credits=MAX(0,credits-?) WHERE email=?').bind(cr, pu.email)] : [])]);
+    AUTH_C.clear(); return { ok: true, email: pu.email, usd: p.usd, creditsReversed: cr };
+  }
+  if (action === 'payout_paid') {
+    await env.DB.prepare("UPDATE payouts SET status='paid', paid_at=?, ref=? WHERE id=? AND status<>'paid'").bind(now, String(p.ref || '').slice(0, 80), p.id).run(); return { ok: true, id: p.id };
+  }
+  if (action === 'segment_grant') {
+    const sg = await env.DB.prepare('SELECT * FROM segments WHERE id=?').bind(p.id).first(); if (!sg) throw new Error('Segment not found');
+    const { where, params } = a2SegSql(JSON.parse(sg.filter || '{}')), us = ((await env.DB.prepare('SELECT email FROM users WHERE ' + where + ' LIMIT 2000').bind(...params).all()).results || []).map((r) => r.email);
+    const sU = env.DB.prepare('UPDATE users SET credits=MAX(0,credits+?) WHERE email=?'), sG = env.DB.prepare('INSERT INTO grants(email,at,credits,note) VALUES(?,?,?,?)'), note = ('Segment "' + sg.name + '": ' + (p.note || '')).slice(0, 200);
+    for (let i = 0; i < us.length; i += 40) await env.DB.batch(us.slice(i, i + 40).flatMap((e) => [sU.bind(p.credits, e), sG.bind(e, now, p.credits, note)]));
+    AUTH_C.clear(); return { ok: true, users: us.length, credits: p.credits };
+  }
+  if (action === 'pause') {
+    const cur = await cfgAll(env, true), nx = { ...cur, ...p.changes }; await a2SetSetting(env, 'cfg', nx); CFG_C = null; CFG_T = 0; NA_C.clear(); return { ok: true, changes: p.changes };
+  }
+  throw new Error('Unknown action');
+}
+async function a2Gate(env, req, action, payload, summary) {   // returns a Response when this action must wait for a second admin
+  const c = await a2Setting(env, 'a2cfg', { twoPerson: 0, threshold: 500 });
+  if (!c.twoPerson || !A2_RISKY[action]) return null;
+  const r = await env.DB.prepare('INSERT INTO approvals(action,payload,summary,requested_by,at) VALUES(?,?,?,?,?)').bind(action, JSON.stringify(payload), String(summary).slice(0, 200), a2Actor(req), Date.now()).run();
+  await audit(env, req, 'approval_request', action, summary);
+  return json(env, req, { pending: true, approvalId: r.meta && r.meta.last_row_id, message: 'Two-person approval is on. A different admin must approve this in Controls → Approvals.' }, 202);
+}
+async function a2RunJobs(env) {
+  const jobs = (await env.DB.prepare("SELECT * FROM admin_jobs WHERE status='pending' AND run_at<=? ORDER BY run_at LIMIT 10").bind(Date.now()).all()).results || [];
+  for (const j of jobs) {
+    let res = 'ok';
+    try {
+      await env.DB.prepare("UPDATE admin_jobs SET status='running' WHERE id=? AND status='pending'").bind(j.id).run();
+      const p = JSON.parse(j.payload || '{}');
+      if (j.kind === 'config') { const cur = await cfgAll(env, true), nx = { ...cur }; for (const k of Object.keys(p.changes || {})) { if (!(k in CFG_DEF) || k === 'alertWebhook') continue; if (k === 'banner') nx.banner = String(p.changes[k] || '').slice(0, 200); else { const v = Number(p.changes[k]), [lo, hi] = CFG_LIM[k]; if (isFinite(v) && v >= lo && v <= hi) nx[k] = v; } } await a2SetSetting(env, 'cfg', nx); CFG_C = null; CFG_T = 0; NA_C.clear(); res = 'config applied'; }
+      else if (j.kind === 'announce') { await env.DB.prepare('UPDATE announcements SET active=? WHERE id=?').bind(p.active ? 1 : 0, p.id).run(); A2S.annT = 0; res = 'announcement ' + (p.active ? 'shown' : 'hidden'); }
+      else if (j.kind === 'flag') { const f = await a2Setting(env, 'flags', {}); f[p.name] = { ...(f[p.name] || {}), on: p.on ? 1 : 0, pct: Math.max(0, Math.min(100, Number(p.pct == null ? 100 : p.pct))) }; await a2SetSetting(env, 'flags', f); A2S.flagsT = 0; res = 'flag ' + p.name + ' updated'; }
+      else if (j.kind === 'promo') { await env.DB.prepare('UPDATE promo_codes SET active=? WHERE code=?').bind(p.active ? 1 : 0, p.code).run(); res = 'code ' + p.code + (p.active ? ' on' : ' off'); }
+      else if (j.kind === 'backup') { const b = await makeBackup(env, 'scheduled'); res = 'backup ' + b.rows + ' rows'; }
+      else if (j.kind === 'grant_segment') { const r = await a2Do(env, 'segment_grant', p, 'scheduler'); res = 'granted to ' + r.users + ' users'; }
+      else throw new Error('unknown job kind');
+      await env.DB.prepare("UPDATE admin_jobs SET status='done', result=? WHERE id=?").bind(res, j.id).run();
+    } catch (e) { await env.DB.prepare("UPDATE admin_jobs SET status='failed', result=? WHERE id=?").bind(String(e.message || e).slice(0, 200), j.id).run(); }
+  }
+}
+
+// ---- public endpoints used by the app ----
+async function a2Public(env, req, path) {
+  await ensureA2(env);
+  const a = await authed(env, req), cc = { 'cache-control': 'private, max-age=30' };
+  if (path === '/api/announcements' && req.method === 'GET') {
+    const now = Date.now();
+    if (!A2S.ann || now - A2S.annT > 30000) { A2S.ann = ((await env.DB.prepare('SELECT id,title,body,level,starts,ends,audience FROM announcements WHERE active=1 AND (starts=0 OR starts<=?) AND (ends=0 OR ends>=?) ORDER BY id DESC LIMIT 10').bind(now, now).all()).results || []); A2S.annT = now; }
+    const out = [];
+    for (const r of A2S.ann) {
+      if (r.audience === 'all') { out.push(r); continue; }
+      const m = /^segment:(\d+)$/.exec(r.audience || ''); if (!m || !a) continue;
+      const sg = await env.DB.prepare('SELECT filter FROM segments WHERE id=?').bind(Number(m[1])).first(); if (!sg) continue;
+      const { where, params } = a2SegSql(JSON.parse(sg.filter || '{}'));
+      if (await env.DB.prepare('SELECT 1 x FROM users WHERE email=? AND (' + where + ')').bind(a.email, ...params).first()) out.push(r);
+    }
+    const res = json(env, req, { items: out.map((r) => ({ id: r.id, title: r.title, body: r.body, level: r.level })) }); for (const k in cc) res.headers.set(k, cc[k]); return res;
+  }
+  if (path === '/api/flags' && req.method === 'GET') {
+    const now = Date.now(); if (!A2S.flags || now - A2S.flagsT > 30000) { A2S.flags = await a2Setting(env, 'flags', {}); A2S.flagsT = now; }
+    const out = {}; for (const [k, f] of Object.entries(A2S.flags)) out[k] = !!(f.on && (f.pct >= 100 || (a && a2Hash(a.email + ':' + k) % 100 < f.pct)));
+    const res = json(env, req, { flags: out }); res.headers.set('cache-control', cc['cache-control']); return res;
+  }
+  if (path === '/api/promo/redeem' && req.method === 'POST') {
+    if (!a) return json(env, req, { error: 'Sign in first' }, 401);
+    const b = await req.json().catch(() => ({})), code = String(b.code || '').trim().toUpperCase().slice(0, 40);
+    if (!code) return json(env, req, { error: 'Enter a code' }, 400);
+    const pc = await env.DB.prepare('SELECT * FROM promo_codes WHERE code=?').bind(code).first(), now = Date.now();
+    if (!pc || !pc.active) return json(env, req, { error: 'That code is not valid.' }, 404);
+    if (pc.expires && pc.expires < now) return json(env, req, { error: 'That code has expired.' }, 410);
+    if (pc.max_uses && pc.uses >= pc.max_uses) return json(env, req, { error: 'That code has been fully used.' }, 410);
+    if (await env.DB.prepare('SELECT 1 x FROM promo_redeems WHERE code=? AND email=?').bind(code, a.email).first()) return json(env, req, { error: 'You already used this code.' }, 409);
+    const claim = await env.DB.prepare('UPDATE promo_codes SET uses=uses+1 WHERE code=? AND (max_uses=0 OR uses<max_uses)').bind(code).run();
+    if (!claim.meta || !claim.meta.changes) return json(env, req, { error: 'That code has been fully used.' }, 410);
+    await env.DB.batch([env.DB.prepare('INSERT INTO promo_redeems(code,email,at,credits) VALUES(?,?,?,?)').bind(code, a.email, now, pc.credits), env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(pc.credits, a.email), env.DB.prepare('INSERT INTO grants(email,at,credits,note) VALUES(?,?,?,?)').bind(a.email, now, pc.credits, 'Promo code ' + code)]);
+    AUTH_C.clear(); const f = await getUser(env, a.email);
+    return json(env, req, { ok: true, credits: pc.credits, balance: +Number(f.credits).toFixed(2) });
+  }
+  return json(env, req, { error: 'not found' }, 404);
+}
+
+// ---- admin endpoints (called through nodeAdmin → adminTools) ----
+async function admin2(env, req, what, url, H) {
+  const { q, one, R, iso, now } = H; const post = req.method === 'POST', P = url.searchParams;
+  const safe = async (sql, ...p) => { try { return await q(sql, ...p); } catch (e) { return []; } };
+  const body = async () => (post ? await req.json().catch(() => ({})) : {});
+  const bad = (m, s) => json(env, req, { error: m }, s || 400);
+  const NAMES = ['live', 'fleet', 'host_restart', 'timeline', 'sla', 'slow', 'cohorts', 'funnel', 'segments', 'segment_preview', 'segment_save', 'segment_delete', 'segment_act', 'impersonate', 'forecast', 'margin', 'margin_set', 'refunds', 'refund_create', 'codes', 'code_save', 'code_toggle', 'code_delete', 'payouts', 'payout_add', 'payout_status', 'modstats', 'ratelimits', 'ratelimits_set', 'blocklist', 'block_add', 'block_del', 'logins', 'ann', 'ann_save', 'ann_delete', 'flags', 'flag_set', 'flag_delete', 'sched', 'sched_add', 'sched_cancel', 'approvals', 'approval_cfg', 'approval_decide', 'export_all', 'restore_test', 'a2status'];
+  const risky = what === 'grant' && post;
+  if (!NAMES.includes(what) && !risky) return null;
+  await ensureA2(env);
+  if (risky) {   // big manual grants can need a second admin
+    const c = await a2Setting(env, 'a2cfg', { twoPerson: 0, threshold: 500 }), b = await req.clone().json().catch(() => ({})), amt = Number(b.credits);
+    if (c.twoPerson && isFinite(amt) && Math.abs(amt) >= c.threshold && String(b.email || '').trim()) { const g = await a2Gate(env, req, 'grant_big', { email: String(b.email).toLowerCase().trim(), credits: amt, note: b.note }, 'Grant ' + amt + ' credits to ' + b.email); if (g) return g; }
+    return null;
+  }
+
+  if (what === 'a2status') return R({ ok: true, reqlogBuffered: A2S.buf.length, rules: A2S.rules.length, blocked: A2S.ips.size });
+
+  // 1 · live dashboard
+  if (what === 'live') {
+    const since = now - 3600e3, rows = await safe('SELECT at/60000 m, COUNT(*) n, SUM(status>=500) e, AVG(ms) a FROM reqlog WHERE at>=? GROUP BY m ORDER BY m', since);
+    const byM = new Map(rows.map((r) => [r.m, r])), m0 = Math.floor(now / 60000), series = [];
+    for (let i = 59; i >= 0; i--) { const r = byM.get(m0 - i); series.push({ t: (m0 - i) * 60000, n: r ? r.n : 0, e: r ? r.e || 0 : 0, ms: r ? Math.round(r.a) : 0 }); }
+    const rec = await safe('SELECT ms, status FROM reqlog WHERE at>=? ORDER BY id DESC LIMIT 3000', now - 15 * 60000), act = await one("SELECT COUNT(DISTINCT email) n FROM reqlog WHERE at>=? AND email<>''", now - 5 * 60000).catch(() => ({ n: 0 }));
+    const top = await safe('SELECT path, COUNT(*) n, AVG(ms) a FROM reqlog WHERE at>=? GROUP BY path ORDER BY n DESC LIMIT 8', now - 15 * 60000), ms = rec.map((r) => r.ms);
+    return R({ series, perMin: +(series.slice(-5).reduce((s, x) => s + x.n, 0) / 5).toFixed(1), activeUsers: act.n || 0, requests15: rec.length, errorRate: rec.length ? +(100 * rec.filter((r) => r.status >= 500).length / rec.length).toFixed(2) : 0, p50: a2Pct(ms, 0.5), p95: a2Pct(ms, 0.95), top: top.map((r) => ({ path: r.path, n: r.n, ms: Math.round(r.a) })), logging: 'Requests are recorded in batches; numbers lag by up to 15 seconds.' });
+  }
+  // 2 · host fleet
+  if (what === 'fleet') {
+    const nodes = await nodeList(env), hist = await nodeHist(env);
+    return R({ hosts: nodes.map((n) => ({ id: n.id, name: n.name || n.id, url: n.url, model: n.model, models: n.models, prio: n.prio, at: n.at, ageSec: Math.round((now - n.at) / 1000), online: now - n.at < 180e3 })), hist, uptime24: hist && hist.uptime24 });
+  }
+  if (what === 'host_restart') {
+    if (!post) return bad('POST required', 405);
+    const b = await body(), nodes = await nodeList(env), n = nodes.find((x) => x.id === b.id); if (!n) return bad('Unknown host', 404);
+    try { const r = await fetch(n.url.replace(/\/+$/, '') + '/restart', { method: 'POST', headers: { 'x-node-secret': env.NODE_SECRET }, signal: AbortSignal.timeout(6000) }); await audit(env, req, 'host_restart', n.name || n.id, 'HTTP ' + r.status); return R({ ok: r.ok, status: r.status, note: r.ok ? 'Restart requested — it will re-register in about a minute.' : 'The host answered ' + r.status + ' (it may be on an older version without remote restart).' }); }
+    catch (e) { return R({ ok: false, note: 'Could not reach the host (offline, asleep or an older version).' }); }
+  }
+  // 3 · incident timeline
+  if (what === 'timeline') {
+    const d = Math.min(30, Number(P.get('days')) || 7), since = iso(d * 86400e3), ev = [];
+    for (const r of await safe('SELECT at,kind,sev,msg FROM alerts WHERE at>=? ORDER BY id DESC LIMIT 150', since)) ev.push({ at: r.at, type: 'alert', sev: r.sev, title: r.kind, msg: r.msg });
+    for (const r of await safe("SELECT at,actor,action,target,detail FROM admin_log WHERE at>=? AND action NOT IN ('export') ORDER BY id DESC LIMIT 150", since)) ev.push({ at: r.at, type: 'admin', sev: 'info', title: r.action, msg: r.actor + ' · ' + (r.target || '') + ' ' + (r.detail || '') });
+    for (const r of await safe('SELECT at,email,usd,kind FROM refunds WHERE at>=? ORDER BY id DESC LIMIT 50', now - d * 86400e3)) ev.push({ at: new Date(r.at).toISOString(), type: 'money', sev: 'warn', title: r.kind, msg: '$' + Number(r.usd).toFixed(2) + ' · ' + r.email });
+    ev.sort((a, b) => (a.at < b.at ? 1 : -1)); return R({ events: ev.slice(0, 250) });
+  }
+  // 4 · SLA / error budget
+  if (what === 'sla') {
+    const target = Math.min(99.99, Math.max(90, Number(P.get('target')) || 99.5)), rows = await safe("SELECT strftime('%Y-%m-%d', at/1000, 'unixepoch') d, COUNT(*) n, SUM(status>=500) e FROM reqlog WHERE at>=? GROUP BY d ORDER BY d", now - 7 * 86400e3);
+    const tot = rows.reduce((s, r) => s + r.n, 0), err = rows.reduce((s, r) => s + (r.e || 0), 0), allowed = Math.floor(tot * (100 - target) / 100), hist = await nodeHist(env);
+    return R({ target, days: rows.map((r) => ({ day: r.d, requests: r.n, errors: r.e || 0, availability: r.n ? +(100 * (1 - (r.e || 0) / r.n)).toFixed(3) : 100 })), requests: tot, errors: err, availability: tot ? +(100 * (1 - err / tot)).toFixed(3) : 100, budgetErrors: allowed, budgetLeft: allowed - err, budgetPctLeft: allowed ? Math.max(0, +(100 * (allowed - err) / allowed).toFixed(1)) : (err ? 0 : 100), hostUptime24: hist && hist.uptime24 });
+  }
+  // 5 · slow & failed explorer
+  if (what === 'slow') {
+    const kind = P.get('kind') === 'failed' ? 'failed' : 'slow', f = P.get('path') || '', since = now - Math.min(7, Number(P.get('days')) || 1) * 86400e3;
+    const base = kind === 'failed' ? 'status>=400' : 'ms>=' + Math.max(0, P.get('ms') != null && P.get('ms') !== '' && isFinite(Number(P.get('ms'))) ? Number(P.get('ms')) : 3000), pc = f ? ' AND path LIKE ?' : '', args = f ? [since, '%' + f.replace(/[%_]/g, '') + '%'] : [since];
+    const rows = await safe('SELECT at,path,status,ms,email,ip FROM reqlog WHERE at>=? AND ' + base + pc + ' ORDER BY ' + (kind === 'failed' ? 'id' : 'ms') + ' DESC LIMIT 150', ...args);
+    const groups = await safe('SELECT path, status, COUNT(*) n, MAX(ms) mx FROM reqlog WHERE at>=? AND ' + base + ' GROUP BY path, status ORDER BY n DESC LIMIT 12', since);
+    return R({ kind, rows, groups });
+  }
+  // 6 · cohorts
+  if (what === 'cohorts') {
+    const since = iso(56 * 86400e3), sizes = await safe("SELECT strftime('%Y-%W', created) c, COUNT(*) n FROM users WHERE created>=? GROUP BY c ORDER BY c", since);
+    const ret = await safe("SELECT strftime('%Y-%W', u.created) c, CAST((julianday(us.at)-julianday(u.created))/7 AS INT) k, COUNT(DISTINCT u.email) n FROM users u JOIN usage us ON us.email=u.email WHERE u.created>=? GROUP BY c, k", since);
+    const m = {}; for (const r of ret) if (r.k >= 0 && r.k <= 8) (m[r.c] = m[r.c] || {})[r.k] = r.n;
+    return R({ cohorts: sizes.map((s) => ({ week: s.c, size: s.n, retention: Array.from({ length: 9 }, (_, k) => (m[s.c] && m[s.c][k] != null ? +(100 * m[s.c][k] / s.n).toFixed(0) : null)) })) });
+  }
+  // 7 · funnel
+  if (what === 'funnel') {
+    const d = Math.min(180, Number(P.get('days')) || 30), s = iso(d * 86400e3), c = async (sql) => (await one(sql, s)).n || 0;
+    const signups = await c('SELECT COUNT(*) n FROM users WHERE created>=?'), chat = await c('SELECT COUNT(*) n FROM users WHERE created>=? AND requests>0'), repeat = await c('SELECT COUNT(*) n FROM users WHERE created>=? AND requests>=5'), paid = await c('SELECT COUNT(*) n FROM users WHERE created>=? AND email IN (SELECT email FROM purchases)'), multi = await c('SELECT COUNT(*) n FROM users WHERE created>=? AND email IN (SELECT email FROM purchases GROUP BY email HAVING COUNT(*)>1)');
+    const st = [['Signed up', signups], ['Sent a first message', chat], ['Used it 5+ times', repeat], ['Bought credits', paid], ['Bought again', multi]];
+    return R({ days: d, steps: st.map(([name, n], i) => ({ name, n, pctOfSignups: signups ? +(100 * n / signups).toFixed(1) : 0, pctOfPrev: i && st[i - 1][1] ? +(100 * n / st[i - 1][1]).toFixed(1) : 100 })) });
+  }
+  // 8/9 · segments
+  if (what === 'segments') {
+    const rows = await safe('SELECT * FROM segments ORDER BY id DESC LIMIT 100'), out = [];
+    for (const r of rows) { const { where, params } = a2SegSql(JSON.parse(r.filter || '{}')); out.push({ id: r.id, name: r.name, filter: JSON.parse(r.filter || '{}'), at: r.at, actor: r.actor, count: (await one('SELECT COUNT(*) n FROM users WHERE ' + where, ...params).catch(() => ({ n: 0 }))).n }); }
+    return R({ segments: out });
+  }
+  if (what === 'segment_preview') {
+    let f = {}; if (post) f = (await body()).filter || {}; else { try { f = JSON.parse(P.get('filter') || '{}'); } catch (e) {} }
+    const { where, params } = a2SegSql(f), n = (await one('SELECT COUNT(*) n FROM users WHERE ' + where, ...params)).n, rows = await q('SELECT email,credits,requests,created,last FROM users WHERE ' + where + ' ORDER BY last DESC LIMIT 100', ...params);
+    return R({ count: n, sample: rows.map((r) => ({ ...r, credits: +Number(r.credits).toFixed(2) })) });
+  }
+  if (what === 'segment_save') {
+    if (!post) return bad('POST required', 405); const b = await body(), name = String(b.name || '').trim().slice(0, 60); if (!name) return bad('Name the segment');
+    const f = JSON.stringify(b.filter || {}).slice(0, 800);
+    if (b.id) await env.DB.prepare('UPDATE segments SET name=?, filter=? WHERE id=?').bind(name, f, Number(b.id)).run(); else await env.DB.prepare('INSERT INTO segments(name,filter,at,actor) VALUES(?,?,?,?)').bind(name, f, new Date().toISOString(), a2Actor(req)).run();
+    return R({ ok: true });
+  }
+  if (what === 'segment_delete') { if (!post) return bad('POST required', 405); const b = await body(); await env.DB.prepare('DELETE FROM segments WHERE id=?').bind(Number(b.id)).run(); return R({ ok: true }); }
+  if (what === 'segment_act') {
+    if (!post) return bad('POST required', 405); const b = await body(), sg = await env.DB.prepare('SELECT * FROM segments WHERE id=?').bind(Number(b.id)).first(); if (!sg) return bad('Segment not found', 404);
+    const { where, params } = a2SegSql(JSON.parse(sg.filter || '{}'));
+    if (b.action === 'csv') { const rows = await q('SELECT email,credits,tokens,requests,created,last FROM users WHERE ' + where + ' LIMIT 50000', ...params); await audit(env, req, 'segment_csv', sg.name, rows.length + ' rows'); return R({ name: 'aix-segment-' + sg.name.replace(/[^a-z0-9]+/gi, '-') + '.csv', csv: csvOf(rows), rows: rows.length }); }
+    if (b.action === 'grant') {
+      const cr = Number(b.credits); if (!isFinite(cr) || cr === 0 || Math.abs(cr) > 1000) return bad('Credits per user must be between -1,000 and 1,000');
+      const n = (await one('SELECT COUNT(*) n FROM users WHERE ' + where, ...params)).n; if (n > 2000) return bad('That segment has ' + n + ' users. Narrow it to 2,000 or fewer.'); if (Math.abs(cr) * n > 200000) return bad('Total would exceed 200,000 credits.');
+      const pl = { id: sg.id, credits: cr, note: String(b.note || '') }, g = await a2Gate(env, req, 'segment_grant', pl, 'Give ' + cr + ' credits to ' + n + ' users in "' + sg.name + '"'); if (g) return g;
+      const r = await a2Do(env, 'segment_grant', pl, a2Actor(req)); await audit(env, req, 'segment_grant', sg.name, n + ' users × ' + cr); return R(r);
+    }
+    if (b.action === 'announce') { const t = String(b.title || '').trim().slice(0, 80), bd = String(b.body || '').trim().slice(0, 400); if (!t) return bad('Add a title'); await env.DB.prepare("INSERT INTO announcements(title,body,level,audience,at,actor) VALUES(?,?,?,?,?,?)").bind(t, bd, 'info', 'segment:' + sg.id, new Date().toISOString(), a2Actor(req)).run(); A2S.annT = 0; return R({ ok: true }); }
+    return bad('Unknown action');
+  }
+  // 10 · impersonate view (read only)
+  if (what === 'impersonate') {
+    const email = String(P.get('email') || '').toLowerCase().trim(), u = await env.DB.prepare('SELECT * FROM users WHERE email=? OR username=?').bind(email, email).first(); if (!u) return bad('No such user', 404);
+    await audit(env, req, 'impersonate_view', u.email, 'read-only');
+    const flags = await a2Setting(env, 'flags', {}), ef = {}; for (const [k, f] of Object.entries(flags)) ef[k] = !!(f.on && (f.pct >= 100 || a2Hash(u.email + ':' + k) % 100 < f.pct));
+    const cfg = await cfgAll(env);
+    return R({ readOnly: true, account: { email: u.email, username: u.username, credits: +Number(u.credits).toFixed(2), requests: u.requests, tokens: u.tokens, created: u.created, last: u.last, banned: !!u.banned, usd: +(u.credits * CREDIT_USD).toFixed(2) }, usage: await safe('SELECT at,input,output,credits FROM usage WHERE email=? ORDER BY id DESC LIMIT 15', u.email), purchases: await safe('SELECT at,usd,credits FROM purchases WHERE email=? ORDER BY id DESC LIMIT 10', u.email), grants: await safe('SELECT at,credits,note FROM grants WHERE email=? ORDER BY id DESC LIMIT 10', u.email), refunds: await safe('SELECT at,usd,kind,reason FROM refunds WHERE email=? ORDER BY id DESC LIMIT 5', u.email), tickets: await safe('SELECT id,subject,status,at FROM tickets WHERE email=? ORDER BY id DESC LIMIT 5', u.email), seesFlags: ef, paused: { chat: !!cfg.pauseChat, signup: !!cfg.pauseSignup }, banner: cfg.banner || '' });
+  }
+  // 11 · revenue forecast
+  if (what === 'forecast') {
+    const rows = await safe("SELECT substr(at,1,10) d, SUM(usd) s FROM purchases WHERE at>=? GROUP BY d ORDER BY d", iso(60 * 86400e3)), m = new Map(rows.map((r) => [r.d, r.s])), days = [];
+    for (let i = 59; i >= 0; i--) { const d = new Date(now - i * 86400e3).toISOString().slice(0, 10); days.push({ day: d, usd: +(m.get(d) || 0).toFixed(2) }); }
+    const last = days.slice(-30), n = last.length, xs = last.map((_, i) => i), ys = last.map((x) => x.usd), mx = xs.reduce((a, b) => a + b, 0) / n, my = ys.reduce((a, b) => a + b, 0) / n;
+    let sxy = 0, sxx = 0, syy = 0; for (let i = 0; i < n; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) ** 2; syy += (ys[i] - my) ** 2; }
+    const slope = sxx ? sxy / sxx : 0, icpt = my - slope * mx, r2 = sxx && syy ? (sxy * sxy) / (sxx * syy) : 0, fc = [];
+    for (let i = 0; i < 30; i++) fc.push({ day: new Date(now + (i + 1) * 86400e3).toISOString().slice(0, 10), usd: +Math.max(0, icpt + slope * (n + i)).toFixed(2) });
+    return R({ history: days, forecast: fc, last30: +ys.reduce((a, b) => a + b, 0).toFixed(2), next30: +fc.reduce((a, b) => a + b.usd, 0).toFixed(2), trendPerDay: +slope.toFixed(3), confidence: r2 > 0.5 ? 'fair' : r2 > 0.2 ? 'low' : 'very low', note: 'A simple straight-line trend of the last 30 days. Treat it as a rough guide.' });
+  }
+  // 12 · margin per mode
+  if (what === 'margin' || what === 'margin_set') {
+    const cost = await a2Setting(env, 'costs', A2_COST);
+    if (what === 'margin_set') { if (!post) return bad('POST required', 405); const b = await body(), nx = { ...cost }; for (const k of ['eco', 'balanced', 'thorough']) if (b[k] != null) { const v = Number(b[k]); if (!isFinite(v) || v < 0 || v > 10) return bad(k + ' must be 0–10'); nx[k] = v; } await a2SetSetting(env, 'costs', nx); await audit(env, req, 'margin_costs', 'costs', JSON.stringify(nx)); return R({ ok: true, costs: nx }); }
+    const d = Math.min(90, Number(P.get('days')) || 30), rows = await safe('SELECT mode, SUM(n) n, SUM(tokens) t, SUM(credits) c FROM mode_usage WHERE day>=? GROUP BY mode', new Date(now - d * 86400e3).toISOString().slice(0, 10));
+    const out = ['eco', 'balanced', 'thorough'].map((k) => { const r = rows.find((x) => x.mode === k) || { n: 0, t: 0, c: 0 }, rev = (r.c || 0) * CREDIT_USD, cs = ((r.t || 0) / 1000) * (cost[k] || 0); return { mode: k, label: k === 'thorough' ? 'AIX Alpha Quantum' : 'AIX Alpha LE (' + k + ')', requests: r.n || 0, tokens: r.t || 0, credits: +(r.c || 0).toFixed(1), revenueUsd: +rev.toFixed(2), costUsd: +cs.toFixed(2), marginUsd: +(rev - cs).toFixed(2), marginPct: rev ? +(100 * (rev - cs) / rev).toFixed(1) : null, costPer1k: cost[k] }; });
+    const tr = out.reduce((s, r) => s + r.revenueUsd, 0), tc = out.reduce((s, r) => s + r.costUsd, 0);
+    return R({ days: d, rows: out, totals: { revenueUsd: +tr.toFixed(2), costUsd: +tc.toFixed(2), marginUsd: +(tr - tc).toFixed(2), marginPct: tr ? +(100 * (tr - tc) / tr).toFixed(1) : null }, costs: cost, note: 'Cost per 1,000 tokens is your own estimate of power and hardware cost per mode (set below). Tracking starts from the day this update went live.' });
+  }
+  // 13 · refunds and chargebacks
+  if (what === 'refunds') {
+    return R({ refunds: await safe('SELECT * FROM refunds ORDER BY id DESC LIMIT 100'), purchases: await safe('SELECT p.ref, p.email, p.at, p.usd, p.credits, COALESCE((SELECT SUM(usd) FROM refunds r WHERE r.purchase_ref=p.ref),0) refunded FROM purchases p ORDER BY p.id DESC LIMIT 60'), totals: await one("SELECT COALESCE(SUM(CASE WHEN kind='refund' THEN usd END),0) refunds, COALESCE(SUM(CASE WHEN kind='chargeback' THEN usd END),0) chargebacks, COUNT(*) n FROM refunds"), note: 'This records the refund and takes the credits back. Send the money itself from your Stripe dashboard.' });
+  }
+  if (what === 'refund_create') {
+    if (!post) return bad('POST required', 405); const b = await body(), usd = Number(b.usd), ref = String(b.ref || '');
+    if (!ref || !isFinite(usd) || usd <= 0) return bad('Pick a purchase and an amount'); const kind = b.kind === 'chargeback' ? 'chargeback' : 'refund';
+    const pl = { ref, usd, kind, reason: String(b.reason || ''), reverse: b.reverse !== false }, g = await a2Gate(env, req, 'refund_create', pl, kind + ' $' + usd.toFixed(2) + ' on ' + ref); if (g) return g;
+    try { const r = await a2Do(env, 'refund_create', pl, a2Actor(req)); await audit(env, req, kind, ref, '$' + usd.toFixed(2)); return R(r); } catch (e) { return bad(e.message); }
+  }
+  // 14 · promo codes
+  if (what === 'codes') return R({ codes: await safe('SELECT * FROM promo_codes ORDER BY at DESC LIMIT 200'), recent: await safe('SELECT code,email,at,credits FROM promo_redeems ORDER BY at DESC LIMIT 30') });
+  if (what === 'code_save') {
+    if (!post) return bad('POST required', 405); const b = await body(), code = String(b.code || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 30), cr = Number(b.credits);
+    if (code.length < 3) return bad('Code must be 3–30 letters or numbers'); if (!isFinite(cr) || cr <= 0 || cr > 10000) return bad('Credits must be 1–10,000');
+    const mu = Math.max(0, Math.floor(Number(b.maxUses) || 0)), exp = b.expires ? Date.parse(b.expires) : 0; if (b.expires && !isFinite(exp)) return bad('Bad expiry date');
+    await env.DB.prepare('INSERT INTO promo_codes(code,credits,max_uses,expires,active,note,at,actor) VALUES(?,?,?,?,1,?,?,?) ON CONFLICT(code) DO UPDATE SET credits=excluded.credits, max_uses=excluded.max_uses, expires=excluded.expires, note=excluded.note').bind(code, cr, mu, exp || 0, String(b.note || '').slice(0, 100), new Date().toISOString(), a2Actor(req)).run();
+    return R({ ok: true, code });
+  }
+  if (what === 'code_toggle') { if (!post) return bad('POST required', 405); const b = await body(); await env.DB.prepare('UPDATE promo_codes SET active=? WHERE code=?').bind(b.active ? 1 : 0, String(b.code || '')).run(); return R({ ok: true }); }
+  if (what === 'code_delete') { if (!post) return bad('POST required', 405); const b = await body(); await env.DB.prepare('DELETE FROM promo_codes WHERE code=?').bind(String(b.code || '')).run(); return R({ ok: true }); }
+  // 15 · affiliate payouts
+  if (what === 'payouts') {
+    const earned = await safe("SELECT referrer email, COUNT(*) n, COALESCE(SUM(referrer_credits),0) cr FROM ref_uses WHERE status IN ('ok','approved','paid','credited') GROUP BY referrer ORDER BY cr DESC LIMIT 50");
+    return R({ ledger: await safe('SELECT * FROM payouts ORDER BY id DESC LIMIT 150'), earners: earned.map((e) => ({ email: e.email, referrals: e.n, credits: e.cr, valueUsd: +(e.cr * CREDIT_USD).toFixed(2) })), totals: await one("SELECT COALESCE(SUM(CASE WHEN status='pending' THEN usd END),0) pending, COALESCE(SUM(CASE WHEN status='paid' THEN usd END),0) paid FROM payouts") });
+  }
+  if (what === 'payout_add') {
+    if (!post) return bad('POST required', 405); const b = await body(), usd = Number(b.usd), email = String(b.email || '').toLowerCase().trim(); if (!email || !isFinite(usd) || usd <= 0 || usd > 100000) return bad('Need an email and an amount');
+    await env.DB.prepare("INSERT INTO payouts(email,usd,method,note,at,actor) VALUES(?,?,?,?,?,?)").bind(email, usd, String(b.method || '').slice(0, 40), String(b.note || '').slice(0, 120), now, a2Actor(req)).run(); return R({ ok: true });
+  }
+  if (what === 'payout_status') {
+    if (!post) return bad('POST required', 405); const b = await body(), id = Number(b.id), st = ['pending', 'approved', 'paid', 'void'].includes(b.status) ? b.status : null; if (!id || !st) return bad('Bad request');
+    if (st === 'paid') { const g = await a2Gate(env, req, 'payout_paid', { id, ref: b.ref }, 'Mark payout #' + id + ' as paid'); if (g) return g; await a2Do(env, 'payout_paid', { id, ref: b.ref }, a2Actor(req)); await audit(env, req, 'payout_paid', String(id), ''); return R({ ok: true }); }
+    await env.DB.prepare('UPDATE payouts SET status=? WHERE id=?').bind(st, id).run(); return R({ ok: true });
+  }
+  // 16 · moderation overview (the queue itself is the Safety tab)
+  if (what === 'modstats') {
+    return R({ byCategory: await safe("SELECT cat, COUNT(*) n FROM mod_flags WHERE at>=? GROUP BY cat ORDER BY n DESC", iso(7 * 86400e3)), perDay: await safe("SELECT substr(at,1,10) d, COUNT(*) n FROM mod_flags WHERE at>=? GROUP BY d ORDER BY d", iso(14 * 86400e3)), open: (await one("SELECT COUNT(*) n FROM mod_flags WHERE status='open'").catch(() => ({ n: 0 }))).n || 0, appeals: (await one("SELECT COUNT(*) n FROM mod_appeals WHERE status='open'").catch(() => ({ n: 0 }))).n || 0 });
+  }
+  // 17 · rate-limit rules
+  if (what === 'ratelimits') { const r = await env.DB.prepare("SELECT v FROM settings WHERE k='ratelimits'").first(); return R({ rules: r ? JSON.parse(r.v) : [], suggestions: ['/api/account/login', '/api/account/register', '/api/account/signup', '/v1/', '/api/promo/redeem'] }); }
+  if (what === 'ratelimits_set') {
+    if (!post) return bad('POST required', 405); const b = await body(), rules = (Array.isArray(b.rules) ? b.rules : []).slice(0, 20).map((r) => ({ prefix: String(r.prefix || '').slice(0, 60), perMin: Math.floor(Number(r.perMin)) })).filter((r) => r.prefix.startsWith('/') && r.perMin >= 1 && r.perMin <= 10000);
+    await env.DB.prepare("INSERT OR REPLACE INTO settings(k,v) VALUES('ratelimits',?)").bind(JSON.stringify(rules)).run(); A2S.t = 0; await audit(env, req, 'ratelimits', 'rules', rules.map((r) => r.prefix + '=' + r.perMin).join(', ')); return R({ ok: true, rules });
+  }
+  // 18 · IP / device blocklist
+  if (what === 'blocklist') return R({ items: await safe('SELECT * FROM blocklist ORDER BY id DESC LIMIT 200'), now });
+  if (what === 'block_add') {
+    if (!post) return bad('POST required', 405); const b = await body(), kind = b.kind === 'device' ? 'device' : 'ip', value = String(b.value || '').trim().slice(0, 80);
+    if (!value || (kind === 'ip' && !/^[0-9a-fA-F:.]{3,45}$/.test(value))) return bad('Enter a valid IP address'); const hrs = Math.max(0, Number(b.hours) || 0);
+    await env.DB.prepare('INSERT INTO blocklist(kind,value,reason,at,expires,actor) VALUES(?,?,?,?,?,?)').bind(kind, value, String(b.reason || '').slice(0, 120), now, hrs ? now + hrs * 3600e3 : 0, a2Actor(req)).run(); A2S.t = 0; await audit(env, req, 'block', kind + ':' + value, hrs ? hrs + 'h' : 'permanent'); return R({ ok: true });
+  }
+  if (what === 'block_del') { if (!post) return bad('POST required', 405); const b = await body(); await env.DB.prepare('DELETE FROM blocklist WHERE id=?').bind(Number(b.id)).run(); A2S.t = 0; return R({ ok: true }); }
+  // 19 · suspicious logins
+  if (what === 'logins') return R(await a2Suspicious(env));
+  // 20 · announcements
+  if (what === 'ann') return R({ items: await safe('SELECT * FROM announcements ORDER BY id DESC LIMIT 100'), now });
+  if (what === 'ann_save') {
+    if (!post) return bad('POST required', 405); const b = await body(), t = String(b.title || '').trim().slice(0, 80); if (!t) return bad('Add a title');
+    const lv = ['info', 'warn', 'promo'].includes(b.level) ? b.level : 'info', st = b.starts ? Date.parse(b.starts) : 0, en = b.ends ? Date.parse(b.ends) : 0, aud = /^segment:\d+$/.test(b.audience || '') ? b.audience : 'all';
+    if ((b.starts && !isFinite(st)) || (b.ends && !isFinite(en))) return bad('Bad date');
+    if (b.id) await env.DB.prepare('UPDATE announcements SET title=?,body=?,level=?,starts=?,ends=?,audience=?,active=? WHERE id=?').bind(t, String(b.body || '').slice(0, 400), lv, st || 0, en || 0, aud, b.active === false ? 0 : 1, Number(b.id)).run();
+    else await env.DB.prepare('INSERT INTO announcements(title,body,level,starts,ends,audience,active,at,actor) VALUES(?,?,?,?,?,?,?,?,?)').bind(t, String(b.body || '').slice(0, 400), lv, st || 0, en || 0, aud, b.active === false ? 0 : 1, new Date().toISOString(), a2Actor(req)).run();
+    A2S.annT = 0; return R({ ok: true });
+  }
+  if (what === 'ann_delete') { if (!post) return bad('POST required', 405); const b = await body(); await env.DB.prepare('DELETE FROM announcements WHERE id=?').bind(Number(b.id)).run(); A2S.annT = 0; return R({ ok: true }); }
+  // 21 · feature flags
+  if (what === 'flags') return R({ flags: await a2Setting(env, 'flags', {}) });
+  if (what === 'flag_set') {
+    if (!post) return bad('POST required', 405); const b = await body(), name = String(b.name || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 40); if (!name) return bad('Name the flag (letters, numbers, - _)');
+    const f = await a2Setting(env, 'flags', {}); f[name] = { on: b.on ? 1 : 0, pct: Math.max(0, Math.min(100, Number(b.pct == null ? 100 : b.pct) || 0)), note: String(b.note || '').slice(0, 100) };
+    await a2SetSetting(env, 'flags', f); A2S.flagsT = 0; await audit(env, req, 'flag', name, (f[name].on ? 'on ' : 'off ') + f[name].pct + '%'); return R({ ok: true, flags: f });
+  }
+  if (what === 'flag_delete') { if (!post) return bad('POST required', 405); const b = await body(), f = await a2Setting(env, 'flags', {}); delete f[String(b.name || '')]; await a2SetSetting(env, 'flags', f); A2S.flagsT = 0; return R({ ok: true, flags: f }); }
+  // 22 · scheduled admin jobs
+  if (what === 'sched') return R({ jobs: await safe('SELECT * FROM admin_jobs ORDER BY run_at DESC LIMIT 100'), kinds: ['config', 'announce', 'flag', 'promo', 'backup', 'grant_segment'] });
+  if (what === 'sched_add') {
+    if (!post) return bad('POST required', 405); const b = await body(), at = Date.parse(b.runAt), kind = String(b.kind || ''); if (!isFinite(at) || at < now - 60000) return bad('Pick a time in the future');
+    if (!['config', 'announce', 'flag', 'promo', 'backup', 'grant_segment'].includes(kind)) return bad('Unknown job type'); const pl = b.payload && typeof b.payload === 'object' ? b.payload : {};
+    if (kind === 'grant_segment') { const c2 = await a2Setting(env, 'a2cfg', { twoPerson: 0 }); if (c2.twoPerson) return bad('Scheduled bulk grants are disabled while two-person approval is on. Run it manually so a second admin can approve it.'); const cr = Number(pl.credits); if (!pl.id || !isFinite(cr) || Math.abs(cr) > 1000 || cr === 0) return bad('Segment and credits (±1,000) required'); }
+    await env.DB.prepare('INSERT INTO admin_jobs(run_at,kind,payload,at,actor) VALUES(?,?,?,?,?)').bind(at, kind, JSON.stringify(pl).slice(0, 1500), new Date().toISOString(), a2Actor(req)).run(); await audit(env, req, 'sched_add', kind, new Date(at).toISOString()); return R({ ok: true });
+  }
+  if (what === 'sched_cancel') { if (!post) return bad('POST required', 405); const b = await body(); await env.DB.prepare("UPDATE admin_jobs SET status='cancelled' WHERE id=? AND status='pending'").bind(Number(b.id)).run(); return R({ ok: true }); }
+  // 23 · two-person approval
+  if (what === 'approvals') return R({ cfg: await a2Setting(env, 'a2cfg', { twoPerson: 0, threshold: 500 }), items: await safe('SELECT * FROM approvals ORDER BY id DESC LIMIT 60'), me: a2Actor(req) });
+  if (what === 'approval_cfg') {
+    if (!post) return bad('POST required', 405); const b = await body(), c = { twoPerson: b.twoPerson ? 1 : 0, threshold: Math.max(1, Math.min(100000, Number(b.threshold) || 500)) }; await a2SetSetting(env, 'a2cfg', c); await audit(env, req, 'approval_cfg', 'two-person', c.twoPerson ? 'on' : 'off'); return R({ ok: true, cfg: c });
+  }
+  if (what === 'approval_decide') {
+    if (!post) return bad('POST required', 405); const b = await body(), ap = await env.DB.prepare('SELECT * FROM approvals WHERE id=?').bind(Number(b.id)).first(); if (!ap || ap.status !== 'pending') return bad('That request is no longer pending', 404);
+    const me = a2Actor(req); if (me === ap.requested_by) return bad('A different admin has to approve this. You made the request.', 403);
+    if (!b.ok) { await env.DB.prepare("UPDATE approvals SET status='rejected', decided_by=?, decided_at=? WHERE id=?").bind(me, now, ap.id).run(); await audit(env, req, 'approval_rejected', ap.action, ap.summary); return R({ ok: true, status: 'rejected' }); }
+    try { const claim = await env.DB.prepare("UPDATE approvals SET status='running' WHERE id=? AND status='pending'").bind(ap.id).run(); if (!claim.meta || !claim.meta.changes) return bad('Already handled'); const r = await a2Do(env, ap.action, JSON.parse(ap.payload || '{}'), ap.requested_by); await env.DB.prepare("UPDATE approvals SET status='approved', decided_by=?, decided_at=?, result=? WHERE id=?").bind(me, now, JSON.stringify(r).slice(0, 300), ap.id).run(); await audit(env, req, 'approval_approved', ap.action, ap.summary); return R({ ok: true, status: 'approved', result: r }); }
+    catch (e) { await env.DB.prepare("UPDATE approvals SET status='failed', decided_by=?, decided_at=?, result=? WHERE id=?").bind(me, now, String(e.message || e).slice(0, 200), ap.id).run(); return bad('Could not complete: ' + (e.message || e)); }
+  }
+  // 25 · export everything + restore test
+  if (what === 'export_all') {
+    const spec = [['users', 'SELECT * FROM users'], ['purchases', 'SELECT * FROM purchases'], ['grants', 'SELECT * FROM grants'], ['refunds', 'SELECT * FROM refunds'], ['payouts', 'SELECT * FROM payouts'], ['promo_codes', 'SELECT * FROM promo_codes'], ['segments', 'SELECT * FROM segments'], ['announcements', 'SELECT * FROM announcements'], ['tickets', 'SELECT * FROM tickets'], ['ref_uses', 'SELECT * FROM ref_uses'], ['admin_log', 'SELECT * FROM admin_log ORDER BY id DESC LIMIT 5000'], ['usage_last_30d', 'SELECT * FROM usage WHERE at>=? ORDER BY id DESC LIMIT 50000', iso(30 * 86400e3)]];
+    const out = { exportedAt: new Date().toISOString(), note: 'Passwords, sign-in tokens and secrets are not included.', tables: {} }, counts = {};
+    for (const [t, sql, ...p] of spec) { out.tables[t] = await safe(sql, ...p); if (t === 'users') out.tables[t] = out.tables[t].map((u) => { const c = { ...u }; delete c.token_hash; delete c.pw_hash; delete c.pw_salt; return c; }); counts[t] = out.tables[t].length; }
+    const settings = await safe("SELECT k,v FROM settings WHERE k IN ('cfg','flags','ratelimits','costs','a2cfg')"); out.settings = Object.fromEntries(settings.map((s) => { try { return [s.k, JSON.parse(s.v)]; } catch (e) { return [s.k, s.v]; } }));
+    await audit(env, req, 'export_all', 'everything', Object.values(counts).reduce((a, b) => a + b, 0) + ' rows');
+    return R({ name: 'aix-everything-' + new Date().toISOString().slice(0, 10) + '.json', json: JSON.stringify(out), counts });
+  }
+  if (what === 'restore_test') {
+    await ensureBackups(env); const bk = P.get('id') ? await env.DB.prepare('SELECT id,at,data,rows FROM backups WHERE id=?').bind(Number(P.get('id'))).first() : await env.DB.prepare("SELECT id,at,data,rows FROM backups WHERE data<>'' ORDER BY id DESC LIMIT 1").first();
+    if (!bk || !bk.data) return R({ ok: false, problems: ['No backup stored in the cloud yet. Press “Back up now” first.'] });
+    const problems = [], tables = []; let J = null;
+    try { const bin = Uint8Array.from(atob(bk.data), (c) => c.charCodeAt(0)); J = JSON.parse(await new Response(new Blob([bin]).stream().pipeThrough(new DecompressionStream('gzip'))).text()); } catch (e) { return R({ ok: false, problems: ['The backup file could not be read: ' + (e.message || e)] }); }
+    for (const t of ['users', 'purchases', 'grants', 'settings']) {
+      const rows = (J.tables || {})[t]; if (!Array.isArray(rows)) { problems.push('Table "' + t + '" is missing or damaged in the backup.'); continue; }
+      const live = (await one('SELECT COUNT(*) n FROM ' + t).catch(() => ({ n: null }))).n; tables.push({ name: t, backup: rows.length, live });
+      if (live != null && rows.length < live * 0.5 && live > 10) problems.push('"' + t + '" in the backup has far fewer rows (' + rows.length + ') than now (' + live + ').');
+    }
+    const us = (J.tables || {}).users || [], noHash = us.filter((u) => !u.token_hash).length; if (noHash) problems.push(noHash + ' user rows have no sign-in token hash.');
+    const dup = us.length - new Set(us.map((u) => u.email)).size; if (dup) problems.push(dup + ' duplicate emails in the backup.');
+    const sum = us.reduce((s, u) => s + (Number(u.credits) || 0), 0), liveSum = (await one('SELECT COALESCE(SUM(credits),0) s FROM users')).s || 0;
+    await audit(env, req, 'restore_test', 'backup #' + bk.id, problems.length ? problems.length + ' problems' : 'clean');
+    return R({ ok: !problems.length, backupId: bk.id, backupAt: J.at, ageHours: +((now - bk.at) / 3600e3).toFixed(1), tables, creditsInBackup: +sum.toFixed(1), creditsNow: +Number(liveSum).toFixed(1), problems, note: 'Dry run only. Nothing was changed.' });
+  }
+  return null;
+}
 async function adminTools(env, req, what, url, H) {
   const { q, one, R, iso, now } = H, safe = async (sql, ...p) => { try { return await q(sql, ...p); } catch (e) { return []; } };
   const owner = new Set(owners(env));
@@ -1489,15 +1970,22 @@ async function adminTools(env, req, what, url, H) {
 }
 
 export default {
-  async scheduled(ev, env, ctx) { ctx.waitUntil(runDueJobs(env).then(() => autoBackup(env)).then(() => (new Date().getUTCMinutes() < 5 ? settleRefs(env).catch(() => 0) : 0)).then(() => runAlerts(env))); },
+  async scheduled(ev, env, ctx) { ctx.waitUntil(runDueJobs(env).then(() => autoBackup(env)).then(() => (new Date().getUTCMinutes() < 5 ? settleRefs(env).catch(() => 0) : 0)).then(() => runAlerts(env)).then(() => a2Cron(env))); },
   async fetch(req, env, ctx) {
-    try { return await this._h(req, env, ctx); }
-    catch (e) { console.log('worker error', req.method, new URL(req.url).pathname, e && e.stack || e); return json(env, req, { error: 'Server error: ' + (e && e.message || e) }, 500); }
+    const t0 = Date.now(), path = new URL(req.url).pathname; let res, login = '';
+    try {
+      const blk = await a2Guard(env, req, path); if (blk) return blk;
+      if (req.method === 'POST' && /^\/api\/account\/(login|register|signup)$/.test(path)) { try { const b = await req.clone().json(); login = String(b.username || b.email || '').toLowerCase(); } catch (e) { /* ignore */ } }
+      res = await this._h(req, env, ctx);
+    } catch (e) { console.log('worker error', req.method, path, e && e.stack || e); res = json(env, req, { error: 'Server error: ' + (e && e.message || e) }, 500); }
+    try { a2Log(env, ctx, req, res, Date.now() - t0, path, login); } catch (e) { /* logging never breaks a reply */ }
+    return res;
   },
   async _h(req, env) {
     const url = new URL(req.url), path = url.pathname;
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(env, req) });
     if (path.startsWith('/api/enterprise/')) return entApi(env, req, path);
+    if (path === '/api/announcements' || path === '/api/flags' || path === '/api/promo/redeem') return a2Public(env, req, path);
     if (path.startsWith('/api/ref/') || path === '/api/promo/submit') return refApi(env, req, path);
     if (path.startsWith('/api/mod/')) return modApi(env, req, path);
     if (path.startsWith('/api/support/')) return supportApi(env, req, path);

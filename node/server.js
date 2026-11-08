@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path'), crypto = require('crypto');
-const VERSION = 14;   // bump on every release: nodes auto-update when GitHub has a higher number
+const VERSION = 15;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -116,6 +116,19 @@ async function checkUpdate() {
   } catch (e) { UPDST.error = e.message; }
 }
 setTimeout(checkUpdate, 30000); setInterval(checkUpdate, 30 * 60000);
+
+// ---- admin sign-in security: optional authenticator-app code (TOTP) + revocable sessions ----
+const TOTPF = path.join(__dirname, '.aix-totp'), SESSF = path.join(__dirname, '.aix-sessions.json');
+const b32 = (buf) => { const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'; let bits = '', o = ''; for (const x of buf) bits += x.toString(2).padStart(8, '0'); for (let i = 0; i + 5 <= bits.length; i += 5) o += A[parseInt(bits.slice(i, i + 5), 2)]; return o; };
+const unb32 = (s) => { const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'; let bits = ''; for (const c of s.replace(/=+$/, '').toUpperCase()) { const v = A.indexOf(c); if (v >= 0) bits += v.toString(2).padStart(5, '0'); } const out = []; for (let i = 0; i + 8 <= bits.length; i += 8) out.push(parseInt(bits.slice(i, i + 8), 2)); return Buffer.from(out); };
+const totpAt = (sec, t) => { const c = Buffer.alloc(8); c.writeBigUInt64BE(BigInt(Math.floor(t / 30000))); const h = crypto.createHmac('sha1', unb32(sec)).update(c).digest(), o = h[19] & 15, n = ((h[o] & 127) << 24) | (h[o + 1] << 16) | (h[o + 2] << 8) | h[o + 3]; return String(n % 1000000).padStart(6, '0'); };
+const totpOk = (sec, code) => { code = String(code || '').replace(/\D/g, ''); if (code.length !== 6) return false; const now = Date.now(); return [-30000, 0, 30000].some((d) => totpAt(sec, now + d) === code); };
+const totpSecret = () => { try { return fs.readFileSync(TOTPF, 'utf8').trim(); } catch { return ''; } };
+let SESS = (() => { try { return JSON.parse(fs.readFileSync(SESSF, 'utf8')); } catch { return {}; } })();
+const sessSave = () => { try { const now = Date.now(); for (const k of Object.keys(SESS)) if (SESS[k].exp < now) delete SESS[k]; fs.writeFileSync(SESSF, JSON.stringify(SESS)); } catch {} };
+const sessKey = (t) => crypto.createHash('sha256').update(t).digest('hex');
+const sessGet = (t) => { const s = t && t.startsWith('s_') && SESS[sessKey(t)]; if (s && s.exp > Date.now()) return s; return null; };
+let TOTP_FAIL = { n: 0, until: 0 };
 http.createServer(async (req, res) => {
   const h = cors(req), u = req.url.split('?')[0];
   if (req.method === 'OPTIONS') { res.writeHead(204, h); return res.end(); }
@@ -126,11 +139,36 @@ http.createServer(async (req, res) => {
   const AF = path.join(__dirname, 'admins.json'), loadTeam = () => { try { return JSON.parse(fs.readFileSync(AF, 'utf8')); } catch { return {}; } };
   const ROLE_OK = {
     support: ['overview', 'users', 'user360', 'user_note', 'tickets', 'ticket', 'ticket_reply', 'ticket_status', 'moderation', 'mod_decide', 'alerts', 'alert_ack', 'referrals', 'promos'],
-    manager: ['*', '!config_set', '!restore', '!grant', '!export', '!backup_now', '!backup_get', '!backups', '!storage'],
+    manager: ['*', '!config_set', '!restore', '!grant', '!export', '!backup_now', '!backup_get', '!backups', '!storage', '!export_all', '!restore_test', '!approval_cfg', '!host_restart'],
   };
   let ACTOR = 'owner', ROLE = 'owner';
-  const bearer = (req.headers.authorization || '').replace(/^Bearer /, '');
-  if (!localAdmin && bearer !== TOKEN) {
+  const bearer = (req.headers.authorization || '').replace(/^Bearer /, ''), SE = sessGet(bearer), TS = totpSecret();
+  if (u === '/restart' && req.method === 'POST') {   // remote restart from the cloud (the start script's watchdog relaunches the node)
+    const ns = process.env.AIX_NODE_SECRET; if (!ns || req.headers['x-node-secret'] !== ns) return J(res, h, 401, { error: 'bad secret' });
+    J(res, h, 200, { ok: true, restarting: true }); setTimeout(() => process.exit(0), 600); return;
+  }
+  if (u.startsWith('/admin/2fa') || u === '/admin/sessions') {
+    if (!localAdmin && bearer !== TOKEN && !SE) return J(res, h, 401, { error: 'bad token' });
+    const bd = req.method === 'POST' ? JSON.parse((await body(req)).toString() || '{}') : {};
+    if (u === '/admin/2fa/login') {
+      if (!TS) return J(res, h, 400, { error: 'Two-step sign-in is not turned on.' });
+      if (Date.now() < TOTP_FAIL.until) return J(res, h, 429, { error: 'Too many wrong codes. Wait a minute.' });
+      if (!totpOk(TS, bd.code)) { if (++TOTP_FAIL.n >= 5) { TOTP_FAIL = { n: 0, until: Date.now() + 60000 }; } return J(res, h, 401, { error: 'That code is not right.' }); }
+      TOTP_FAIL.n = 0; const t = 's_' + crypto.randomBytes(24).toString('hex'); SESS[sessKey(t)] = { at: Date.now(), exp: Date.now() + 12 * 3600e3, ip: String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').slice(0, 45), ua: String(req.headers['user-agent'] || '').slice(0, 80) }; sessSave();
+      return J(res, h, 200, { session: t, hours: 12 });
+    }
+    if (u === '/admin/2fa/status') return J(res, h, 200, { enabled: !!TS, sessions: Object.keys(SESS).filter((k) => SESS[k].exp > Date.now()).length });
+    if (u === '/admin/2fa/setup') { const sec = b32(crypto.randomBytes(20)); global.__PENDING2FA = sec; return J(res, h, 200, { secret: sec, uri: 'otpauth://totp/AIX%20Alpha%20Admin?secret=' + sec + '&issuer=AIX%20Alpha' }); }
+    if (u === '/admin/2fa/confirm') { const sec = global.__PENDING2FA; if (!sec || !totpOk(sec, bd.code)) return J(res, h, 400, { error: 'That code did not match. Add the key to your authenticator app and try again.' }); fs.writeFileSync(TOTPF, sec, { mode: 0o600 }); global.__PENDING2FA = null; SESS = {}; sessSave(); return J(res, h, 200, { ok: true, note: 'Two-step sign-in is on. All other sessions were signed out.' }); }
+    if (u === '/admin/2fa/disable') { if (TS && !totpOk(TS, bd.code)) return J(res, h, 400, { error: 'Enter a current code to turn it off.' }); try { fs.unlinkSync(TOTPF); } catch {} return J(res, h, 200, { ok: true }); }
+    if (u === '/admin/sessions') {
+      if (req.method === 'POST') { if (bd.all) SESS = {}; else if (bd.id) { for (const k of Object.keys(SESS)) if (k.startsWith(String(bd.id))) delete SESS[k]; } sessSave(); return J(res, h, 200, { ok: true }); }
+      return J(res, h, 200, { sessions: Object.entries(SESS).filter(([, s]) => s.exp > Date.now()).map(([k, s]) => ({ id: k.slice(0, 12), at: s.at, exp: s.exp, ip: s.ip, ua: s.ua, current: !!bearer && k === sessKey(bearer) })), enabled: !!TS });
+    }
+    return J(res, h, 404, { error: 'unknown' });
+  }
+  if (!localAdmin && bearer === TOKEN && TS && u.startsWith('/admin')) return J(res, h, 401, { error: 'Enter your authenticator code to continue.', need2fa: true });
+  if (!localAdmin && bearer !== TOKEN && !SE) {
     const tm = loadTeam(), mem = bearer && tm[bearer];
     if (!mem || !u.startsWith('/admin')) return J(res, h, 401, { error: 'bad token' });
     ACTOR = mem.name; ROLE = mem.role;
@@ -194,7 +232,7 @@ http.createServer(async (req, res) => {
       const W = process.env.AIX_WORKER, NS = process.env.AIX_NODE_SECRET;
       if (!W || !NS) return J(res, h, 503, { error: 'Cloud link not configured on this node (needs AIX_WORKER and AIX_NODE_SECRET).' });
       const qs = new URL(req.url, 'http://x').searchParams, what = (qs.get('what') || 'overview').replace(/[^a-z_]/g, '');
-      const extra = ['email', 'id', 'kind', 'status', 'f'].filter((k) => qs.get(k) != null).map((k) => '&' + k + '=' + encodeURIComponent(qs.get(k))).join('');
+      const extra = [...qs.keys()].filter((k) => k !== 'what' && /^[a-zA-Z_]{1,20}$/.test(k)).map((k) => '&' + k + '=' + encodeURIComponent(qs.get(k))).join('');
       const post = req.method === 'POST', bd = post ? await body(req) : null;
       const r = await fetch(W.replace(/\/+$/, '') + '/api/node/admin?what=' + what + extra, { method: post ? 'POST' : 'GET', headers: { 'x-node-secret': NS, 'x-admin-actor': ACTOR + (ROLE === 'owner' ? '' : ' (' + ROLE + ')'), 'content-type': 'application/json' }, body: post ? bd : undefined });
       return J(res, h, r.status, await r.json().catch(() => ({ error: 'bad response' })));

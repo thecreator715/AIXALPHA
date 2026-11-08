@@ -13,3 +13,5 @@ node/tunnel.log
 .aix-models
 .aix-node-id
 .aix-priority
+.aix-totp
+.aix-sessions.json
