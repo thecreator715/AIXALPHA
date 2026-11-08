@@ -52,3 +52,8 @@ cd server && npm install && cp .env.example .env.local && npm run dev && npm tes
 - Web search costs about 3.5 credits and now runs from the cloud (Bing, DuckDuckGo, Google News, CoinGecko), with the Mac as a fallback.
 - Images are read by the vision model on the node; drag and drop and paste work in chat.
 - One More button in the desktop navigation; mobile menu and chat-input fixes.
+
+
+## One command for everything (node v19)
+Double-click `AIX MASTER.command` in the node folder. It stops old processes, repairs what is wrong, starts the node (which now starts its own secure tunnel), and finally checks that the cloud sees your Mac. Nothing else is needed.
+Quick check: `cat .aix-public-url; tail -5 tunnel.log node.log`

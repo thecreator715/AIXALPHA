@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path'), crypto = require('crypto');
-const VERSION = 18;   // bump on every release: nodes auto-update when GitHub has a higher number
+const VERSION = 19;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -152,6 +152,25 @@ const sessSave = () => { try { const now = Date.now(); for (const k of Object.ke
 const sessKey = (t) => crypto.createHash('sha256').update(t).digest('hex');
 const sessGet = (t) => { const s = t && t.startsWith('s_') && SESS[sessKey(t)]; if (s && s.exp > Date.now()) return s; return null; };
 let TOTP_FAIL = { n: 0, until: 0 };
+// ---- secure tunnel: the node starts and supervises cloudflared itself, so ONE process brings the whole Mac online ----
+const cp = require('child_process'); let TUN = null, TUN_STOP = false;
+function startTunnel(PUF, onUrl) {
+  if (process.env.AIX_NO_TUNNEL === '1' || TUN_STOP) return;
+  const bin = path.join(__dirname, 'runtime', 'cloudflared'); if (!fs.existsSync(bin)) { console.log('Tunnel off: runtime/cloudflared is missing (run Start AIX Node.command once to download it)'); return; }
+  const cfg = path.join(__dirname, 'runtime', 'empty.yml'), logf = path.join(__dirname, 'tunnel.log');
+  try { fs.writeFileSync(cfg, '# intentionally empty: quick tunnel only\n'); fs.writeFileSync(logf, ''); fs.unlinkSync(PUF); } catch {}
+  try { cp.spawnSync('pkill', ['-f', 'runtime/empty.yml']); } catch {}
+  let found = false;
+  const p = cp.spawn(bin, ['tunnel', '--config', cfg, '--no-autoupdate', '--url', 'http://localhost:' + PORT], { stdio: ['ignore', 'pipe', 'pipe'] });
+  TUN = p;
+  const onData = (d) => { const t = String(d); try { fs.appendFileSync(logf, t); } catch {} const m = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/.exec(t); if (m && !found) { found = true; try { fs.writeFileSync(PUF, m[0]); } catch {} console.log('Secure tunnel up: ' + m[0]); try { onUrl(); } catch {} } };
+  p.stdout.on('data', onData); p.stderr.on('data', onData);
+  p.on('error', (e) => { console.log('Tunnel error: ' + e.message); });
+  p.on('exit', () => { if (TUN === p) TUN = null; if (!TUN_STOP) setTimeout(() => startTunnel(PUF, onUrl), 5000); });
+  setTimeout(() => { if (!found && TUN === p) { console.log('Tunnel gave no address in 60 s; retrying'); try { p.kill(); } catch {} } }, 60000);
+}
+const stopTunnel = () => { TUN_STOP = true; try { TUN && TUN.kill(); } catch {} };
+process.on('exit', stopTunnel); process.on('SIGTERM', () => process.exit(0)); process.on('SIGINT', () => process.exit(0));
 let LISTEN_TRY = 0;
 const SRV = http.createServer(async (req, res) => {
   const h = cors(req), u = req.url.split('?')[0];
@@ -309,11 +328,13 @@ const SRV = http.createServer(async (req, res) => {
   console.log(`AIX node v2 on :${PORT} -> ${OLLAMA}   dashboard: http://localhost:${PORT}/`);
   const W = process.env.AIX_WORKER, NS = process.env.AIX_NODE_SECRET, MODEL = process.env.MODEL || '';
   const PUF = path.join(__dirname, '.aix-public-url'), getPU = () => { try { return fs.readFileSync(PUF, 'utf8').trim(); } catch { return process.env.AIX_PUBLIC_URL || ''; } };
+  let REGNOW = () => {};
+  startTunnel(PUF, () => REGNOW());
   if (W && NS && MODEL) {
     const NODEID = () => { const f = path.join(__dirname, '.aix-node-id'); try { return fs.readFileSync(f, 'utf8').trim() || 'main'; } catch { const id = (os.hostname().replace(/[^\w]/g, '').slice(0, 12) || 'host') + '-' + crypto.randomBytes(3).toString('hex'); try { fs.writeFileSync(f, id); } catch {} return id; } };
     const NODEPRIO = () => { try { return Math.max(1, Math.min(9, parseInt(fs.readFileSync(path.join(__dirname, '.aix-priority'), 'utf8')) || +process.env.NODE_PRIO || 1)); } catch { return Math.max(1, Math.min(9, +process.env.NODE_PRIO || 1)); } };
     const readTiers = () => { try { const t = JSON.parse(fs.readFileSync(path.join(__dirname, '.aix-models'), 'utf8')); const o = {}; for (const k of ['eco', 'balanced', 'thorough']) if (t[k]) o[k] = String(t[k]); return o; } catch { return {}; } };
     const reg = async () => { const PU = getPU(); if (!PU) return; try { const r = await fetch(W.replace(/\/+$/, '') + '/api/node/register', { method: 'POST', headers: { 'content-type': 'application/json', 'x-node-secret': NS }, body: JSON.stringify({ url: PU, token: TOKEN, model: MODEL, models: readTiers(), id: NODEID(), prio: NODEPRIO(), name: os.hostname().slice(0, 30) }) }); REGOK = r.ok; LASTREG = Date.now(); if (!reg.ok) { reg.ok = r.ok; console.log(r.ok ? 'Registered with AIX cloud: apps will use this node automatically' : 'Register failed: HTTP ' + r.status); } } catch (e) { console.log('Register error: ' + e.message); reg.ok = false; } };
-    reg(); setInterval(reg, 60000);
+    REGNOW = reg; reg(); setInterval(reg, 60000);
   } else console.log('Cloud registration off (needs AIX_WORKER, AIX_NODE_SECRET, MODEL)');
 });

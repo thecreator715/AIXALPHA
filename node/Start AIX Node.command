@@ -55,6 +55,14 @@ fi
 [ -f .aix-token ] || openssl rand -hex 24 > .aix-token
 TOKEN=$(cat .aix-token)
 
+# 5a) cloudflared (the secure tunnel). The node itself starts and supervises it, so the cloud sees this Mac within seconds.
+ARCH=$([ "$(uname -m)" = "arm64" ] && echo arm64 || echo amd64)
+if [ ! -x runtime/cloudflared ]; then
+  say "Setting up the secure tunnel (cloudflared)"
+  mkdir -p runtime && curl -fL --progress-bar "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-$ARCH.tgz" | tar -xz -C runtime 2>/dev/null
+fi
+[ -f runtime/cloudflared ] && { chmod +x runtime/cloudflared; xattr -dr com.apple.quarantine runtime/cloudflared 2>/dev/null; }
+
 # 5b) start the node RIGHT AWAY so the control panel opens immediately; model download and the tunnel continue below
 free_port() { for _ in 1 2 3 4 5 6 7 8; do P=$(lsof -ti tcp:$PORT 2>/dev/null); [ -z "$P" ] && return 0; kill $P 2>/dev/null; sleep 1; done; P=$(lsof -ti tcp:$PORT 2>/dev/null); [ -n "$P" ] && kill -9 $P 2>/dev/null; sleep 1; }
 say "Starting AIX Node on port $PORT"
@@ -102,43 +110,18 @@ if [ "$GB" -ge 16 ]; then
 fi
 
 # restart the node so it registers the final model names
-kill $NODE_PID 2>/dev/null; free_port
+kill $NODE_PID 2>/dev/null; pkill -f "runtime/empty.yml" 2>/dev/null; free_port; rm -f .aix-public-url
 export MODEL; [ -s .aix-vision-model ] && export VISION_MODEL="$(cat .aix-vision-model)"
 node server.js &
 NODE_PID=$!
-# 6) public https address so the cloud (and every app: GitHub, artifact, phones) can reach this Mac. Cloudflare quick tunnel, no account.
-URL="http://localhost:$PORT"; TUN_PID=""
-ARCH=$([ "$(uname -m)" = "arm64" ] && echo arm64 || echo amd64)
-if [ ! -x runtime/cloudflared ]; then
-  say "Setting up the secure tunnel (cloudflared)"
-  mkdir -p runtime && curl -fL --progress-bar "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-$ARCH.tgz" | tar -xz -C runtime 2>/dev/null
-fi
-if [ -x runtime/cloudflared ]; then
-  chmod +x runtime/cloudflared; xattr -dr com.apple.quarantine runtime/cloudflared 2>/dev/null
-  # an empty config makes the quick tunnel ignore any ~/.cloudflared/config.yml (named tunnels such as LUMA's make quick tunnels fail otherwise)
-  printf '# intentionally empty: quick tunnel only\n' > runtime/empty.yml
-  for TRY in 1 2 3; do
-    : > tunnel.log; T=""
-    nohup runtime/cloudflared tunnel --config "$PWD/runtime/empty.yml" --no-autoupdate --url "http://localhost:$PORT" >> tunnel.log 2>&1 &
-    TUN_PID=$!
-    for i in $(seq 1 40); do T=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' tunnel.log | head -1); [ -n "$T" ] && break; kill -0 $TUN_PID 2>/dev/null || break; sleep 1; done
-    if [ -n "$T" ]; then URL="$T"; break; fi
-    echo "  Tunnel attempt $TRY did not start. cloudflared said:"; tail -4 tunnel.log | sed 's/^/    /'
-    kill $TUN_PID 2>/dev/null; TUN_PID=""; sleep 3
-  done
-else
-  echo "  cloudflared is missing (download failed?) - the cloud cannot reach this Mac without it."
-fi
-if [ -z "$TUN_PID" ] && { command -v tailscale >/dev/null 2>&1 || [ -x /Applications/Tailscale.app/Contents/MacOS/Tailscale ]; }; then
-  TS=$(command -v tailscale || echo /Applications/Tailscale.app/Contents/MacOS/Tailscale)
-  "$TS" serve --bg "$PORT" >/dev/null 2>&1
-  H=$("$TS" status --json 2>/dev/null | grep -o '"DNSName": *"[^"]*"' | head -1 | sed 's/.*: *"\(.*\)"/\1/; s/\.$//')
-  [ -n "$H" ] && URL="https://$H"
-fi
+# 6) the node starts its own tunnel and writes the public address to .aix-public-url; wait for it here
+URL="http://localhost:$PORT"
+say "Waiting for the secure tunnel"
+for i in $(seq 1 75); do U=$(cat .aix-public-url 2>/dev/null); [ -n "$U" ] && { URL="$U"; break; }; sleep 1; done
+[ "$URL" = "http://localhost:$PORT" ] && { echo "  Tunnel not up yet. The node keeps retrying by itself. Last tunnel lines:"; tail -4 tunnel.log 2>/dev/null | sed 's/^/    /'; }
 
 # 7) start the AIX node and open the app already paired
 say "Starting AIX Node on port $PORT"
-printf %s "$URL" > .aix-public-url   # the running node picks this up and registers with the cloud
 ENC_URL=$(printf %s "$URL" | sed 's|:|%3A|g; s|/|%2F|g')
 LINK="${APP_URL}#node=${ENC_URL}&token=${TOKEN}&model=$(printf %s "$MODEL" | sed 's|:|%3A|g')"
 echo "$LINK" > aix-pair-link.txt
@@ -157,8 +140,8 @@ cat <<MSG
   runs by itself at every login.
 MSG
 [ -n "$NODE_SECRET" ] || echo "  WARNING: .aix-node-secret is missing, so cloud registration is OFF."
-trap 'kill $NODE_PID $TUN_PID 2>/dev/null' EXIT
+trap 'kill $NODE_PID 2>/dev/null; pkill -f "runtime/empty.yml" 2>/dev/null' EXIT
 # watchdog: if the tunnel or node dies, restart everything (new tunnel address is re-registered automatically)
-while kill -0 $NODE_PID 2>/dev/null && { [ -z "$TUN_PID" ] || kill -0 $TUN_PID 2>/dev/null; }; do sleep 10; done
-kill $NODE_PID $TUN_PID 2>/dev/null; sleep 3
+while kill -0 $NODE_PID 2>/dev/null; do sleep 10; done
+kill $NODE_PID 2>/dev/null; pkill -f "runtime/empty.yml" 2>/dev/null; sleep 3
 exec "$0" --headless

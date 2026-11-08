@@ -16,24 +16,24 @@ case "$PWD" in
     [ -f "$DEST/AIX MASTER.command" ] && exec "$DEST/AIX MASTER.command" ;;
 esac
 
-step "1/6  Stopping anything left over from earlier runs"
+step "1/7  Stopping anything left over from earlier runs"
 PLIST="$HOME/Library/LaunchAgents/com.aix.node.plist"
 OLD="$HOME/Library/LaunchAgents/com.aix.alpha.plist"; [ -f "$OLD" ] && { launchctl unload "$OLD" 2>/dev/null; rm -f "$OLD"; }   # retired Anthropic master agent
 [ -f "$PLIST" ] && launchctl bootout gui/$(id -u) "$PLIST" 2>/dev/null
 pkill -f "Start AIX Node.command" 2>/dev/null
 pkill -f "AIX Node" 2>/dev/null
 pkill -f "node server.js" 2>/dev/null
-pkill -f "cloudflared tunnel" 2>/dev/null
+pkill -f "runtime/empty.yml" 2>/dev/null
 PIDS=$(lsof -ti tcp:$PORT 2>/dev/null); [ -n "$PIDS" ] && kill $PIDS 2>/dev/null
 sleep 2
 PIDS=$(lsof -ti tcp:$PORT 2>/dev/null); [ -n "$PIDS" ] && kill -9 $PIDS 2>/dev/null
 rm -f .aix-public-url tunnel.log
 lsof -ti tcp:$PORT >/dev/null 2>&1 && bad "port $PORT is still busy; restart the Mac and run this again" || ok "port $PORT is free, old node and tunnel stopped"
 
-step "2/6  Internet and cloud"
+step "2/7  Internet and cloud"
 curl -fs -m 10 -o /dev/null https://aix-alpha.aixalpha.workers.dev/api/config && ok "AIX cloud answers" || warn "cloud did not answer (check your internet); the node will still start"
 
-step "3/6  Cloud secret (lets this Mac register and lets the control panel load data)"
+step "3/7  Cloud secret (lets this Mac register and lets the control panel load data)"
 if [ ! -s .aix-node-secret ]; then
   bad ".aix-node-secret is missing in this folder"
   echo "     Paste the node secret from Cloudflare (or the one Claude gave you) and press Return:"
@@ -50,18 +50,29 @@ if [ -s .aix-node-secret ]; then
   esac
 else bad "no secret, so cloud registration and the cloud panel tabs stay off"; fi
 
-step "4/6  Files"
+step "4/7  Files"
 for f in "Start AIX Node.command" server.js monitor.html; do [ -f "$f" ] && ok "$f" || bad "$f is missing; re-extract the zip"; done
 chmod +x ./*.command 2>/dev/null; xattr -dr com.apple.quarantine . 2>/dev/null
 command -v node >/dev/null 2>&1 && ok "Node.js $(node -v)" || warn "Node.js will be set up automatically"
 
-step "5/6  Auto-start at login (optional)"
+step "5/7  Auto-start at login (optional)"
 if [ -f "$PLIST" ]; then ok "auto-start is installed (it will be restarted fresh)"; else
   printf "     Install auto-start so everything launches by itself at login? [y/N] "; read -r -n 1 A; echo
   [ "$A" = "y" ] || [ "$A" = "Y" ] && bash "./Install AutoStart.command" </dev/null
 fi
 
-step "6/6  Starting AIX Node, tunnel and model"
+cloud_wait(){   # confirm the cloud really sees this Mac (tunnel up + registered), up to ~2.5 minutes
+  step "7/7  Checking that the cloud sees this Mac"
+  for i in $(seq 1 50); do
+    J=$(curl -fs -m 8 "$WORKER/api/node/status" 2>/dev/null)
+    echo "$J" | grep -q '"online":true' && echo "$J" | grep -o '"ageSec":[0-9]*' | head -1 | grep -qE '"ageSec":([0-9]|[1-5][0-9]|6[0-9])$' && { ok "the cloud sees this Mac: every app (phone, GitHub site, artifact) can now use it"; return 0; }
+    [ $((i % 5)) = 0 ] && printf "     still connecting (%ss)...\n" $((i*3))
+    sleep 3
+  done
+  warn "the cloud does not see this Mac yet. Tunnel log:"; tail -6 tunnel.log 2>/dev/null | sed 's/^/     /'; echo "     Node log:"; tail -6 node.log 2>/dev/null | sed 's/^/     /'
+  echo "     Chat on THIS Mac still works. Run this file again, or send those lines to Claude."
+}
+step "6/7  Starting AIX Node, tunnel and model"
 echo "     The control panel opens in your browser. Keep this window open."
 if [ -f "$PLIST" ]; then
   bash "./Install AutoStart.command" --silent >/dev/null 2>&1   # rewrites the agent so it points at THIS folder
@@ -69,7 +80,7 @@ if [ -f "$PLIST" ]; then
   for i in $(seq 1 60); do curl -fs -m 2 http://localhost:$PORT/ >/dev/null 2>&1 && break; sleep 1; done
   if curl -fs -m 2 http://localhost:$PORT/ >/dev/null 2>&1; then
     open "http://localhost:$PORT/?v=$(date +%s)"
-    echo "     Running in the background (log: node.log). You can close this window."; sleep 5; exit 0
+    cloud_wait; echo "     Running in the background (log: node.log). You can close this window."; sleep 5; exit 0
   fi
   printf "  ${R}FIX${N}  the background service did not start. Last log lines:\n"; tail -8 node.log 2>/dev/null | sed 's/^/     /'
   echo "     Starting directly in this window instead (keep it open)."

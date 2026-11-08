@@ -102,3 +102,8 @@
 
 ## Node v18: start-up fix
 - Start AIX Node no longer crashes with EADDRINUSE: it frees port 8787 before each start, waits for the old node to exit before restarting, and server.js waits for a busy port instead of exiting.
+
+## Node v19 + app fixes
+- Node now starts and supervises its own cloudflared tunnel (one process brings the Mac online); registers with the cloud the moment the tunnel address exists. Previously the launcher started the tunnel only after all model downloads, so the cloud saw the Mac as offline for a long time.
+- AIX MASTER.command: step 7 confirms the cloud sees the Mac; tunnel kill pattern narrowed so other cloudflared tunnels are left alone.
+- App: web search is always allowed on the Mac node / own-key path (no AIX credits are used there); Mac search path adds the "ignore earlier refusals" reminder and a "Searching the web…" toast.
