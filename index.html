@@ -663,6 +663,19 @@ dialog#dlg.sheet::backdrop{background:rgba(0,0,0,.6);backdrop-filter:blur(6px)}
 #vstudio .stgrid{height:max(440px,calc(100dvh - var(--topH,56px) - var(--navH,52px) - 190px))!important}
 }
 </style>
+<style id="tabfit">
+@media(min-width:901px){
+#tabs{overflow:visible!important;position:relative;container-type:normal!important;justify-content:center!important}
+#tabs button{flex:0 0 auto!important;overflow:visible!important;white-space:nowrap!important;text-overflow:clip!important;font-size:12.5px!important;padding:6px 11px!important;display:inline-flex;align-items:center;gap:6px}
+#tabs button .ic{width:14px;height:14px;flex:none}
+#tabs button.tfh{display:none!important}
+#tabmore{position:fixed;z-index:60;min-width:190px;max-height:70vh;overflow:auto;background:#0e0e12;border:1px solid var(--b);border-radius:12px;padding:6px;box-shadow:0 14px 40px #000c}
+#tabmore button{display:flex!important;width:100%;align-items:center;gap:10px;background:transparent;border:0;color:#e5e7eb;padding:8px 10px;border-radius:8px;font-size:13px;text-align:left}
+#tabmore button:hover{background:#ffffff14}#tabmore button.on{background:#fff;color:#000;font-weight:700}
+#tabmore .ic{width:16px;height:16px}
+}
+@media(min-width:1350px){#tabs{max-width:none!important;width:100%!important}#top{grid-template-columns:210px minmax(0,1fr) auto!important}}
+</style>
 </head>
 <body>
 <aside id="prog"><div class="pgtop"><div class="pgttl"><span class="logo">◈</span><div><b>Progress</b><small class="mono">steps · outputs · usage</small></div></div><button class="btn2" id="progx" aria-label="Close">✕</button></div><div id="progbody"></div></aside><div id="scrim"></div><nav id="bnav"></nav><div id="siteview"></div><div id="pal"><div class="box"><input id="pin" placeholder="Type a command…"><div id="pl"></div></div></div><div id="toast"></div>
@@ -760,8 +773,8 @@ const PRESETS=[
 
 /* ============ engine config ============ */
 const ICP={market:'M6 7h12l1 13H5zM9 7a3 3 0 0 1 6 0',gallery:'M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M15 9h.01',enterprise:'M4 21V7l8-4 8 4v14M9 21v-6h6v6M8 10h1M12 10h1M16 10h1M8 13h1M16 13h1',bolt:'M13 3L5 14h6l-1 7 8-11h-6z',api:'M8 9l-3 3 3 3M16 9l3 3-3 3M13 6l-2 12',memory:'M12 3a6 6 0 0 0-6 6c0 2 1 3.5 2 4.5V17h8v-3.5c1-1 2-2.5 2-4.5a6 6 0 0 0-6-6zM9 20h6M10 17v3M14 17v3',tasks:'M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2',menu:'M4 7h16M4 12h16M4 17h16',chat:'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z',studio:'M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14',tools:'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',more:'M5 12h.01M12 12h.01M19 12h.01',attach:'M21 11.5l-8.6 8.6a5 5 0 0 1-7-7l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7L10 17.8a1.7 1.7 0 0 1-2.4-2.4l7.7-7.7',mic:'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3',shield:'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',site:'M3 5h18v14H3zM3 9h18M7 7h.01M10 7h.01',app:'M7 3h10a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM11 18h2',help:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9.6 9.6a2.4 2.4 0 1 1 3.4 2.2c-.6.3-1 .8-1 1.5M12 16.8h.01',coins:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9 12h6M12 9v6',pulse:'M3 12h4l3-8 4 16 3-8h4',image:'M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M15 9h.01',history:'M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 7v5l3 2',play:'M7 5l12 7-12 7z',copy:'M9 9h11v11H9zM5 15V5h10',pencil:'M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z',term:'M4 5h16v14H4zM8 10l3 2-3 2M13 15h3',back:'M15 5l-7 7 7 7',fwd:'M9 5l7 7-7 7',reload:'M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5',bug:'M9 9a3 3 0 0 1 6 0v6a3 3 0 0 1-6 0zM5 12h4M15 12h4M6 7l3 2M18 7l-3 2M6 18l3-2M18 18l-3-2',bolt:'M13 3L5 14h6l-1 7 8-11h-6z',personas:'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.7 1.8L21.5 18.5l-1.8.7L19 21l-.7-1.8-1.8-.7 1.8-.7z',connect:'M9 3v5M15 3v5M7 8h10v3a5 5 0 0 1-10 0zM12 16v5',sites:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18',ana:'M5 20V11M12 20V4M19 20v-6',credits:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9.5 12h5M12 9.5v5',members:'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z',users:'M16 19v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1M9.5 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM21 19v-1a4 4 0 0 0-3-3.9M16 4.1a3 3 0 0 1 0 5.8',about:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v5M12 8h.01',key:'M15 7a4 4 0 1 1-3.5 6L4 20.5V18H2v-2h2v-2l2.5-2.5A4 4 0 0 1 15 7z',gift:'M4 11h16v9H4zM3 8h18v3H3zM12 8v12M12 8C9 8 8 5 10 4.5S12 7 12 8zM12 8c3 0 4-3 2-3.5S12 7 12 8z'};
-ICP.plugins=ICP.connect;
-const ico=n=>`<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICP[n]}"/></svg>`;
+ICP.plugins=ICP.connect;ICP.affiliate=ICP.gift||ICP.users;ICP.dot='M12 12h.01';
+const ico=n=>`<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICP[n]||ICP.dot}"/></svg>`;
 const MODES={eco:{refines:1,hist:1},balanced:{refines:2,hist:1.5},thorough:{refines:3,hist:2}};
 const RATE={in:0.10,out:0.50};
 const est=s=>Math.ceil((s||'').length/3.2);
@@ -4112,12 +4125,30 @@ function setView(v){document.querySelectorAll('.view').forEach(x=>x.classList.to
   if(v==='members')setTimeout(()=>{try{modPanel();supPanel()}catch{}},60);$('#side').classList.remove('open');$('#scrim').classList.remove('on');window.scrollTo(0,0)}
 $('#tabs').innerHTML=VIEWS.map(([k,l])=>`<button data-v="${k}" class="${k==='chat'?'on':''}">${l}</button>`).join('');
 $('#bnav').innerHTML=['chat','studio','memory','tasks'].map(k=>{const v=VIEWS.find(x=>x[0]===k);return `<button data-v="${k}" class="${k==='chat'?'on':''}"><span>${ico(k)}</span>${v[1]}</button>`}).join('')+`<button id="bmore"><span>${ico('more')}</span>More</button>`;
-const MENU_GRAD={plugins:['#818cf8','#4f46e5','Tools and MCP'],enterprise:['#34d399','#059669','Run AI agents'],market:['#fbbf24','#d97706','Apps and tools'],personas:['#a78bfa','#7c3aed','AI personalities'],memory:['#f472b6','#db2777','What I know'],tasks:['#60a5fa','#2563eb','Get things done'],gallery:['#fb923c','#ea580c','Images and apps'],api:['#2dd4bf','#0d9488','Keys and usage'],sites:['#38bdf8','#0284c7','Host and publish'],ana:['#c084fc','#9333ea','Stats and trends'],credits:['#facc15','#ca8a04','Balance and history'],members:['#f87171','#dc2626','Plans and pricing'],about:['#94a3b8','#475569','Guide and compare'],users:['#fb7185','#be123c','People and access']};
+const MENU_GRAD={plugins:['#818cf8','#4f46e5','Tools and MCP'],enterprise:['#34d399','#059669','Run AI agents'],market:['#fbbf24','#d97706','Apps and tools'],personas:['#a78bfa','#7c3aed','AI personalities'],memory:['#f472b6','#db2777','What I know'],tasks:['#60a5fa','#2563eb','Get things done'],gallery:['#fb923c','#ea580c','Images and apps'],api:['#2dd4bf','#0d9488','Keys and usage'],sites:['#38bdf8','#0284c7','Host and publish'],ana:['#c084fc','#9333ea','Stats and trends'],credits:['#facc15','#ca8a04','Balance and history'],members:['#f87171','#dc2626','Plans and pricing'],about:['#94a3b8','#475569','Guide and compare'],users:['#fb7185','#be123c','People and access'],affiliate:['#4ade80','#16a34a','Refer and earn']};
 function openMore(){const cur=(document.querySelector('.view.on')||{id:'vchat'}).id.slice(1);const keys=['enterprise','market','personas','plugins','gallery','api','sites','ana','credits','members','affiliate','users','about'];
  const d=dialog(`<div class="sh-grab"></div><div class="sh-hd"><b>Menu</b><button class="sh-x" data-close aria-label="Close">✕</button></div><div class="mnu-srch"><button class="mnu-b" id="mnu-find">🔎 Search everything</button><button class="mnu-b" id="mnu-pr">📚 Prompts</button></div><div class="mnu-grid">${keys.map((k,i)=>{const v=VIEWS.find(x=>x[0]===k)||[k,k],g=MENU_GRAD[k]||['#94a3b8','#475569',''];return `<button class="mnu-t${k===cur?' on':''}" data-mv="${k}" style="--i:${i};--c1:${g[0]};--c2:${g[1]}"><span class="mnu-ic">${ico(k==='gallery'?'gallery':k)}</span><span class="mnu-l">${v[1]}</span><span class="mnu-s">${g[2]}</span></button>`}).join('')}</div><div class="mnu-ft"><button class="mnu-b" id="mnu-new">＋ New chat</button><button class="mnu-b" id="mnu-set">⚙ Settings</button></div>`);
  d.classList.add('sheet');d.addEventListener('close',()=>d.classList.remove('sheet'),{once:true});
  d.querySelectorAll('[data-mv]').forEach(x=>x.onclick=()=>{d.close();setView(x.dataset.mv)});
  d.querySelector('#mnu-find').onclick=()=>{d.close();palOpen()};d.querySelector('#mnu-pr').onclick=()=>{d.close();promptDialog()};d.querySelector('#mnu-new').onclick=()=>{d.close();const n=$('#newc');if(n)n.click();setView('chat')};d.querySelector('#mnu-set').onclick=()=>{d.close();const st=$('#set');if(st)st.click()}}
+(function(){const T=$('#tabs');if(!T)return;
+T.innerHTML=VIEWS.map(([k,l])=>`<button data-v="${k}" class="${k==='chat'?'on':''}">${ico(k)}${l}</button>`).join('')+`<button id="tabmorebtn" style="display:none">${ico('more')}More</button>`;
+let pop=null;const closeP=()=>{if(pop){pop.remove();pop=null}};
+function fit(){if(innerWidth<=900)return;const bs=[...T.querySelectorAll('button[data-v]')],mb=T.querySelector('#tabmorebtn');bs.forEach(b=>b.classList.remove('tfh'));mb.style.display='none';
+ const cs=getComputedStyle(T),avail=T.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight)-2,gap=parseFloat(cs.columnGap)||2;
+ const w=b=>b.offsetWidth+gap;let tot=bs.reduce((a,b)=>a+w(b),0);
+ if(tot<=avail)return;mb.style.display='';tot+=w(mb);
+ for(let i=bs.length-1;i>0&&tot>avail;i--){if(bs[i].classList.contains('on'))continue;tot-=w(bs[i]);bs[i].classList.add('tfh')}}
+T.addEventListener('click',e=>{const m=e.target.closest('#tabmorebtn');if(!m)return;e.stopPropagation();e.preventDefault();if(pop){closeP();return}
+ const hid=[...T.querySelectorAll('button.tfh')].map(b=>b.dataset.v),cur=(document.querySelector('.view.on')||{id:'vchat'}).id.slice(1);
+ pop=document.createElement('div');pop.id='tabmore';pop.innerHTML=hid.map(k=>{const v=VIEWS.find(x=>x[0]===k);return `<button data-v="${k}" class="${k===cur?'on':''}">${ico(k)}${v[1]}</button>`}).join('');
+ const r=m.getBoundingClientRect();pop.style.top=(r.bottom+6)+'px';pop.style.right=Math.max(8,innerWidth-r.right)+'px';document.body.appendChild(pop);
+ pop.onclick=ev=>{const b=ev.target.closest('button');if(b){closeP();setView(b.dataset.v);setTimeout(fit,0)}}},true);
+document.addEventListener('click',e=>{if(pop&&!e.target.closest('#tabmore'))closeP()});
+T.addEventListener('click',e=>{if(e.target.closest('button[data-v]'))setTimeout(fit,0)});
+addEventListener('resize',fit);try{new ResizeObserver(fit).observe(T)}catch{}
+window.fitTabs=fit;[100,500,1500].forEach(t=>setTimeout(fit,t));if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fit);
+})();
 $('#bnav').onclick=e=>{const b=e.target.closest('button');if(!b)return;if(b.id==='bmore')openMore();else setView(b.dataset.v)};
 $('#scrim').onclick=()=>{$('#side').classList.remove('open');$('#scrim').classList.remove('on')};
 $('#menu').onclick=()=>{$('#side').classList.toggle('open');$('#scrim').classList.toggle('on',$('#side').classList.contains('open'))};

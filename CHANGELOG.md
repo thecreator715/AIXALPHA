@@ -60,3 +60,6 @@
 
 ## Node v13 – model ladder
 - Higher mode = bigger model: Eco < Balanced < Thorough/Auto/Turbo. The start script pulls the smaller tiers in the background and writes `.aix-models`; the node reports them on register; the worker picks the model per mode (falls back to the main model until the smaller ones finish downloading). Images still use the vision model.
+
+## App – tab bar
+- Top tabs now fit any width: what does not fit moves into a "More" menu (with icons); every tab has an icon; mobile menu gained the missing Affiliate icon.
