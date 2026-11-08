@@ -1076,8 +1076,8 @@ function openKey(force){if(!force)return openAccount();
 async function ask(promptStr,onText,signal,images,tools){
   signal=signal||(abort&&!abort.signal.aborted?abort.signal:null);
   let eng=null;if(PROVON()&&!(images&&images.length))eng=provWrap();
-  if(!eng&&tools&&tools.length&&nodeOn()&&!(images&&images.length))eng=nodeWrap();
-  if(!eng&&nodeForMode()&&!(images&&images.length))eng=nodeWrap();
+  if(!eng&&tools&&tools.length&&nodeOn()&&!(S.web&&onText&&BACKEND()&&store.get(TOKK,''))&&!(images&&images.length))eng=nodeWrap();
+  if(!eng&&nodeForMode()&&!(S.web&&onText&&BACKEND()&&store.get(TOKK,''))&&!(images&&images.length))eng=nodeWrap();
   if(!eng&&NODEUP&&BACKEND()&&store.get(TOKK,'')&&(S.mode==='eco'||S.mode==='balanced')&&!(images&&images.length)&&!(S.web&&onText))eng=BSF||(BSF=withTools(backendSample()));
   if(!eng){if(!sampleFn)sampleFn=pickEngine();eng=sampleFn;if(!eng&&nodeOn())eng=nodeWrap()}
   if(eng&&!eng.prov&&BACKEND()&&store.get(TOKK,'')&&!OWNF()&&BAL!=null&&BAL<=0&&!embKey()){setTimeout(()=>openCredits('out'),60);throw new Error('You are out of credits. Add credits or claim your free credit to continue (a window just opened).')}
