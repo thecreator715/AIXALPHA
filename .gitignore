@@ -4,3 +4,9 @@ dist/
 !.env.example
 *.log
 node/admins.json
+node/.aix-node-secret
+node/.aix-token
+node/aix-pair-link.txt
+node/.aix-public-url
+node/runtime/
+node/tunnel.log
