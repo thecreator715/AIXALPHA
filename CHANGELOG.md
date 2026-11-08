@@ -92,3 +92,6 @@
 - Node: more search engines (Bing RSS, DuckDuckGo, Mojeek, Google News for news-type questions) with per-engine errors logged; before, one blocked engine meant no search.
 - App: the exact question is sent as the search query; the direct-to-Mac path now runs live search too (it skipped it before).
 - When search returns nothing, the model is told to say so instead of implying it browsed.
+
+## Web search from the cloud edge
+- The worker now searches the web itself (Bing, DuckDuckGo, Google News, CoinGecko for crypto) and only falls back to the Mac node. Shows a toast with the result count. Web badge says +3.5.
