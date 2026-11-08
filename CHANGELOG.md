@@ -1,5 +1,17 @@
 # AIX Alpha v3.0 - revision 8
 
+## Admin control panel: 10 new tools (node v11)
+- Settings tab: live kill switches (pause chat, sign-ups, referrals, Enterprise), site-wide banner, and live tuning of referral rewards/caps, strike limit, promo reward and alert limits. No redeploy; owner accounts are never blocked. Worker `what=config|config_set`, public `/api/config` now returns `banner` and `paused`.
+- Alerts tab: node offline, 24h spend over limit, safety-flag spike, open appeals, held referrals, promo videos waiting, open tickets, bad Stripe signature. Checked every 5 minutes, optional push through a Discord webhook or ntfy.sh URL.
+- Finance tab: revenue vs model cost per day, 30-day margin, credit liability, biggest spenders and who is losing money.
+- Audit log tab: every panel action with who/what/when (also co-admins).
+- Co-admin roles: owner mints `support` or `manager` tokens (Settings, stored in `node/admins.json`, git-ignored); node enforces permissions and records the actor.
+- User 360 tab: balance, ledger, usage, referrals, flags, tickets, devices, shared-device/network accounts, private admin notes, grant/suspend.
+- Fraud radar tab: devices and networks with many accounts, sign-up bursts, free-riders, hoarded free balances, referral-code guessing.
+- Support inbox: users contact support from the Members page; admins reply in the Support tab; tickets flagged "needs reply".
+- Restore one user from a cloud backup (preview first) and CSV export of users, ledger, usage, flags, referrals, tickets, audit.
+- Worker tables created automatically: admin_log, alerts, user_notes, tickets, ticket_msgs.
+
 ## Enterprise plan
 - $99.99 every 30 days through Stripe adds 1,000 credits and opens the Company page. Credits carry over and never expire.
 - Or unlock 30 days with 1,000 credits already in the balance (top up with the $9.99 pack, 100 credits at a time). Worker: `/api/enterprise/status|activate`, Stripe webhook branch, admin `what=enterprise`.

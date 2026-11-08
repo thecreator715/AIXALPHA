@@ -90,6 +90,7 @@ async function viaNode(env, req, a, nd, prompt, stream, maxTok) {
 async function sample(env, req) {
   const a = await authed(env, req);
   if (!a) return json(env, req, { error: 'Sign in to use AIX.' }, 401);
+  { const pz = await pausedResp(env, req, a, 'chat'); if (pz) return pz; await tune(env); }
   if (a.credits <= 0 && !(owners(env).includes(a.email) && !a.meter)) return json(env, req, { error: 'Out of credits. Top up to continue.' }, 402);
   if (!(owners(env).includes(a.email) && !a.meter) && rateLimited(env, a)) return json(env, req, { error: 'Slow down: too many requests this minute. Try again in a few seconds.' }, 429);
   const b = await req.json().catch(() => ({}));
@@ -132,7 +133,7 @@ async function stripe(env, req) {
   const p = Object.fromEntries(sig.split(',').map((x) => x.split('=')));
   const key = await crypto.subtle.importKey('raw', enc.encode(env.STRIPE_WEBHOOK_SECRET || ''), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   const mac = [...new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(`${p.t}.${raw}`)))].map((b) => b.toString(16).padStart(2, '0')).join('');
-  if (!env.STRIPE_WEBHOOK_SECRET || mac !== p.v1) return new Response('bad signature', { status: 400 });
+  if (!env.STRIPE_WEBHOOK_SECRET || mac !== p.v1) { await raiseAlert(env, 'stripe_sig', 'A Stripe webhook arrived with a bad signature. Check the webhook secret, or someone is probing the endpoint.', 'crit', 3600e3).catch(() => 0); return new Response('bad signature', { status: 400 }); }
   const ev = JSON.parse(raw);
   if (ev.type === 'checkout.session.completed') {
     const o = ev.data.object, usd = (o.amount_total || 0) / 100, credits = (o.payment_link === 'plink_1UXx949X5nbnHzOgDiBZGcEO' && o.payment_status === 'paid') ? PACKS[usd] : 0;   // only the $9.99 credits link
@@ -354,6 +355,8 @@ async function v1Api(env, req, path) {
   if (!kr) return oaiErr(env, req, 401, 'Invalid or revoked API key.', 'invalid_api_key');
   const a = await getUser(env, kr.email);
   if (!a) return oaiErr(env, req, 401, 'Account not found.', 'invalid_api_key');
+  if ((await cfgAll(env)).pauseChat && !owners(env).includes(a.email)) return oaiErr(env, req, 503, 'AIX Alpha is paused for maintenance. Try again soon.');
+  await tune(env);
   if (a.credits <= 0 && !owners(env).includes(a.email)) return oaiErr(env, req, 402, 'Out of credits. Add credits to your AIX account.', 'insufficient_credits');
   return v1Run(env, req, kr, a, await req.json().catch(() => null));
 }
@@ -439,6 +442,9 @@ async function nodeAdmin(env, req, url) {
   const q = async (sql, ...p) => ((await env.DB.prepare(sql).bind(...p).all()).results || []);
   const one = async (sql, ...p) => (await env.DB.prepare(sql).bind(...p).first()) || {};
   const R = (o) => { const s = JSON.stringify(o); if (GETQ) { if (NA_C.size > 40) NA_C.clear(); NA_C.set(ck, { t: Date.now(), b: s }); } return new Response(s, { headers: { 'content-type': 'application/json', ...cors(env, req) } }); };
+  if (req.method === 'POST' && !['user_note', 'ticket_reply', 'alert_ack', 'alert_test', 'config_set', 'restore'].includes(what)) { let ad = ''; try { ad = JSON.stringify(await req.clone().json()).slice(0, 300); } catch (e) {} await audit(env, req, what, url.searchParams.get('email') || url.searchParams.get('id') || '', ad.replace(/"(password|pw|text)":"[^"]*"/g, '')); }
+  if (req.method === 'POST' && ['user_note', 'ticket_reply'].includes(what)) await audit(env, req, what, url.searchParams.get('id') || '', '');
+  { const t = await adminTools(env, req, what, url, { q, one, R, iso, now }); if (t) return t; }
   if (what === 'overview') {
     const us = await one('SELECT COUNT(*) AS n, COALESCE(SUM(credits),0) AS cr FROM users');
     const n24 = await one('SELECT COUNT(*) AS n FROM users WHERE created>=?', iso(86400e3));
@@ -860,7 +866,8 @@ async function entStatus(env, a) { await ensureEnt(env); const r = await env.DB.
 async function entApi(env, req, path) {
   const a = await authed(env, req); if (!a) return json(env, req, { error: 'Sign in first.' }, 401);
   if (path === '/api/enterprise/status') return json(env, req, { ...(await entStatus(env, a)), balance: +Number((await getUser(env, a.email)).credits).toFixed(2) });
-  if (path === '/api/enterprise/activate' && req.method === 'POST') {   // pay with credits: 1000 credits unlock 30 days (no new grant)
+  if (path === '/api/enterprise/activate' && req.method === 'POST') {
+    { const pz = await pausedResp(env, req, a, 'enterprise'); if (pz) return pz; }   // pay with credits: 1000 credits unlock 30 days (no new grant)
     const owner = owners(env).includes(a.email) && !a.meter;
     if (!owner) {
       const up = await env.DB.prepare('UPDATE users SET credits=credits-? WHERE email=? AND credits>=?').bind(ENT_CREDITS, a.email, ENT_CREDITS).run();
@@ -877,8 +884,8 @@ async function entApi(env, req, path) {
 // ---- Referral + affiliate promo program ----
 // Anti-abuse: referee gets REF_NEW at once; the referrer's reward is PENDING until the new account proves real use
 // (age + credits spent), then paid within a monthly cap. Same device / network / chains / throwaway emails are blocked.
-const REF_NEW = 10, REF_REFERRER = 10, REF_CAP = 50, REF_MONTH_CAP = 5, REF_QUAL_USE = 3, REF_QUAL_HOURS = 24, REF_PENDING_DAYS = 30, REF_VELOCITY = 3;
-const PROMO_CREDITS = 100, PROMO_MAX_PENDING = 3, PROMO_MAX_APPROVED = 5;
+let REF_NEW = 10, REF_REFERRER = 10, REF_CAP = 50, REF_MONTH_CAP = 5, REF_QUAL_USE = 3, REF_QUAL_HOURS = 24; const REF_PENDING_DAYS = 30, REF_VELOCITY = 3;
+let PROMO_CREDITS = 100; const PROMO_MAX_PENDING = 3, PROMO_MAX_APPROVED = 5;
 const DISPOSABLE = ['mailinator.com', 'guerrillamail.com', '10minutemail.com', 'tempmail.com', 'temp-mail.org', 'yopmail.com', 'trashmail.com', 'sharklasers.com', 'getnada.com', 'dispostable.com', 'maildrop.cc', 'throwawaymail.com', 'fakeinbox.com', 'mohmal.com', 'emailondeck.com'];
 let REF_READY = false;
 async function ensureRef(env) {
@@ -954,7 +961,8 @@ async function refApi(env, req, path) {
   if (!a) return json(env, req, { error: 'sign in' }, 401);
   const now = new Date().toISOString(), ip = req.headers.get('cf-connecting-ip') || 'unknown', dev = devId(req);
   const myPromos = async () => (await env.DB.prepare('SELECT id,url,vid,status,credits,note,created,decided FROM promos WHERE email=? ORDER BY id DESC LIMIT 30').bind(a.email).all()).results || [];
-  await logDev(env, req, a.email);
+  await logDev(env, req, a.email); await tune(env);
+  if (path === '/api/ref/redeem' || path === '/api/promo/submit') { const pz = await pausedResp(env, req, a, 'referrals'); if (pz) return pz; }
   if (path === '/api/ref/me') {
     const code = await refCode(env, a.email);
     await settleRefs(env, a.email);
@@ -1014,7 +1022,7 @@ async function refApi(env, req, path) {
 // ---- Safety: automatic content flags, 3 strikes = suspension, appeals ----
 // Checks the user's newest message (not history, not code blocks). Blocked messages never reach the model.
 // Strikes expire after 90 days; the admin can dismiss a false positive (strike removed) or unban + reset.
-const MOD_MAX = 3, MOD_DAYS = 90;
+let MOD_MAX = 3; const MOD_DAYS = 90;
 const MOD_RULES = [
   { cat: 'minors_sexual', sev: 'critical', re: /\b(child|children|kid|kids|minor|minors|underage|under-age|preteen|pre-teen|schoolgirl|schoolboy|toddler|infant|loli|shota|\d{1,2}\s?(yo|y\/o|year[s]?[- ]old)|1[0-7]\s?(yo|y\/o))\b[\s\S]{0,60}\b(sex|sexual|nude|naked|porn|erotic|molest|rape|fuck|blowjob|horny|seduce)|\b(sex|sexual|nude|naked|porn|erotic|molest|rape|fuck|blowjob|horny|seduce)\w*\b[\s\S]{0,60}\b(child|children|kid|kids|minor|minors|underage|under-age|preteen|pre-teen|schoolgirl|schoolboy|toddler|infant|loli|shota)\b/i },
   { cat: 'threat', sev: 'high', re: /\b(i|we|i'm|im|i am)\s*(will|'ll|am going to|'m going to|m going to|gonna|am gonna|going to)\s+(kill|murder|shoot|stab|bomb|strangle|hurt|rape|burn|beat|slaughter)\b[\s\S]{0,40}\b(you|him|her|them|your|everyone|everybody|school|office|family|kids|people)\b|\b(kill|murder)\s+(yourself|your ?self|you all|everyone)\b|\bbomb threat\b|\b(shoot|blow) up (the |a |my |this )?(school|office|mall|church|building|store)\b|\byou (will|'re going to|are going to) die\b|\bi know where you live\b/i },
@@ -1055,6 +1063,7 @@ const banMsg = (reason) => 'This account is suspended' + (reason ? ' (' + reason
 const MOD_WHY = { minors_sexual: 'sexual content involving minors', threat: 'threats of violence', harm_request: 'a request to harm people', hate: 'hateful language', sexual: 'sexually explicit content', vulgar: 'heavy abusive language' };
 // Returns null when the message is fine, else a Response to send back instead of calling the model.
 async function modCheck(env, req, a, prompt) {
+  await tune(env);
   if (owners(env).includes(a.email)) return null;
   const t = modText(prompt), hits = modScan(t);
   if (!hits.length) return null;
@@ -1113,8 +1122,272 @@ async function modApi(env, req, path) {
   return json(env, req, { error: 'not found' }, 404);
 }
 
+// ---- Admin tools: live settings + kill switches, alerts, audit log, finance, user 360, abuse radar, support inbox, restore/export ----
+const CFG_DEF = { refNew: 10, refReferrer: 10, refMonthCap: 5, refCap: 50, refQualUse: 3, refQualHours: 24, modMax: 3, promoCredits: 100, alertSpendUsd: 20, alertFlagsHour: 10, pauseChat: 0, pauseSignup: 0, pauseReferrals: 0, pauseEnterprise: 0, banner: '', alertWebhook: '' };
+const CFG_LIM = { refNew: [0, 1000], refReferrer: [0, 1000], refMonthCap: [0, 100], refCap: [0, 1000], refQualUse: [0, 1000], refQualHours: [0, 720], modMax: [1, 20], promoCredits: [0, 10000], alertSpendUsd: [1, 100000], alertFlagsHour: [1, 1000], pauseChat: [0, 1], pauseSignup: [0, 1], pauseReferrals: [0, 1], pauseEnterprise: [0, 1] };
+let CFG_C = null, CFG_T = 0;
+async function cfgAll(env, force) {
+  if (!force && CFG_C && Date.now() - CFG_T < 60000) return CFG_C;
+  let o = {}; try { const r = await env.DB.prepare("SELECT v FROM settings WHERE k='cfg'").first(); if (r) o = JSON.parse(r.v) || {}; } catch (e) { /* defaults */ }
+  CFG_C = { ...CFG_DEF, ...o }; CFG_T = Date.now(); return CFG_C;
+}
+async function tune(env) {   // push live settings into the limits the referral, promo and safety code reads
+  const c = await cfgAll(env);
+  REF_NEW = c.refNew; REF_REFERRER = c.refReferrer; REF_MONTH_CAP = c.refMonthCap; REF_CAP = c.refCap; REF_QUAL_USE = c.refQualUse; REF_QUAL_HOURS = c.refQualHours; MOD_MAX = c.modMax; PROMO_CREDITS = c.promoCredits;
+  return c;
+}
+async function pausedResp(env, req, a, what) {
+  const c = await cfgAll(env), key = 'pause' + what[0].toUpperCase() + what.slice(1);
+  if (!c[key] || (a && owners(env).includes(a.email))) return null;
+  return json(env, req, { error: ({ chat: 'Chat', signup: 'Sign-ups', referrals: 'Referral codes', enterprise: 'Enterprise unlocks' }[what] || what) + ' are paused for maintenance. Please try again soon.', paused: true }, 503);
+}
+let ADM_READY = false;
+async function ensureAdm(env) {
+  if (ADM_READY) return;
+  for (const x of [
+    'CREATE TABLE IF NOT EXISTS admin_log(id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT, actor TEXT, action TEXT, target TEXT, detail TEXT)',
+    'CREATE INDEX IF NOT EXISTS admin_log_at ON admin_log(at)',
+    'CREATE TABLE IF NOT EXISTS alerts(id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT, kind TEXT, sev TEXT, msg TEXT, ack INTEGER DEFAULT 0)',
+    'CREATE INDEX IF NOT EXISTS alerts_kind ON alerts(kind, at)',
+    'CREATE TABLE IF NOT EXISTS user_notes(id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, at TEXT, actor TEXT, text TEXT)',
+    'CREATE INDEX IF NOT EXISTS user_notes_email ON user_notes(email)',
+    'CREATE TABLE IF NOT EXISTS tickets(id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, subject TEXT, status TEXT DEFAULT \'open\', at TEXT, last TEXT, user_unread INTEGER DEFAULT 0)',
+    'CREATE INDEX IF NOT EXISTS tickets_email ON tickets(email)', 'CREATE INDEX IF NOT EXISTS tickets_status ON tickets(status, last)',
+    'CREATE TABLE IF NOT EXISTS ticket_msgs(id INTEGER PRIMARY KEY AUTOINCREMENT, ticket INTEGER NOT NULL, at TEXT, who TEXT, actor TEXT, text TEXT)',
+    'CREATE INDEX IF NOT EXISTS ticket_msgs_t ON ticket_msgs(ticket)',
+  ]) await env.DB.prepare(x).run();
+  ADM_READY = true;
+}
+async function audit(env, req, action, target, detail) {
+  try { await ensureAdm(env); await env.DB.prepare('INSERT INTO admin_log(at,actor,action,target,detail) VALUES(?,?,?,?,?)').bind(new Date().toISOString(), String(req.headers.get('x-admin-actor') || 'owner').slice(0, 60), action, String(target || '').slice(0, 120), String(detail || '').slice(0, 400)).run(); } catch (e) { /* never block an admin action */ }
+}
+async function sendHook(env, kind, msg, sev) {
+  const c = await cfgAll(env), url = c.alertWebhook || env.ALERT_WEBHOOK;
+  if (!url || !/^https:\/\//.test(url)) return;
+  const text = '[AIX Alpha · ' + String(sev || 'warn').toUpperCase() + '] ' + msg;
+  try { await fetch(url, /discord(app)?\.com\/api\/webhooks/.test(url) ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content: text }) } : { method: 'POST', headers: { 'content-type': 'text/plain', Title: 'AIX Alpha ' + kind }, body: text }); } catch (e) { /* webhook down */ }
+}
+async function raiseAlert(env, kind, msg, sev, windowMs) {
+  await ensureAdm(env);
+  const since = new Date(Date.now() - (windowMs == null ? 6 * 3600e3 : windowMs)).toISOString();
+  if (windowMs !== 0 && await env.DB.prepare('SELECT 1 x FROM alerts WHERE kind=? AND at>=? LIMIT 1').bind(kind, since).first()) return false;
+  await env.DB.prepare('INSERT INTO alerts(at,kind,sev,msg) VALUES(?,?,?,?)').bind(new Date().toISOString(), kind, sev || 'warn', String(msg).slice(0, 300)).run();
+  await sendHook(env, kind, msg, sev); return true;
+}
+async function runAlerts(env) {
+  try {
+    await ensureAdm(env); const c = await cfgAll(env, true), now = Date.now(), iso = (ms) => new Date(now - ms).toISOString();
+    const one = async (sql, ...p) => (await env.DB.prepare(sql).bind(...p).first()) || {};
+    const nd = await env.DB.prepare("SELECT v FROM settings WHERE k='node'").first().catch(() => null);
+    if (nd) { try { const n = JSON.parse(nd.v); if (now - n.at > 600e3) await raiseAlert(env, 'node_down', 'The Alpha node has not checked in for ' + Math.round((now - n.at) / 60000) + ' minutes (Mac asleep, offline or the node stopped).', 'crit', 3 * 3600e3); } catch (e) {} }
+    const sp = await one('SELECT COALESCE(SUM(credits),0) c FROM usage WHERE at>=?', iso(86400e3)), usd = sp.c * CREDIT_USD;
+    if (usd >= c.alertSpendUsd) await raiseAlert(env, 'spend', 'Model spend in the last 24 hours is about $' + usd.toFixed(2) + ' (limit $' + c.alertSpendUsd + ').', 'warn', 12 * 3600e3);
+    const fl = await one("SELECT COUNT(*) n FROM mod_flags WHERE cat<>'care' AND at>=?", iso(3600e3)).catch(() => ({ n: 0 }));
+    if (fl.n >= c.alertFlagsHour) await raiseAlert(env, 'flag_spike', fl.n + ' safety flags in the last hour (limit ' + c.alertFlagsHour + '). Check the Safety tab.', 'warn', 3 * 3600e3);
+    const ap = await one("SELECT COUNT(*) n FROM mod_appeals WHERE status='open'").catch(() => ({ n: 0 }));
+    if (ap.n) await raiseAlert(env, 'appeal', ap.n + ' suspension appeal(s) are waiting for review.', 'info', 12 * 3600e3);
+    const hr = await one("SELECT COUNT(*) n FROM ref_uses WHERE status='held'").catch(() => ({ n: 0 }));
+    if (hr.n) await raiseAlert(env, 'held_ref', hr.n + ' referral(s) are held for review (possible abuse).', 'warn', 12 * 3600e3);
+    const pr = await one("SELECT COUNT(*) n FROM promos WHERE status='pending'").catch(() => ({ n: 0 }));
+    if (pr.n) await raiseAlert(env, 'promo_wait', pr.n + ' YouTube promo video(s) are waiting for your review.', 'info', 24 * 3600e3);
+    const tk = await one("SELECT COUNT(*) n FROM tickets WHERE status='open'").catch(() => ({ n: 0 }));
+    if (tk.n) await raiseAlert(env, 'tickets', tk.n + ' support ticket(s) are open.', 'info', 12 * 3600e3);
+  } catch (e) { /* alerts are best effort */ }
+}
+const csvOf = (rows) => { if (!rows.length) return ''; const cols = Object.keys(rows[0]); const esc = (v) => { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }; return [cols.join(',')].concat(rows.map((r) => cols.map((c) => esc(r[c])).join(','))).join('\n'); };
+async function supportApi(env, req, path) {
+  const a = await authed(env, req);
+  if (!a) return json(env, req, { error: 'sign in' }, 401);
+  await ensureAdm(env);
+  const now = new Date().toISOString();
+  const mine = async () => {
+    const t = (await env.DB.prepare('SELECT id, subject, status, at, last, user_unread FROM tickets WHERE email=? ORDER BY id DESC LIMIT 10').bind(a.email).all()).results || [];
+    for (const k of t) k.msgs = (await env.DB.prepare('SELECT at, who, text FROM ticket_msgs WHERE ticket=? ORDER BY id LIMIT 40').bind(k.id).all()).results || [];
+    return t;
+  };
+  if (path === '/api/support/mine') { const t = await mine(); await env.DB.prepare('UPDATE tickets SET user_unread=0 WHERE email=? AND user_unread=1').bind(a.email).run(); return json(env, req, { tickets: t }); }
+  const b = await req.json().catch(() => ({})), text = String(b.text || '').trim().slice(0, 1000);
+  if (path === '/api/support/new' && req.method === 'POST') {
+    const subject = String(b.subject || '').trim().slice(0, 80);
+    if (subject.length < 3 || text.length < 10) return json(env, req, { error: 'Add a short subject and describe the problem in a few sentences.' }, 400);
+    const o = await env.DB.prepare("SELECT COUNT(*) n FROM tickets WHERE email=? AND status='open'").bind(a.email).first();
+    if (o.n >= 3) return json(env, req, { error: 'You already have 3 open requests. Wait for a reply first.' }, 429);
+    const day = await env.DB.prepare('SELECT COUNT(*) n FROM tickets WHERE email=? AND at>=?').bind(a.email, new Date(Date.now() - 864e5).toISOString()).first();
+    if (day.n >= 5) return json(env, req, { error: 'Too many requests today. Try again tomorrow.' }, 429);
+    await env.DB.prepare("INSERT INTO tickets(email,subject,status,at,last) VALUES(?,?,'open',?,?)").bind(a.email, subject, now, now).run();
+    const nt = await env.DB.prepare('SELECT id FROM tickets WHERE email=? ORDER BY id DESC LIMIT 1').bind(a.email).first();
+    await env.DB.prepare("INSERT INTO ticket_msgs(ticket,at,who,text) VALUES(?,?,'user',?)").bind(nt.id, now, text).run();
+    return json(env, req, { ok: true, tickets: await mine() });
+  }
+  if (path === '/api/support/reply' && req.method === 'POST') {
+    const id = Number(b.id), t = await env.DB.prepare('SELECT * FROM tickets WHERE id=? AND email=?').bind(id, a.email).first();
+    if (!t) return json(env, req, { error: 'not found' }, 404);
+    if (text.length < 2) return json(env, req, { error: 'Write a message first.' }, 400);
+    await env.DB.batch([env.DB.prepare("INSERT INTO ticket_msgs(ticket,at,who,text) VALUES(?,?,'user',?)").bind(id, now, text), env.DB.prepare("UPDATE tickets SET status='open', last=? WHERE id=?").bind(now, id)]);
+    return json(env, req, { ok: true, tickets: await mine() });
+  }
+  return json(env, req, { error: 'not found' }, 404);
+}
+// Admin-side handlers (called from nodeAdmin with its helpers). Returns a Response or null when `what` is not an admin-tools call.
+async function adminTools(env, req, what, url, H) {
+  const { q, one, R, iso, now } = H, safe = async (sql, ...p) => { try { return await q(sql, ...p); } catch (e) { return []; } };
+  const owner = new Set(owners(env));
+  if (what === 'config') { const c = await cfgAll(env, true); return R({ cfg: c, defaults: CFG_DEF, limits: CFG_LIM }); }
+  if (what === 'config_set') {
+    if (req.method !== 'POST') return json(env, req, { error: 'POST required' }, 405);
+    const b = await req.json().catch(() => ({})), ch = b.changes || {}, cur = (await cfgAll(env, true)), nx = { ...cur }, done = [];
+    for (const k of Object.keys(ch)) {
+      if (!(k in CFG_DEF)) continue;
+      if (k === 'banner') nx.banner = String(ch[k] || '').slice(0, 200);
+      else if (k === 'alertWebhook') { const v = String(ch[k] || '').trim(); if (v && !/^https:\/\/[^\s]{6,300}$/.test(v)) return json(env, req, { error: 'Webhook must be an https:// URL' }, 400); nx.alertWebhook = v; }
+      else { const v = Number(ch[k]), [lo, hi] = CFG_LIM[k]; if (!isFinite(v) || v < lo || v > hi) return json(env, req, { error: k + ' must be between ' + lo + ' and ' + hi }, 400); nx[k] = v; }
+      if (nx[k] !== cur[k]) done.push(k + '=' + (k === 'alertWebhook' ? '(set)' : nx[k]));
+    }
+    await env.DB.prepare("INSERT OR REPLACE INTO settings(k,v) VALUES('cfg',?)").bind(JSON.stringify(nx)).run();
+    CFG_C = null; CFG_T = 0; NA_C.clear();
+    await audit(env, req, 'config', 'settings', done.join(', ') || 'no change');
+    return R({ ok: true, cfg: await cfgAll(env, true) });
+  }
+  if (what === 'alerts') {
+    await ensureAdm(env);
+    const rows = await q('SELECT id, at, kind, sev, msg, ack FROM alerts ORDER BY id DESC LIMIT 80'), un = await one('SELECT COUNT(*) n FROM alerts WHERE ack=0');
+    const c = await cfgAll(env);
+    return R({ alerts: rows, unread: un.n, webhook: !!(c.alertWebhook || env.ALERT_WEBHOOK) });
+  }
+  if (what === 'alert_ack') { await ensureAdm(env); const b = await req.json().catch(() => ({})); if (b.id) await env.DB.prepare('UPDATE alerts SET ack=1 WHERE id=?').bind(Number(b.id)).run(); else await env.DB.prepare('UPDATE alerts SET ack=1 WHERE ack=0').run(); NA_C.clear(); return R({ ok: true }); }
+  if (what === 'alert_test') { const ok = await raiseAlert(env, 'test', 'Test alert from the control panel. If you can read this on your phone, alerts work.', 'info', 0); NA_C.clear(); return R({ ok }); }
+  if (what === 'audit') {
+    await ensureAdm(env); const f = String(url.searchParams.get('f') || '').slice(0, 60);
+    const rows = f ? await q("SELECT * FROM admin_log WHERE actor LIKE ? OR action LIKE ? OR target LIKE ? OR detail LIKE ? ORDER BY id DESC LIMIT 200", '%' + f + '%', '%' + f + '%', '%' + f + '%', '%' + f + '%') : await q('SELECT * FROM admin_log ORDER BY id DESC LIMIT 200');
+    return R({ rows });
+  }
+  if (what === 'finance') {
+    const d30 = iso(30 * 86400e3);
+    const rev = await q('SELECT substr(at,1,10) d, COALESCE(SUM(usd),0) usd FROM purchases WHERE usd>0 AND at>=? GROUP BY d', d30);
+    const use = await q('SELECT substr(at,1,10) d, COALESCE(SUM(credits),0) c, COUNT(*) n FROM usage WHERE at>=? GROUP BY d', d30);
+    const days = [...new Set([...rev.map((x) => x.d), ...use.map((x) => x.d)])].sort(), rm = new Map(rev.map((x) => [x.d, x.usd])), um = new Map(use.map((x) => [x.d, x]));
+    const series = days.map((d) => ({ d, revenue: +(rm.get(d) || 0).toFixed(2), cost: +(((um.get(d) || {}).c || 0) * CREDIT_USD).toFixed(2), requests: (um.get(d) || {}).n || 0 }));
+    const tot = await one('SELECT COALESCE(SUM(CASE WHEN usd>0 THEN usd END),0) usd, COALESCE(SUM(CASE WHEN usd>0 THEN credits END),0) paidCr, COALESCE(SUM(CASE WHEN usd=0 THEN credits END),0) freeCr FROM purchases');
+    const spent30 = await one('SELECT COALESCE(SUM(credits),0) c FROM usage WHERE at>=?', d30), spentAll = await one('SELECT COALESCE(SUM(credits),0) c FROM usage');
+    const ow = [...owner], mark = ow.length ? ow.map(() => '?').join(',') : "''";
+    const liab = await one('SELECT COALESCE(SUM(credits),0) c, COUNT(*) n FROM users WHERE email NOT IN (' + mark + ')', ...ow);
+    const top = await q('SELECT email, SUM(credits) c, COUNT(*) n FROM usage WHERE at>=? GROUP BY email ORDER BY c DESC LIMIT 25', d30);
+    const paid = new Map((await q('SELECT email, SUM(usd) usd, SUM(CASE WHEN usd=0 THEN credits ELSE 0 END) free FROM purchases GROUP BY email')).map((x) => [x.email, x]));
+    const topu = top.map((t) => ({ email: t.email, credits: +t.c.toFixed(1), requests: t.n, cost: +(t.c * CREDIT_USD).toFixed(2), paid: +((paid.get(t.email) || {}).usd || 0).toFixed(2), free: (paid.get(t.email) || {}).free || 0, owner: owner.has(t.email) }));
+    const eng = await safe('SELECT engine, COUNT(*) n, COALESCE(SUM(credits),0) c FROM api_usage WHERE at>=? GROUP BY engine', now - 30 * 86400e3);
+    const cost30 = spent30.c * CREDIT_USD, rev30 = series.reduce((s, x) => s + x.revenue, 0);
+    return R({ series, revenueAll: tot.usd, paidCredits: tot.paidCr, freeCredits: tot.freeCr, revenue30: +rev30.toFixed(2), cost30: +cost30.toFixed(2), margin30: +(rev30 - cost30).toFixed(2), costAll: +(spentAll.c * CREDIT_USD).toFixed(2), liabilityCredits: +liab.c.toFixed(1), liabilityCost: +(liab.c * CREDIT_USD).toFixed(2), liabilityFace: +(liab.c * 0.1).toFixed(2), accounts: liab.n, top: topu, lossMaking: topu.filter((t) => !t.owner && t.cost > t.paid), engines: eng, creditUsd: CREDIT_USD });
+  }
+  if (what === 'user360') {
+    const key = String(url.searchParams.get('email') || '').trim().toLowerCase();
+    if (!key) return json(env, req, { error: 'email or username required' }, 400);
+    const u = await env.DB.prepare('SELECT * FROM users WHERE email=? OR username=?').bind(key, key).first();
+    if (!u) { const like = await q("SELECT email, username FROM users WHERE email LIKE ? OR username LIKE ? LIMIT 12", '%' + key + '%', '%' + key + '%'); return R({ found: false, matches: like }); }
+    const e = u.email; await ensureAdm(env).catch(() => {});
+    const user = { email: e, username: u.username, credits: u.credits, tokens: u.tokens, requests: u.requests, created: u.created, last: u.last, banned: !!u.banned, ban_reason: u.ban_reason, banned_at: u.banned_at, owner: owner.has(e), google: !!u.google_sub };
+    const out = { found: true, user };
+    out.ledger = await safe('SELECT at, usd, credits, ref FROM purchases WHERE email=? ORDER BY id DESC LIMIT 40', e);
+    out.usage = await one('SELECT COUNT(*) n, COALESCE(SUM(credits),0) c, MAX(at) last FROM usage WHERE email=? AND at>=?', e, iso(30 * 86400e3));
+    out.usageRecent = await safe('SELECT at, input, output, credits FROM usage WHERE email=? ORDER BY id DESC LIMIT 12', e);
+    out.paidUsd = (await one('SELECT COALESCE(SUM(usd),0) s FROM purchases WHERE email=? AND usd>0', e)).s;
+    out.code = ((await safe('SELECT code FROM ref_codes WHERE email=?', e))[0] || {}).code || null;
+    out.refOut = await safe('SELECT referee, status, at, referrer_credits c FROM ref_uses WHERE referrer=? ORDER BY id DESC LIMIT 20', e);
+    out.refIn = (await safe('SELECT code, referrer, status, at, referee_credits c FROM ref_uses WHERE referee=?', e))[0] || null;
+    out.flags = await safe('SELECT id, at, src, cat, sev, strike, status, excerpt FROM mod_flags WHERE email=? ORDER BY id DESC LIMIT 20', e);
+    out.strikes = ((await safe("SELECT COUNT(*) n FROM mod_flags WHERE email=? AND strike=1 AND status NOT IN ('dismissed','cleared') AND at>=?", e, iso(MOD_DAYS * 86400e3)))[0] || {}).n || 0;
+    out.appeals = await safe('SELECT id, at, text, status, reply FROM mod_appeals WHERE email=? ORDER BY id DESC LIMIT 5', e);
+    out.tickets = await safe('SELECT id, subject, status, last FROM tickets WHERE email=? ORDER BY id DESC LIMIT 8', e);
+    out.promos = await safe('SELECT id, url, status, credits FROM promos WHERE email=? ORDER BY id DESC LIMIT 8', e);
+    out.storage = (await safe("SELECT COUNT(*) n, COALESCE(SUM(bytes),0) b FROM host_files WHERE email=?", e))[0] || {};
+    out.plan = (await safe('SELECT * FROM host_plan WHERE email=?', e))[0] || null;
+    out.enterprise = (await safe('SELECT until, via FROM enterprise WHERE email=?', e))[0] || null;
+    out.devices = await safe('SELECT dev, ip, at FROM ref_dev WHERE email=? ORDER BY at DESC LIMIT 10', e);
+    out.sameDevice = (await safe("SELECT DISTINCT email FROM ref_dev WHERE dev IN (SELECT dev FROM ref_dev WHERE email=? AND dev<>'-') AND email<>? LIMIT 10", e, e)).map((x) => x.email);
+    out.sameNet = (await safe('SELECT DISTINCT email FROM ref_dev WHERE ip IN (SELECT ip FROM ref_dev WHERE email=?) AND email<>? LIMIT 10', e, e)).map((x) => x.email);
+    out.sessions = (await one('SELECT COUNT(*) n FROM sessions WHERE email=?', e)).n;
+    out.notes = await safe('SELECT at, actor, text FROM user_notes WHERE email=? ORDER BY id DESC LIMIT 20', e);
+    return R(out);
+  }
+  if (what === 'user_note') {
+    if (req.method !== 'POST') return json(env, req, { error: 'POST required' }, 405);
+    await ensureAdm(env); const b = await req.json().catch(() => ({})), email = String(b.email || '').toLowerCase().trim(), text = String(b.text || '').trim().slice(0, 500);
+    if (!email || text.length < 2) return json(env, req, { error: 'email and note required' }, 400);
+    await env.DB.prepare('INSERT INTO user_notes(email,at,actor,text) VALUES(?,?,?,?)').bind(email, new Date().toISOString(), String(req.headers.get('x-admin-actor') || 'owner').slice(0, 60), text).run();
+    NA_C.clear(); return R({ ok: true });
+  }
+  if (what === 'radar') {
+    const devs = await safe("SELECT dev, COUNT(DISTINCT email) n, GROUP_CONCAT(DISTINCT email) who FROM ref_dev WHERE dev<>'-' GROUP BY dev HAVING n>=3 ORDER BY n DESC LIMIT 20");
+    const ips = await safe("SELECT ip, COUNT(DISTINCT email) n, GROUP_CONCAT(DISTINCT email) who FROM ref_dev WHERE ip<>'unknown' GROUP BY ip HAVING n>=4 ORDER BY n DESC LIMIT 20");
+    const burst = await safe('SELECT substr(created,1,13) h, COUNT(*) n FROM users WHERE created>=? GROUP BY h ORDER BY n DESC LIMIT 8', iso(3 * 86400e3));
+    const payers = new Set((await safe('SELECT DISTINCT email FROM purchases WHERE usd>0')).map((x) => x.email));
+    const heavy = (await safe('SELECT email, SUM(credits) c FROM usage WHERE at>=? GROUP BY email HAVING c>=10 ORDER BY c DESC LIMIT 60', iso(30 * 86400e3))).filter((x) => !payers.has(x.email) && !owner.has(x.email)).slice(0, 25);
+    const hoard = (await safe('SELECT email, credits FROM users WHERE credits>=30 ORDER BY credits DESC LIMIT 80')).filter((x) => !payers.has(x.email) && !owner.has(x.email)).slice(0, 25);
+    const fails = await safe('SELECT ip, COUNT(*) n FROM ref_fail WHERE at>=? GROUP BY ip ORDER BY n DESC LIMIT 10', iso(7 * 86400e3));
+    const flagged = await safe("SELECT email, COUNT(*) n FROM mod_flags WHERE cat<>'care' AND at>=? GROUP BY email ORDER BY n DESC LIMIT 10", iso(30 * 86400e3));
+    return R({ devices: devs, networks: ips, signupBursts: burst, freeRiders: heavy, freeBalances: hoard, refFailNets: fails, flaggedUsers: flagged });
+  }
+  if (what === 'tickets') {
+    await ensureAdm(env); const st = url.searchParams.get('status') || '';
+    const rows = await q(st ? 'SELECT t.*, (SELECT text FROM ticket_msgs m WHERE m.ticket=t.id ORDER BY m.id DESC LIMIT 1) preview, (SELECT who FROM ticket_msgs m WHERE m.ticket=t.id ORDER BY m.id DESC LIMIT 1) lastwho FROM tickets t WHERE status=? ORDER BY last DESC LIMIT 100' : "SELECT t.*, (SELECT text FROM ticket_msgs m WHERE m.ticket=t.id ORDER BY m.id DESC LIMIT 1) preview, (SELECT who FROM ticket_msgs m WHERE m.ticket=t.id ORDER BY m.id DESC LIMIT 1) lastwho FROM tickets t ORDER BY (status='open') DESC, last DESC LIMIT 100", ...(st ? [st] : []));
+    const sm = await q('SELECT status, COUNT(*) n FROM tickets GROUP BY status');
+    return R({ rows, summary: sm });
+  }
+  if (what === 'ticket') {
+    await ensureAdm(env); const id = Number(url.searchParams.get('id')), t = await env.DB.prepare('SELECT * FROM tickets WHERE id=?').bind(id).first();
+    if (!t) return json(env, req, { error: 'not found' }, 404);
+    return R({ ticket: t, msgs: await q('SELECT at, who, actor, text FROM ticket_msgs WHERE ticket=? ORDER BY id', id) });
+  }
+  if (what === 'ticket_reply' || what === 'ticket_status') {
+    if (req.method !== 'POST') return json(env, req, { error: 'POST required' }, 405);
+    await ensureAdm(env); const b = await req.json().catch(() => ({})), id = Number(b.id), t = await env.DB.prepare('SELECT * FROM tickets WHERE id=?').bind(id).first();
+    if (!t) return json(env, req, { error: 'not found' }, 404);
+    const ts = new Date().toISOString(), text = String(b.text || '').trim().slice(0, 1500), ops = [];
+    if (what === 'ticket_reply') { if (text.length < 2) return json(env, req, { error: 'reply is empty' }, 400); ops.push(env.DB.prepare("INSERT INTO ticket_msgs(ticket,at,who,actor,text) VALUES(?,?,'admin',?,?)").bind(id, ts, String(req.headers.get('x-admin-actor') || 'owner').slice(0, 60), text), env.DB.prepare('UPDATE tickets SET last=?, user_unread=1, status=? WHERE id=?').bind(ts, b.close ? 'solved' : 'open', id)); }
+    else ops.push(env.DB.prepare('UPDATE tickets SET status=? WHERE id=?').bind(['open', 'solved'].includes(b.status) ? b.status : 'open', id));
+    await env.DB.batch(ops); NA_C.clear(); return R({ ok: true });
+  }
+  if (what === 'export') {
+    const kind = String(url.searchParams.get('kind') || 'users'); let rows = [];
+    if (kind === 'users') rows = await q('SELECT email, username, credits, tokens, requests, created, last, COALESCE(banned,0) banned FROM users ORDER BY created DESC LIMIT 50000');
+    else if (kind === 'ledger') rows = await q('SELECT id, email, at, usd, credits, ref FROM purchases ORDER BY id DESC LIMIT 50000');
+    else if (kind === 'usage') rows = await q('SELECT id, email, at, input, output, credits FROM usage ORDER BY id DESC LIMIT 50000');
+    else if (kind === 'flags') rows = await safe('SELECT id, email, at, src, cat, sev, strike, status, excerpt FROM mod_flags ORDER BY id DESC LIMIT 50000');
+    else if (kind === 'referrals') rows = await safe('SELECT id, code, referrer, referee, at, status, referee_credits, referrer_credits, paid_at FROM ref_uses ORDER BY id DESC LIMIT 50000');
+    else if (kind === 'tickets') rows = await safe('SELECT id, email, subject, status, at, last FROM tickets ORDER BY id DESC LIMIT 50000');
+    else if (kind === 'audit') rows = await safe('SELECT * FROM admin_log ORDER BY id DESC LIMIT 50000');
+    else return json(env, req, { error: 'unknown export' }, 400);
+    await audit(env, req, 'export', kind, rows.length + ' rows');
+    return R({ name: 'aix-' + kind + '-' + new Date().toISOString().slice(0, 10) + '.csv', csv: csvOf(rows), rows: rows.length });
+  }
+  if (what === 'restore') {
+    if (req.method !== 'POST') return json(env, req, { error: 'POST required' }, 405);
+    const b = await req.json().catch(() => ({})), id = Number(b.id), email = String(b.email || '').toLowerCase().trim(), scope = b.scope === 'account' ? 'account' : 'credits';
+    if (!id || !email) return json(env, req, { error: 'backup id and user email required' }, 400);
+    const bk = await env.DB.prepare('SELECT at, data FROM backups WHERE id=?').bind(id).first();
+    if (!bk || !bk.data) return json(env, req, { error: 'That backup is not stored in the cloud (too large). Use a smaller or newer one.' }, 404);
+    let J; try { const bin = Uint8Array.from(atob(bk.data), (c) => c.charCodeAt(0)); J = JSON.parse(await new Response(new Blob([bin]).stream().pipeThrough(new DecompressionStream('gzip'))).text()); } catch (e) { return json(env, req, { error: 'Backup could not be read' }, 500); }
+    const row = ((J.tables || {}).users || []).find((x) => x.email === email || x.username === email);
+    if (!row) return R({ found: false, backupAt: J.at });
+    const cur = await env.DB.prepare('SELECT * FROM users WHERE email=?').bind(row.email).first();
+    const missing = ((J.tables || {}).purchases || []).filter((p) => p.email === row.email);
+    const have = new Set((await q('SELECT ref FROM purchases WHERE email=?', row.email)).map((x) => x.ref));
+    const toAdd = scope === 'account' ? missing.filter((p) => p.ref && !have.has(p.ref)) : [];
+    const plan = { found: true, backupAt: J.at, email: row.email, exists: !!cur, scope, backupCredits: row.credits, currentCredits: cur ? cur.credits : null, ledgerRowsToRestore: toAdd.length, willDo: cur ? (scope === 'account' ? 'Reset balance, username, password and sign-in token to the backup, and re-add missing ledger rows' : 'Set the balance back to the backup value') : 'Re-create the deleted account from the backup' };
+    if (b.dryRun !== false) return R({ dryRun: true, ...plan });
+    const ts = new Date().toISOString();
+    if (!cur) { await env.DB.prepare('INSERT INTO users(email,token_hash,credits,tokens,requests,created,last,username,pw_hash,pw_salt) VALUES(?,?,?,?,?,?,?,?,?,?)').bind(row.email, row.token_hash, row.credits, row.tokens || 0, row.requests || 0, row.created, row.last || '', row.username || null, row.pw_hash || null, row.pw_salt || null).run(); }
+    else if (scope === 'account') await env.DB.prepare('UPDATE users SET credits=?, username=?, pw_hash=?, pw_salt=?, token_hash=? WHERE email=?').bind(row.credits, row.username || null, row.pw_hash || null, row.pw_salt || null, row.token_hash, row.email).run();
+    else await env.DB.prepare('UPDATE users SET credits=? WHERE email=?').bind(row.credits, row.email).run();
+    for (const p of toAdd) await env.DB.prepare('INSERT OR IGNORE INTO purchases(email,at,usd,credits,ref) VALUES(?,?,?,?,?)').bind(p.email, p.at, p.usd, p.credits, p.ref).run();
+    AUTH_C.clear(); NA_C.clear();
+    await audit(env, req, 'restore', row.email, 'from backup #' + id + ' (' + scope + '), balance ' + (cur ? cur.credits : 'new') + ' -> ' + row.credits);
+    return R({ ok: true, restored: true, ...plan, ts });
+  }
+  return null;
+}
+
 export default {
-  async scheduled(ev, env, ctx) { ctx.waitUntil(runDueJobs(env).then(() => autoBackup(env)).then(() => (new Date().getUTCMinutes() < 5 ? settleRefs(env).catch(() => 0) : 0))); },
+  async scheduled(ev, env, ctx) { ctx.waitUntil(runDueJobs(env).then(() => autoBackup(env)).then(() => (new Date().getUTCMinutes() < 5 ? settleRefs(env).catch(() => 0) : 0)).then(() => runAlerts(env))); },
   async fetch(req, env, ctx) {
     try { return await this._h(req, env, ctx); }
     catch (e) { console.log('worker error', req.method, new URL(req.url).pathname, e && e.stack || e); return json(env, req, { error: 'Server error: ' + (e && e.message || e) }, 500); }
@@ -1125,6 +1398,7 @@ export default {
     if (path.startsWith('/api/enterprise/')) return entApi(env, req, path);
     if (path.startsWith('/api/ref/') || path === '/api/promo/submit') return refApi(env, req, path);
     if (path.startsWith('/api/mod/')) return modApi(env, req, path);
+    if (path.startsWith('/api/support/')) return supportApi(env, req, path);
     if (path.startsWith('/api/host/')) return hostApi(env, req, path);
     if (path.startsWith('/h/')) return hostGet(env, req, path);
     if (path === '/api/node/admin' && (req.method === 'GET' || req.method === 'POST')) return nodeAdmin(env, req, url);
@@ -1144,6 +1418,7 @@ export default {
       return json(env, req, { token, account: vw(env, a) });
     }
     if (path === '/api/account/register' && req.method === 'POST') {
+      { const pz = await pausedResp(env, req, null, 'signup'); if (pz) return pz; }
       const b = await req.json().catch(() => ({})); const un = normId(b.username), pw = String(b.password || '');
       if (!validId(un)) return json(env, req, { error: 'Enter a valid email, or a username of 3-24 letters, numbers, _ . -' }, 400);
       if (pw.length < 6) return json(env, req, { error: 'Password must be at least 6 characters' }, 400);
@@ -1153,6 +1428,7 @@ export default {
       if (cur && !cur.username) { email = cur.email; await env.DB.prepare('UPDATE users SET username=?,pw_hash=?,pw_salt=? WHERE email=?').bind(un, ph, salt, email).run(); }   // upgrade the guest in place: credits stay
       else { email = un + '@user.aix'; await env.DB.prepare('INSERT INTO users(email,token_hash,credits,tokens,requests,created,last,username,pw_hash,pw_salt) VALUES(?,?,?,0,0,?,?,?,?,?)').bind(email, await sha(newToken()), Number(env.SIGNUP_CREDITS || 0), new Date().toISOString(), '', un, ph, salt).run(); }
       const token = await startSession(env, email);
+      try { await ensureRef(env); await logDev(env, req, email); } catch (e) {}
       return json(env, req, { token, account: vw(env, await getUser(env, email)) });
     }
     if (path === '/api/account/login' && req.method === 'POST') {
@@ -1160,6 +1436,7 @@ export default {
       const u = await env.DB.prepare('SELECT * FROM users WHERE username=?').bind(un).first();
       const ok = u && u.pw_hash && (await pbk(String(b.password || ''), u.pw_salt)) === u.pw_hash;
       if (!ok) return json(env, req, { error: 'Wrong username or password' }, 401);
+      try { await ensureRef(env); await logDev(env, req, u.email); } catch (e) {}
       return json(env, req, { token: await startSession(env, u.email), account: vw(env, u) });
     }
     if (path === '/api/account/claim-free' && req.method === 'POST') return json(env, req, { error: 'Credits are only available by purchase.' }, 403);
@@ -1179,7 +1456,8 @@ export default {
     }
     if (path === '/api/config' && req.method === 'GET') {            // public: pack payment links set by the owner
       const r = await env.DB.prepare("SELECT v FROM settings WHERE k='links'").first();
-      return json(env, req, { links: r ? JSON.parse(r.v) : {} });
+      const cf = await cfgAll(env);
+      return json(env, req, { links: r ? JSON.parse(r.v) : {}, banner: cf.banner || '', paused: { chat: !!cf.pauseChat, signup: !!cf.pauseSignup, referrals: !!cf.pauseReferrals, enterprise: !!cf.pauseEnterprise } });
     }
     if (path === '/api/account/me') { const a = await authed(env, req); return a ? json(env, req, vw(env, a)) : json(env, req, { error: 'sign in' }, 401); }
     if (path.startsWith('/api/market/')) return market(env, req, path, { json, authed, owners });

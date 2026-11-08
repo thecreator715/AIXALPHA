@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
-const http = require('http'), os = require('os'), fs = require('fs'), path = require('path');
-const VERSION = 10;   // bump on every release: nodes auto-update when GitHub has a higher number
+const http = require('http'), os = require('os'), fs = require('fs'), path = require('path'), crypto = require('crypto');
+const VERSION = 11;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -91,7 +91,38 @@ http.createServer(async (req, res) => {
   if (u === '/' || u === '/monitor' || u === '/monitor.html') { try { const f = await panelHtml(); res.writeHead(200, { ...h, 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); return res.end(f); } catch { res.writeHead(404, h); return res.end('monitor.html missing'); } }
   if (u === '/health') return J(res, h, 200, { status: 'ok', engine: 'aix-node', build: 3, version: VERSION, update: UPDST });
   const localAdmin = u.startsWith('/admin') && /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(req.headers.host || '') && !req.headers['x-forwarded-for'] && !req.headers['cf-connecting-ip'] && (!req.headers.origin || req.headers.origin === 'http://' + req.headers.host);
-  if (!localAdmin && (req.headers.authorization || '') !== 'Bearer ' + TOKEN) return J(res, h, 401, { error: 'bad token' });
+  // ---- co-admin roles: owner (node token / this Mac) can mint limited tokens in admins.json ----
+  const AF = path.join(__dirname, 'admins.json'), loadTeam = () => { try { return JSON.parse(fs.readFileSync(AF, 'utf8')); } catch { return {}; } };
+  const ROLE_OK = {
+    support: ['overview', 'users', 'user360', 'user_note', 'tickets', 'ticket', 'ticket_reply', 'ticket_status', 'moderation', 'mod_decide', 'alerts', 'alert_ack', 'referrals', 'promos'],
+    manager: ['*', '!config_set', '!restore', '!grant', '!export', '!backup_now', '!backup_get', '!backups', '!storage'],
+  };
+  let ACTOR = 'owner', ROLE = 'owner';
+  const bearer = (req.headers.authorization || '').replace(/^Bearer /, '');
+  if (!localAdmin && bearer !== TOKEN) {
+    const tm = loadTeam(), mem = bearer && tm[bearer];
+    if (!mem || !u.startsWith('/admin')) return J(res, h, 401, { error: 'bad token' });
+    ACTOR = mem.name; ROLE = mem.role;
+    const wh = (new URL(req.url, 'http://x').searchParams.get('what') || 'overview').replace(/[^a-z_0-9]/g, '');
+    if (u === '/admin/cloud') {
+      const al = ROLE_OK[ROLE] || [], ok = al.includes('*') ? !al.includes('!' + wh) : al.includes(wh);
+      if (!ok) return J(res, h, 403, { error: 'Your role (' + ROLE + ') cannot use "' + wh + '".' });
+    } else if (u !== '/admin/me' && u !== '/admin/status') return J(res, h, 403, { error: 'Your role (' + ROLE + ') cannot use this.' });
+  }
+  if (u === '/admin/me') return J(res, h, 200, { name: ACTOR, role: ROLE, allowed: ROLE === 'owner' ? ['*'] : ROLE_OK[ROLE] || [] });
+  if (u === '/admin/team') {
+    if (ROLE !== 'owner') return J(res, h, 403, { error: 'Only the owner manages the team.' });
+    const tm = loadTeam();
+    if (req.method === 'POST') {
+      const b = JSON.parse((await body(req)).toString() || '{}');
+      if (b.remove) { delete tm[String(b.remove)]; fs.writeFileSync(AF, JSON.stringify(tm, null, 1)); return J(res, h, 200, { ok: true }); }
+      const name = String(b.name || '').replace(/[^\w .@-]/g, '').slice(0, 30).trim(), role = ['support', 'manager'].includes(b.role) ? b.role : null;
+      if (!name || !role) return J(res, h, 400, { error: 'name and role (support or manager) required' });
+      const tok = 'aixadm_' + crypto.randomBytes(24).toString('hex'); tm[tok] = { name, role, at: new Date().toISOString() };
+      fs.writeFileSync(AF, JSON.stringify(tm, null, 1)); return J(res, h, 200, { ok: true, token: tok, name, role });
+    }
+    return J(res, h, 200, { team: Object.entries(tm).map(([t, m]) => ({ id: t, hint: t.slice(0, 11) + '…' + t.slice(-4), name: m.name, role: m.role, at: m.at })) });
+  }
   // ---- Hosted images for sites: the cloud (gatekeeper: quota + billing) stores/serves user images here, on this Mac ----
   if (u.startsWith('/host/')) {
     const HD = path.join(__dirname, 'hosted'), okUid = (x) => /^[a-f0-9]{16}$/.test(x || ''), okName = (x) => /^[\w.\-]+(\/[\w.\-]+){0,6}$/.test(x || '') && x.length <= 160 && !x.includes('..');
@@ -129,7 +160,7 @@ http.createServer(async (req, res) => {
       const qs = new URL(req.url, 'http://x').searchParams, what = (qs.get('what') || 'overview').replace(/[^a-z_]/g, '');
       const extra = ['email', 'id', 'kind', 'status', 'f'].filter((k) => qs.get(k) != null).map((k) => '&' + k + '=' + encodeURIComponent(qs.get(k))).join('');
       const post = req.method === 'POST', bd = post ? await body(req) : null;
-      const r = await fetch(W.replace(/\/+$/, '') + '/api/node/admin?what=' + what + extra, { method: post ? 'POST' : 'GET', headers: { 'x-node-secret': NS, 'content-type': 'application/json' }, body: post ? bd : undefined });
+      const r = await fetch(W.replace(/\/+$/, '') + '/api/node/admin?what=' + what + extra, { method: post ? 'POST' : 'GET', headers: { 'x-node-secret': NS, 'x-admin-actor': ACTOR + (ROLE === 'owner' ? '' : ' (' + ROLE + ')'), 'content-type': 'application/json' }, body: post ? bd : undefined });
       return J(res, h, r.status, await r.json().catch(() => ({ error: 'bad response' })));
     }
     if (u === '/admin/update' && req.method === 'POST') { PANEL.at = 0; await checkUpdate(); return J(res, h, 200, { version: VERSION, ...UPDST }); }
