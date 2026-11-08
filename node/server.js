@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path');
-const VERSION = 9;   // bump on every release: nodes auto-update when GitHub has a higher number
+const VERSION = 10;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -127,7 +127,7 @@ http.createServer(async (req, res) => {
       const W = process.env.AIX_WORKER, NS = process.env.AIX_NODE_SECRET;
       if (!W || !NS) return J(res, h, 503, { error: 'Cloud link not configured on this node (needs AIX_WORKER and AIX_NODE_SECRET).' });
       const qs = new URL(req.url, 'http://x').searchParams, what = (qs.get('what') || 'overview').replace(/[^a-z_]/g, '');
-      const extra = ['email', 'id', 'kind', 'status'].filter((k) => qs.get(k) != null).map((k) => '&' + k + '=' + encodeURIComponent(qs.get(k))).join('');
+      const extra = ['email', 'id', 'kind', 'status', 'f'].filter((k) => qs.get(k) != null).map((k) => '&' + k + '=' + encodeURIComponent(qs.get(k))).join('');
       const post = req.method === 'POST', bd = post ? await body(req) : null;
       const r = await fetch(W.replace(/\/+$/, '') + '/api/node/admin?what=' + what + extra, { method: post ? 'POST' : 'GET', headers: { 'x-node-secret': NS, 'content-type': 'application/json' }, body: post ? bd : undefined });
       return J(res, h, r.status, await r.json().catch(() => ({ error: 'bad response' })));

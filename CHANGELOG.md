@@ -5,12 +5,18 @@
 - Or unlock 30 days with 1,000 credits already in the balance (top up with the $9.99 pack, 100 credits at a time). Worker: `/api/enterprise/status|activate`, Stripe webhook branch, admin `what=enterprise`.
 - App: Members page shows days left and renewal, the Company lock screen has a "Use 1,000 credits" button and a Stripe button.
 
+## Safety system
+- Worker: every user message is scanned before the model (threats, harm requests, hate, sexual, heavy abuse; minors+sexual is zero tolerance). Blocked messages are strikes, 3 active strikes (90 day expiry) suspend the account, appeals at `/api/mod/appeal`, record at `/api/mod/me`. AI replies are scanned and logged (no strike). Self-harm wording is logged without text and never a strike. Owners are exempt.
+- Control panel: new Safety tab (flags with excerpts, accounts near a ban, suspended users, appeals, dismiss/confirm/suspend/unban).
+- App: suspension notice with appeal form, strike record on the Members page, notice in the sign-up dialog and About.
+
 ## Referral program and YouTube promo
 - Every account has a referral code (AIX-XXXXXX). A new registered user who enters one in their first 30 days gets 10 credits, the referrer gets 10 (cap 100 referrals per referrer). Blocks: own code, second code, guest accounts, same network twice. Blocked attempts are logged.
 - YouTube promo: users submit a link on the Affiliate page, admin watches it in the control panel and approves (+100 credits, paid once) or rejects with a note. One submission per video, 3 pending and 5 rewarded per account.
 - Worker: `/api/ref/me|redeem`, `/api/promo/submit`; admin `what=referrals|promos|promo_decide`.
 - App: new Affiliate page, referral field in the sign-up dialog, invite links (`?ref=CODE`).
 - Control panel: new Referrals and Promo videos tabs.
+- Anti-abuse: the referrer is paid only after the new account is 24h old and has used 3 credits; max 5 paid referrals per 30 days (50 total); blocks for same device, same network, code swaps between two accounts, throwaway emails; more than 3 redemptions of one code per hour are held for admin review. Admin can release or revoke (credits taken back).
 - Tuning: constants REF_NEW, REF_REFERRER, REF_CAP, PROMO_CREDITS at the top of the referral block in worker/index.js.
 
 # AIX Alpha v3.0 - revision 6

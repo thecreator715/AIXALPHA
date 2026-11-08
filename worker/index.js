@@ -17,7 +17,7 @@ const json = (env, req, body, status = 200) => new Response(JSON.stringify(body)
 const sha = async (s) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(s)))].map((b) => b.toString(16).padStart(2, '0')).join('');
 const owners = (env) => (env.OWNER_EMAILS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 const view = (a) => ({ free_claimed: !!a.free_claimed, username: a.username || null, email: a.email, credits: +Number(a.credits).toFixed(2), tokens: a.tokens, requests: a.requests });
-const vw = (env, a) => ({ ...view(a), owner: owners(env).includes(a.email) });
+const vw = (env, a) => ({ ...view(a), owner: owners(env).includes(a.email), banned: !!a.banned });
 const getUser = (env, email) => env.DB.prepare('SELECT * FROM users WHERE email=?').bind(email).first();
 // One account per person: emails are normalised so +tags and Gmail dots can't make a second account.
 const normId = (x) => { let v = String(x || '').trim().toLowerCase(); if (v.includes('@')) { let [l, d] = v.split('@'); l = l.split('+')[0]; if (d === 'gmail.com' || d === 'googlemail.com') { l = l.replace(/\./g, ''); d = 'gmail.com'; } v = l + '@' + d; } return v; };
@@ -94,6 +94,8 @@ async function sample(env, req) {
   if (!(owners(env).includes(a.email) && !a.meter) && rateLimited(env, a)) return json(env, req, { error: 'Slow down: too many requests this minute. Try again in a few seconds.' }, 429);
   const b = await req.json().catch(() => ({}));
   const prompt = String(b.prompt || ''); if (!prompt) return json(env, req, { error: 'prompt required' }, 400);
+  if (a.banned) return json(env, req, { error: banMsg(a.ban_reason), banned: true, moderation: true }, 403);
+  { const blocked = await modCheck(env, req, a, prompt); if (blocked) return blocked; }
   const stream = !!b.stream;
   const owner = owners(env).includes(a.email) && !a.meter;
   const search = !!b.search && (owner || a.credits >= SEARCH_MIN_CREDITS);
@@ -110,17 +112,17 @@ async function sample(env, req) {
   const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, searches: 0 };
   if (!stream) {
     const j = await up.json(); usage.input = j.usage?.input_tokens || 0; usage.output = j.usage?.output_tokens || 0; usage.searches = j.usage?.server_tool_use?.web_search_requests || 0;
-    const bill = await charge(env, a, usage);
+    const bill = await charge(env, a, usage); const outText = (j.content || []).map((c) => c.text || '').join(''); await modOut(env, a, prompt, outText);
     return json(env, req, { text: (j.content || []).map((c) => c.text || '').join(''), truncated: j.stop_reason === 'max_tokens', ...bill });
   }
-  let buf = ''; const dec = new TextDecoder();
+  let buf = '', outAll = ''; const dec = new TextDecoder();
   const ts = new TransformStream({
     transform(chunk, ctl) {
-      ctl.enqueue(chunk); buf += dec.decode(chunk, { stream: true });
+      ctl.enqueue(chunk); const dtxt = dec.decode(chunk, { stream: true }); buf += dtxt; if (outAll.length < 60000) { for (const m of dtxt.matchAll(/"text":"((?:[^"\\]|\\.)*)"/g)) { try { outAll += JSON.parse('"' + m[1] + '"'); } catch (e) {} } }
       const lines = buf.split('\n'); buf = lines.pop();
       for (const ln of lines) if (ln.startsWith('data:')) { try { const e = JSON.parse(ln.slice(5)); if (e.type === 'message_start') usage.input = e.message?.usage?.input_tokens || 0; if (e.type === 'message_delta') { usage.output = e.usage?.output_tokens || usage.output; usage.searches = e.usage?.server_tool_use?.web_search_requests || usage.searches; } } catch {} }
     },
-    async flush(ctl) { const bill = await charge(env, a, usage); ctl.enqueue(enc.encode('data: ' + JSON.stringify({ type: 'aix_balance', ...bill }) + '\n\n')); },
+    async flush(ctl) { const bill = await charge(env, a, usage); await modOut(env, a, prompt, outAll); ctl.enqueue(enc.encode('data: ' + JSON.stringify({ type: 'aix_balance', ...bill }) + '\n\n')); },
   });
   return new Response(up.body.pipeThrough(ts), { headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', ...cors(env, req) } });
 }
@@ -548,18 +550,75 @@ async function nodeAdmin(env, req, url) {
     const bal = await q("SELECT CASE WHEN credits<=0 THEN 'empty' WHEN credits<10 THEN 'under 10' WHEN credits<50 THEN '10-50' ELSE '50+' END AS b, COUNT(*) AS n FROM users GROUP BY b");
     return R({ signups: su, hourly: hr, revenue: rev, engines: eng, balances: bal });
   }
+  if (what === 'moderation') {
+    await ensureMod(env);
+    const f = url.searchParams.get('f') || '';
+    const w = f === 'open' ? "WHERE status='open'" : f === 'ai' ? "WHERE src='ai'" : f === 'user' ? "WHERE src='user' AND strike=1" : f === 'care' ? "WHERE cat='care'" : f === 'dismissed' ? "WHERE status IN ('dismissed','cleared')" : '';
+    const flags = await q('SELECT id, email, at, src, cat, sev, strike, status, excerpt, ctx, ip FROM mod_flags ' + w + ' ORDER BY id DESC LIMIT 120');
+    const c = (hrs) => one('SELECT COUNT(*) n FROM mod_flags WHERE cat<>\'care\' AND at>=?', iso(hrs * 3600e3));
+    const [d1, d7] = await Promise.all([c(24), c(168)]);
+    const cats = await q("SELECT cat, src, COUNT(*) n FROM mod_flags WHERE at>=? GROUP BY cat, src ORDER BY n DESC", iso(30 * 86400e3));
+    const daily = await q("SELECT substr(at,1,10) d, COUNT(*) n FROM mod_flags WHERE cat<>'care' AND at>=? GROUP BY d ORDER BY d", iso(30 * 86400e3));
+    const risk = await q("SELECT email, SUM(strike=1 AND status NOT IN ('dismissed','cleared') AND at>=?) strikes, COUNT(*) total, MAX(at) last FROM mod_flags WHERE cat<>'care' GROUP BY email HAVING strikes>0 ORDER BY strikes DESC, last DESC LIMIT 25", iso(MOD_DAYS * 86400e3));
+    const banned = await q("SELECT email, username, ban_reason, banned_at FROM users WHERE banned=1 ORDER BY banned_at DESC LIMIT 100");
+    const appeals = await q("SELECT id, email, at, text, status, reply, decided FROM mod_appeals ORDER BY (status='open') DESC, id DESC LIMIT 60");
+    const care = await one("SELECT COUNT(*) n FROM mod_flags WHERE cat='care' AND at>=?", iso(30 * 86400e3));
+    return R({ flags24h: d1.n, flags7d: d7.n, banned: banned.length, openAppeals: appeals.filter((x) => x.status === 'open').length, care30d: care.n, cats, daily, risk, bannedUsers: banned, appeals, flags, rules: { max: MOD_MAX, days: MOD_DAYS, categories: Object.keys(MOD_WHY).concat(['care']) } });
+  }
+  if (what === 'mod_decide') {
+    if (req.method !== 'POST') return json(env, req, { error: 'POST required' }, 405);
+    await ensureMod(env);
+    const b = await req.json().catch(() => ({})), act = String(b.action || ''), email = String(b.email || '').toLowerCase().trim(), id = Number(b.id) || 0, iso2 = new Date().toISOString();
+    if (act === 'dismiss' || act === 'confirm') {
+      const r = await env.DB.prepare('UPDATE mod_flags SET status=?, note=? WHERE id=?').bind(act === 'dismiss' ? 'dismissed' : 'confirmed', String(b.note || '').slice(0, 200), id).run();
+      if (!r.meta || !r.meta.changes) return json(env, req, { error: 'flag not found' }, 404);
+    } else if (act === 'ban') {
+      if (!email || !(await getUser(env, email))) return json(env, req, { error: 'no such user' }, 404);
+      await env.DB.prepare('UPDATE users SET banned=1, ban_reason=?, banned_at=? WHERE email=?').bind(String(b.note || 'banned by admin').slice(0, 120), iso2, email).run();
+    } else if (act === 'unban') {
+      if (!email) return json(env, req, { error: 'email required' }, 400);
+      await env.DB.batch([env.DB.prepare('UPDATE users SET banned=0, ban_reason=NULL, banned_at=NULL WHERE email=?').bind(email), env.DB.prepare("UPDATE mod_flags SET status='cleared' WHERE email=? AND strike=1 AND status NOT IN ('dismissed','cleared')").bind(email), env.DB.prepare("UPDATE mod_appeals SET status='granted', decided=? WHERE email=? AND status='open'").bind(iso2, email)]);
+    } else if (act === 'deny_appeal') {
+      const r = await env.DB.prepare("UPDATE mod_appeals SET status='denied', reply=?, decided=? WHERE id=? AND status='open'").bind(String(b.note || '').slice(0, 300), iso2, id).run();
+      if (!r.meta || !r.meta.changes) return json(env, req, { error: 'appeal not found or already decided' }, 404);
+    } else return json(env, req, { error: 'unknown action' }, 400);
+    AUTH_C.clear(); NA_C.clear();
+    return R({ ok: true });
+  }
   if (what === 'referrals') {
     await ensureRef(env);
-    const t = await one('SELECT COUNT(*) n, COALESCE(SUM(referee_credits),0) a, COALESCE(SUM(referrer_credits),0) b FROM ref_uses');
+    const t = await one("SELECT COUNT(*) n, COALESCE(SUM(CASE WHEN status<>'held' AND status<>'revoked' THEN referee_credits ELSE 0 END),0) a, COALESCE(SUM(referrer_credits),0) b FROM ref_uses");
     const d7 = await one('SELECT COUNT(*) n FROM ref_uses WHERE at>=?', iso(7 * 86400e3));
-    const top = await q('SELECT referrer, COUNT(*) n, SUM(referrer_credits) c FROM ref_uses GROUP BY referrer ORDER BY n DESC LIMIT 15');
-    const recent = await q('SELECT id, code, referrer, referee, ip, at, referee_credits, referrer_credits FROM ref_uses ORDER BY id DESC LIMIT 60');
+    const sts = await q('SELECT status, COUNT(*) n FROM ref_uses GROUP BY status');
+    const top = await q("SELECT referrer, COUNT(*) n, SUM(status='paid') paid, SUM(referrer_credits) c FROM ref_uses GROUP BY referrer ORDER BY n DESC LIMIT 15");
+    const held = await q("SELECT id, code, referrer, referee, ip, dev, at FROM ref_uses WHERE status='held' ORDER BY id DESC LIMIT 50");
+    const recent = await q('SELECT id, code, referrer, referee, ip, at, status, referee_credits, referrer_credits FROM ref_uses ORDER BY id DESC LIMIT 60');
     const ips = await q('SELECT ip, COUNT(*) n FROM ref_fail WHERE at>=? GROUP BY ip HAVING n>=3 ORDER BY n DESC LIMIT 10', iso(7 * 86400e3));
     const fails = await q('SELECT email, ip, code, why, at FROM ref_fail ORDER BY id DESC LIMIT 40');
     const why = await q('SELECT why, COUNT(*) n FROM ref_fail GROUP BY why');
     const codes = await one('SELECT COUNT(*) n FROM ref_codes');
     const daily = await q('SELECT substr(at,1,10) d, COUNT(*) n FROM ref_uses WHERE at>=? GROUP BY d ORDER BY d', iso(30 * 86400e3));
-    return R({ uses: t.n, creditsNew: t.a, creditsReferrers: t.b, creditsTotal: (t.a || 0) + (t.b || 0), last7d: d7.n, codes: codes.n, top, recent, suspicious: ips, failures: fails, failReasons: why, daily, rules: { newUser: REF_NEW, referrer: REF_REFERRER, cap: REF_CAP } });
+    return R({ uses: t.n, creditsNew: t.a, creditsReferrers: t.b, creditsTotal: (t.a || 0) + (t.b || 0), last7d: d7.n, codes: codes.n, statuses: sts, top, held, recent, suspicious: ips, failures: fails, failReasons: why, daily, rules: { newUser: REF_NEW, referrer: REF_REFERRER, cap: REF_CAP, monthCap: REF_MONTH_CAP, qualUse: REF_QUAL_USE, qualHours: REF_QUAL_HOURS, velocity: REF_VELOCITY } });
+  }
+  if (what === 'ref_decide') {
+    if (req.method !== 'POST') return json(env, req, { error: 'POST required' }, 405);
+    await ensureRef(env);
+    const b = await req.json().catch(() => ({})), id = Number(b.id), act = String(b.action || '');
+    const u = await env.DB.prepare('SELECT * FROM ref_uses WHERE id=?').bind(id).first();
+    if (!u) return json(env, req, { error: 'not found' }, 404);
+    const iso2 = new Date().toISOString();
+    if (act === 'release' && u.status === 'held') {
+      const res = await env.DB.prepare("UPDATE ref_uses SET status='pending', referee_credits=? WHERE id=? AND status='held'").bind(REF_NEW, id).run();
+      if (res.meta && res.meta.changes) await env.DB.batch([env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(REF_NEW, u.referee), env.DB.prepare('INSERT OR IGNORE INTO purchases(email,at,usd,credits,ref) VALUES(?,?,0,?,?)').bind(u.referee, iso2, REF_NEW, 'ref-new-' + u.referee)]);
+    } else if (act === 'revoke' && u.status !== 'revoked') {
+      const res = await env.DB.prepare("UPDATE ref_uses SET status='revoked', note=? WHERE id=? AND status<>'revoked'").bind(String(b.note || '').slice(0, 200), id).run();
+      if (res.meta && res.meta.changes) {
+        if (u.status !== 'held' && u.referee_credits > 0) await env.DB.prepare('UPDATE users SET credits=MAX(0,credits-?) WHERE email=?').bind(u.referee_credits, u.referee).run();
+        if (u.referrer_credits > 0) await env.DB.prepare('UPDATE users SET credits=MAX(0,credits-?) WHERE email=?').bind(u.referrer_credits, u.referrer).run();
+      }
+    } else return json(env, req, { error: 'action must be release (held) or revoke' }, 400);
+    AUTH_C.clear(); NA_C.clear();
+    return R({ ok: true });
   }
   if (what === 'promos') {
     await ensureRef(env);
@@ -816,7 +875,11 @@ async function entApi(env, req, path) {
 
 
 // ---- Referral + affiliate promo program ----
-const REF_NEW = 10, REF_REFERRER = 10, REF_CAP = 100, PROMO_CREDITS = 100, PROMO_MAX_PENDING = 3, PROMO_MAX_APPROVED = 5;
+// Anti-abuse: referee gets REF_NEW at once; the referrer's reward is PENDING until the new account proves real use
+// (age + credits spent), then paid within a monthly cap. Same device / network / chains / throwaway emails are blocked.
+const REF_NEW = 10, REF_REFERRER = 10, REF_CAP = 50, REF_MONTH_CAP = 5, REF_QUAL_USE = 3, REF_QUAL_HOURS = 24, REF_PENDING_DAYS = 30, REF_VELOCITY = 3;
+const PROMO_CREDITS = 100, PROMO_MAX_PENDING = 3, PROMO_MAX_APPROVED = 5;
+const DISPOSABLE = ['mailinator.com', 'guerrillamail.com', '10minutemail.com', 'tempmail.com', 'temp-mail.org', 'yopmail.com', 'trashmail.com', 'sharklasers.com', 'getnada.com', 'dispostable.com', 'maildrop.cc', 'throwawaymail.com', 'fakeinbox.com', 'mohmal.com', 'emailondeck.com'];
 let REF_READY = false;
 async function ensureRef(env) {
   if (REF_READY) return;
@@ -825,10 +888,14 @@ async function ensureRef(env) {
     'CREATE TABLE IF NOT EXISTS ref_uses(id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL, referrer TEXT NOT NULL, referee TEXT UNIQUE NOT NULL, ip TEXT, at TEXT, referee_credits REAL, referrer_credits REAL)',
     'CREATE INDEX IF NOT EXISTS ref_uses_ref ON ref_uses(referrer)', 'CREATE INDEX IF NOT EXISTS ref_uses_ip ON ref_uses(ip)',
     'CREATE TABLE IF NOT EXISTS ref_fail(id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT, ip TEXT, code TEXT, why TEXT, at TEXT)',
+    'CREATE TABLE IF NOT EXISTS ref_dev(email TEXT NOT NULL, dev TEXT NOT NULL, ip TEXT NOT NULL, at TEXT, PRIMARY KEY(email, dev, ip))',
+    'CREATE INDEX IF NOT EXISTS ref_dev_dev ON ref_dev(dev)', 'CREATE INDEX IF NOT EXISTS ref_dev_ip ON ref_dev(ip)',
     'CREATE TABLE IF NOT EXISTS promos(id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, url TEXT, vid TEXT UNIQUE, status TEXT DEFAULT \'pending\', credits REAL DEFAULT 0, note TEXT, created TEXT, decided TEXT)',
     'CREATE INDEX IF NOT EXISTS promos_email ON promos(email)', 'CREATE INDEX IF NOT EXISTS promos_status ON promos(status)',
   ];
   for (const x of st) await env.DB.prepare(x).run();
+  for (const c of ["status TEXT DEFAULT 'pending'", 'paid_at TEXT', 'dev TEXT', 'note TEXT']) { try { await env.DB.prepare('ALTER TABLE ref_uses ADD COLUMN ' + c).run(); } catch (e) { /* exists */ } }
+  try { await env.DB.prepare('CREATE INDEX IF NOT EXISTS ref_uses_status ON ref_uses(status)').run(); } catch (e) {}
   REF_READY = true;
 }
 const REF_ABC = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -842,6 +909,33 @@ async function refCode(env, email) {
     catch (e) { const again = await env.DB.prepare('SELECT code FROM ref_codes WHERE email=?').bind(email).first(); if (again) return again.code; }
   }
   throw new Error('could not make a referral code');
+}
+const devId = (req) => String(req.headers.get('x-device') || '').replace(/[^\w-]/g, '').slice(0, 64);
+async function logDev(env, req, email) {
+  const dev = devId(req), ip = req.headers.get('cf-connecting-ip') || 'unknown';
+  if (!dev && ip === 'unknown') return;
+  try { await env.DB.prepare('INSERT OR IGNORE INTO ref_dev(email,dev,ip,at) VALUES(?,?,?,?)').bind(email, dev || '-', ip, new Date().toISOString()).run(); } catch (e) {}
+}
+// Pay pending referrer rewards that are now earned. where = referrer email or null for a sweep of everything.
+async function settleRefs(env, referrer) {
+  await ensureRef(env);
+  const now = Date.now(), iso = new Date(now).toISOString(), old = new Date(now - REF_PENDING_DAYS * 864e5).toISOString(), young = new Date(now - REF_QUAL_HOURS * 36e5).toISOString();
+  await env.DB.prepare("UPDATE ref_uses SET status='expired' WHERE status='pending' AND at<?" + (referrer ? ' AND referrer=?' : '')).bind(...(referrer ? [old, referrer] : [old])).run();
+  const rows = (await env.DB.prepare("SELECT id, referrer, referee FROM ref_uses WHERE status='pending' AND at<=?" + (referrer ? ' AND referrer=?' : '') + ' ORDER BY id LIMIT 60').bind(...(referrer ? [young, referrer] : [young])).all()).results || [];
+  let paid = 0;
+  for (const r of rows) {
+    const used = await env.DB.prepare('SELECT COALESCE(SUM(credits),0) c FROM usage WHERE email=?').bind(r.referee).first();
+    if (!used || used.c < REF_QUAL_USE) continue;
+    const m = await env.DB.prepare("SELECT COUNT(*) n FROM ref_uses WHERE referrer=? AND status='paid' AND paid_at>=?").bind(r.referrer, new Date(now - 30 * 864e5).toISOString()).first();
+    const t = await env.DB.prepare("SELECT COUNT(*) n FROM ref_uses WHERE referrer=? AND status='paid'").bind(r.referrer).first();
+    if ((m.n || 0) >= REF_MONTH_CAP || (t.n || 0) >= REF_CAP) continue;      // wait for the monthly window (expires after REF_PENDING_DAYS)
+    const res = await env.DB.prepare("UPDATE ref_uses SET status='paid', paid_at=?, referrer_credits=? WHERE id=? AND status='pending'").bind(iso, REF_REFERRER, r.id).run();
+    if (!res.meta || !res.meta.changes) continue;
+    await env.DB.batch([env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(REF_REFERRER, r.referrer), env.DB.prepare('INSERT OR IGNORE INTO purchases(email,at,usd,credits,ref) VALUES(?,?,0,?,?)').bind(r.referrer, iso, REF_REFERRER, 'ref-by-' + r.referee)]);
+    paid++;
+  }
+  if (paid) AUTH_C.clear();
+  return paid;
 }
 function ytId(u) {
   let x; try { x = new URL(String(u || '').trim()); } catch (e) { return ''; }
@@ -858,15 +952,18 @@ async function refApi(env, req, path) {
   await ensureRef(env);
   const a = await authed(env, req);
   if (!a) return json(env, req, { error: 'sign in' }, 401);
-  const now = new Date().toISOString(), ip = req.headers.get('cf-connecting-ip') || 'unknown';
+  const now = new Date().toISOString(), ip = req.headers.get('cf-connecting-ip') || 'unknown', dev = devId(req);
   const myPromos = async () => (await env.DB.prepare('SELECT id,url,vid,status,credits,note,created,decided FROM promos WHERE email=? ORDER BY id DESC LIMIT 30').bind(a.email).all()).results || [];
+  await logDev(env, req, a.email);
   if (path === '/api/ref/me') {
     const code = await refCode(env, a.email);
-    const st = (await env.DB.prepare('SELECT COUNT(*) n, COALESCE(SUM(referrer_credits),0) c FROM ref_uses WHERE referrer=?').bind(a.email).first()) || {};
-    const recent = (await env.DB.prepare('SELECT referee, at, referrer_credits c FROM ref_uses WHERE referrer=? ORDER BY id DESC LIMIT 20').bind(a.email).all()).results || [];
+    await settleRefs(env, a.email);
+    const st = (await env.DB.prepare("SELECT COUNT(*) n, COALESCE(SUM(referrer_credits),0) c, SUM(status='pending') p, SUM(status='held') h FROM ref_uses WHERE referrer=?").bind(a.email).first()) || {};
+    const mo = (await env.DB.prepare("SELECT COUNT(*) n FROM ref_uses WHERE referrer=? AND status='paid' AND paid_at>=?").bind(a.email, new Date(Date.now() - 30 * 864e5).toISOString()).first()) || {};
+    const recent = (await env.DB.prepare('SELECT referee, at, status, referrer_credits c FROM ref_uses WHERE referrer=? ORDER BY id DESC LIMIT 20').bind(a.email).all()).results || [];
     const used = await env.DB.prepare('SELECT code, referee_credits c, at FROM ref_uses WHERE referee=?').bind(a.email).first();
-    return json(env, req, { code, invited: st.n || 0, earned: st.c || 0, cap: REF_CAP, newUserCredits: REF_NEW, referrerCredits: REF_REFERRER,
-      recent: recent.map((r) => ({ who: String(r.referee).replace(/^(.{2}).*?(@.*)?$/, (m, x, y) => x + '***' + (y || '')), at: r.at, credits: r.c })),
+    return json(env, req, { code, invited: st.n || 0, earned: st.c || 0, pending: st.p || 0, held: st.h || 0, monthUsed: mo.n || 0, monthCap: REF_MONTH_CAP, cap: REF_CAP, newUserCredits: REF_NEW, referrerCredits: REF_REFERRER, qualUse: REF_QUAL_USE, qualHours: REF_QUAL_HOURS,
+      recent: recent.map((r) => ({ who: String(r.referee).replace(/^(.{2}).*?(@.*)?$/, (m, x, y) => x + '***' + (y || '')), at: r.at, status: r.status, credits: r.c })),
       redeemed: used ? { code: used.code, credits: used.c, at: used.at } : null, canRedeem: !used && !!a.username,
       promos: await myPromos(), promoCredits: PROMO_CREDITS });
   }
@@ -876,19 +973,27 @@ async function refApi(env, req, path) {
     if (!/^AIX-[A-Z0-9]{6}$/.test(code)) return fail('format', 400, 'That is not a referral code. It looks like AIX-ABC123.');
     if (!a.username) return fail('guest', 403, 'Create your account (username + password) first, then enter the code.');
     if (await env.DB.prepare('SELECT 1 x FROM ref_uses WHERE referee=?').bind(a.email).first()) return fail('twice', 409, 'You already used a referral code.');
+    const dom = String(a.username || a.email).split('@')[1] || '';
+    if (dom && DISPOSABLE.includes(dom.toLowerCase())) return fail('disposable', 403, 'Throwaway email addresses cannot use referral codes.');
     const age = Date.now() - Date.parse(a.created || now);
     if (age > 30 * 864e5) return fail('old', 403, 'Referral codes work only in the first 30 days of a new account.');
     const rc = await env.DB.prepare('SELECT email FROM ref_codes WHERE code=?').bind(code).first();
     if (!rc) return fail('unknown', 404, 'Code not found. Check it with the person who sent it.');
     if (rc.email === a.email) return fail('self', 403, 'You cannot use your own code.');
+    if (await env.DB.prepare('SELECT 1 x FROM ref_uses WHERE referrer=? AND referee=?').bind(a.email, rc.email).first()) return fail('cycle', 403, 'Referral codes cannot be swapped between two accounts.');
     if (await env.DB.prepare('SELECT 1 x FROM ref_uses WHERE ip=? LIMIT 1').bind(ip).first()) return fail('ip', 429, 'A referral code was already used from this network.');
-    const cnt = await env.DB.prepare('SELECT COUNT(*) n FROM ref_uses WHERE referrer=?').bind(rc.email).first();
-    const full = (cnt.n || 0) >= REF_CAP, rr = full ? 0 : REF_REFERRER;
-    try { await env.DB.prepare('INSERT INTO ref_uses(code,referrer,referee,ip,at,referee_credits,referrer_credits) VALUES(?,?,?,?,?,?,?)').bind(code, rc.email, a.email, ip, now, REF_NEW, rr).run(); }
+    if (await env.DB.prepare('SELECT 1 x FROM ref_dev WHERE email=? AND ip=? LIMIT 1').bind(rc.email, ip).first()) return fail('samenet', 403, 'Referral codes do not work between accounts that share a network.');
+    if (dev) {
+      if (await env.DB.prepare('SELECT 1 x FROM ref_dev WHERE email=? AND dev=? LIMIT 1').bind(rc.email, dev).first()) return fail('samedev', 403, 'Referral codes do not work between accounts on the same device.');
+      if (await env.DB.prepare("SELECT 1 x FROM ref_uses u JOIN ref_dev d ON d.email=u.referee WHERE d.dev=? AND d.email<>? LIMIT 1").bind(dev, a.email).first()) return fail('device', 429, 'A referral code was already used on this device.');
+    }
+    const fast = await env.DB.prepare('SELECT COUNT(*) n FROM ref_uses WHERE referrer=? AND at>=?').bind(rc.email, new Date(Date.now() - 36e5).toISOString()).first();
+    const held = (fast.n || 0) >= REF_VELOCITY;                 // too many in an hour: new ones wait for admin review
+    try { await env.DB.prepare("INSERT INTO ref_uses(code,referrer,referee,ip,at,referee_credits,referrer_credits,status,dev) VALUES(?,?,?,?,?,?,0,?,?)").bind(code, rc.email, a.email, ip, now, held ? 0 : REF_NEW, held ? 'held' : 'pending', dev).run(); }
     catch (e) { return json(env, req, { error: 'You already used a referral code.' }, 409); }
-    const ops = [env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(REF_NEW, a.email), env.DB.prepare('INSERT OR IGNORE INTO purchases(email,at,usd,credits,ref) VALUES(?,?,0,?,?)').bind(a.email, now, REF_NEW, 'ref-new-' + a.email)];
-    if (rr) ops.push(env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(rr, rc.email), env.DB.prepare('INSERT OR IGNORE INTO purchases(email,at,usd,credits,ref) VALUES(?,?,0,?,?)').bind(rc.email, now, rr, 'ref-by-' + a.email));
-    await env.DB.batch(ops); AUTH_C.clear();
+    if (held) return json(env, req, { ok: true, held: true, credits: 0, message: 'Your code needs a quick manual check before the credits arrive.' });
+    await env.DB.batch([env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(REF_NEW, a.email), env.DB.prepare('INSERT OR IGNORE INTO purchases(email,at,usd,credits,ref) VALUES(?,?,0,?,?)').bind(a.email, now, REF_NEW, 'ref-new-' + a.email)]);
+    AUTH_C.clear();
     const u = await getUser(env, a.email);
     return json(env, req, { ok: true, credits: REF_NEW, balance: u ? u.credits : undefined });
   }
@@ -906,8 +1011,110 @@ async function refApi(env, req, path) {
   return json(env, req, { error: 'not found' }, 404);
 }
 
+// ---- Safety: automatic content flags, 3 strikes = suspension, appeals ----
+// Checks the user's newest message (not history, not code blocks). Blocked messages never reach the model.
+// Strikes expire after 90 days; the admin can dismiss a false positive (strike removed) or unban + reset.
+const MOD_MAX = 3, MOD_DAYS = 90;
+const MOD_RULES = [
+  { cat: 'minors_sexual', sev: 'critical', re: /\b(child|children|kid|kids|minor|minors|underage|under-age|preteen|pre-teen|schoolgirl|schoolboy|toddler|infant|loli|shota|\d{1,2}\s?(yo|y\/o|year[s]?[- ]old)|1[0-7]\s?(yo|y\/o))\b[\s\S]{0,60}\b(sex|sexual|nude|naked|porn|erotic|molest|rape|fuck|blowjob|horny|seduce)|\b(sex|sexual|nude|naked|porn|erotic|molest|rape|fuck|blowjob|horny|seduce)\w*\b[\s\S]{0,60}\b(child|children|kid|kids|minor|minors|underage|under-age|preteen|pre-teen|schoolgirl|schoolboy|toddler|infant|loli|shota)\b/i },
+  { cat: 'threat', sev: 'high', re: /\b(i|we|i'm|im|i am)\s*(will|'ll|am going to|'m going to|m going to|gonna|am gonna|going to)\s+(kill|murder|shoot|stab|bomb|strangle|hurt|rape|burn|beat|slaughter)\b[\s\S]{0,40}\b(you|him|her|them|your|everyone|everybody|school|office|family|kids|people)\b|\b(kill|murder)\s+(yourself|your ?self|you all|everyone)\b|\bbomb threat\b|\b(shoot|blow) up (the |a |my |this )?(school|office|mall|church|building|store)\b|\byou (will|'re going to|are going to) die\b|\bi know where you live\b/i },
+  { cat: 'harm_request', sev: 'high', re: /\bhow (do i|do you|can i|to|would i)\s+(make|build|create|assemble)\s+(a |an )?(bomb|pipe ?bomb|explosive|nerve agent|molotov|silencer|ghost gun)\b|\bhow (do i|can i|to|would i)\s+(kill|poison|murder|torture|abduct|kidnap)\s+(a |an |my |some)?(person|someone|man|woman|wife|husband|neighbou?r|boss|teacher|child|girlfriend|boyfriend|coworker)\b/i },
+  { cat: 'hate', sev: 'high', re: /\bn[i1!]gg+(er|a|ah)s?\b|\bf[a@]gg?[o0]ts?\b|\bk[i1]kes?\b|\bch[i1]nks?\b|\btr[a@]nn(y|ies)\b|\bsp[i1]cs?\b|\bwetbacks?\b|\bg[o0]{2}ks?\b|\br[e3]t[a@]rds?\b|\bheil hitler\b|\b(gas|exterminate|kill) (all )?(the )?(jews|blacks|muslims|gays|immigrants|whites|mexicans|asians)\b/i },
+  { cat: 'sexual', sev: 'med', re: /\b(write|generate|create|describe|tell me|give me|make)\b[\s\S]{0,40}\b(explicit|erotic|pornographic|nsfw|xxx|sex scene|smut|hardcore|sexually explicit)\b|\b(porn|pornography|pornhub|onlyfans leak|nudes?|hentai)\b[\s\S]{0,30}\b(generate|write|make|show|send|give)\b|\b(blow ?job|hand ?job|anal sex|cum ?shot|gang ?bang|dick pic|deepthroat|orgasm)s?\b[\s\S]{0,80}\b(blow ?job|hand ?job|anal sex|cum ?shot|gang ?bang|dick pic|deepthroat|orgasm|pussy|cock|tits|cum)s?\b/i },
+  { cat: 'vulgar', sev: 'low', test: (t) => { const m = t.match(/\b(fuck\w*|shit\w*|bitch\w*|cunt\w*|asshole\w*|bastard\w*|dickhead\w*|motherfuck\w*|whore\w*|slut\w*|piss\w*|twat\w*|wank\w*)\b/gi) || []; return m.length >= 4 || /\b(fuck|screw|piss)\s+(you|off|yourself)\b[\s\S]{0,40}\b(fuck|shit|bitch|cunt|asshole|bastard|whore|slut)\w*/i.test(t) || /\byou('re| are)?\s+(a |an |such a |so )?(stupid |fucking |worthless |useless |dumb |piece of )+(shit|bitch|cunt|idiot|moron|whore|slut|asshole)\b/i.test(t); } },
+  { cat: 'care', sev: 'info', re: /\b(kill|hurt|harm|end) (myself|my ?self|my life)\b|\bwant to die\b|\bsuicid(e|al)\b|\bno reason to live\b|\bcut(ting)? myself\b/i },
+];
+function modText(prompt) {
+  let t = String(prompt || '');
+  const cut = ['USER REQUEST:', 'User report:', 'Spec:', 'USER:'];
+  let at = -1; for (const c of cut) { const i = t.lastIndexOf(c); if (i > at) at = i; }
+  if (at >= 0) t = t.slice(at + 1);
+  t = t.replace(/```[\s\S]*?(```|$)/g, ' ').replace(/ASSISTANT:[\s\S]*$/, ' ');   // never scan code or earlier AI replies
+  return t.slice(-2500);
+}
+function modScan(t) {
+  const hits = [];
+  for (const r of MOD_RULES) { let m = null; if (r.re) { m = t.match(r.re); if (m) hits.push({ cat: r.cat, sev: r.sev, at: m.index || 0, len: (m[0] || '').length }); } else if (r.test(t)) hits.push({ cat: r.cat, sev: r.sev, at: 0, len: 0 }); }
+  return hits;
+}
+let MOD_READY = false;
+async function ensureMod(env) {
+  if (MOD_READY) return;
+  const st = [
+    'CREATE TABLE IF NOT EXISTS mod_flags(id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, at TEXT, src TEXT, cat TEXT, sev TEXT, strike INTEGER DEFAULT 0, status TEXT DEFAULT \'open\', excerpt TEXT, ctx TEXT, hash TEXT, ip TEXT, note TEXT)',
+    'CREATE INDEX IF NOT EXISTS mod_flags_email ON mod_flags(email, at)', 'CREATE INDEX IF NOT EXISTS mod_flags_at ON mod_flags(at)',
+    'CREATE TABLE IF NOT EXISTS mod_appeals(id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, at TEXT, text TEXT, status TEXT DEFAULT \'open\', reply TEXT, decided TEXT)',
+    'CREATE INDEX IF NOT EXISTS mod_appeals_email ON mod_appeals(email)',
+  ];
+  for (const x of st) await env.DB.prepare(x).run();
+  for (const c of ['banned INTEGER DEFAULT 0', 'ban_reason TEXT', 'banned_at TEXT']) { try { await env.DB.prepare('ALTER TABLE users ADD COLUMN ' + c).run(); } catch (e) { /* exists */ } }
+  MOD_READY = true;
+}
+const modStrikes = async (env, email) => ((await env.DB.prepare("SELECT COUNT(*) n FROM mod_flags WHERE email=? AND strike=1 AND status NOT IN ('dismissed','cleared') AND at>=?").bind(email, new Date(Date.now() - MOD_DAYS * 864e5).toISOString()).first()) || {}).n || 0;
+const banMsg = (reason) => 'This account is suspended' + (reason ? ' (' + reason + ')' : '') + '. You can send an appeal and it will be reviewed.';
+const MOD_WHY = { minors_sexual: 'sexual content involving minors', threat: 'threats of violence', harm_request: 'a request to harm people', hate: 'hateful language', sexual: 'sexually explicit content', vulgar: 'heavy abusive language' };
+// Returns null when the message is fine, else a Response to send back instead of calling the model.
+async function modCheck(env, req, a, prompt) {
+  if (owners(env).includes(a.email)) return null;
+  const t = modText(prompt), hits = modScan(t);
+  if (!hits.length) return null;
+  const real = hits.filter((h) => h.cat !== 'care');
+  await ensureMod(env);
+  const now = new Date().toISOString(), ip = req.headers.get('cf-connecting-ip') || 'unknown';
+  if (!real.length) {   // care signal: logged without text, never a strike, the model answers normally
+    await env.DB.prepare("INSERT INTO mod_flags(email,at,src,cat,sev,strike,status,excerpt,ip) VALUES(?,?,'user','care','info',0,'info','[withheld]',?)").bind(a.email, now, ip).run().catch(() => {});
+    return null;
+  }
+  const top = real.sort((x, y) => ({ critical: 0, high: 1, med: 2, low: 3 }[x.sev] - { critical: 0, high: 1, med: 2, low: 3 }[y.sev]))[0];
+  const h = await sha(t.toLowerCase().replace(/\s+/g, ' ').slice(0, 400));
+  const dup = await env.DB.prepare('SELECT 1 x FROM mod_flags WHERE email=? AND hash=? AND at>=? LIMIT 1').bind(a.email, h, new Date(Date.now() - 600e3).toISOString()).first();
+  const from = Math.max(0, top.at - 80), excerpt = t.slice(from, from + Math.max(240, top.len + 160)).replace(/\s+/g, ' ').trim().slice(0, 500);
+  if (!dup) await env.DB.prepare("INSERT INTO mod_flags(email,at,src,cat,sev,strike,status,excerpt,hash,ip) VALUES(?,?,'user',?,?,1,'open',?,?,?)").bind(a.email, now, top.cat, top.sev, excerpt, h, ip).run();
+  const n = await modStrikes(env, a.email);
+  const ban = n >= MOD_MAX || top.sev === 'critical';
+  if (ban) {
+    await env.DB.prepare("UPDATE users SET banned=1, ban_reason=?, banned_at=? WHERE email=? AND COALESCE(banned,0)=0").bind(top.sev === 'critical' ? 'zero-tolerance content' : MOD_MAX + ' content strikes', now, a.email).run();
+    AUTH_C.clear();
+    return json(env, req, { error: 'Your account has been suspended for ' + (MOD_WHY[top.cat] || 'breaking the content rules') + '. You can send an appeal from the sign-in screen.', banned: true, moderation: true, strikes: Math.min(n, MOD_MAX), max: MOD_MAX }, 403);
+  }
+  return json(env, req, { error: 'This message was blocked: it looks like ' + (MOD_WHY[top.cat] || 'content that breaks the rules') + '. Strike ' + n + ' of ' + MOD_MAX + '. At ' + MOD_MAX + ' strikes the account is suspended. If this was a mistake, rephrase it.', moderation: true, cat: top.cat, strikes: n, max: MOD_MAX }, 422);
+}
+// Logs AI replies that contain flagged material (no strike for the user; the admin sees both sides).
+async function modOut(env, a, userPrompt, text) {
+  try {
+    if (!text || owners(env).includes(a.email)) return;
+    const hits = modScan(String(text).replace(/```[\s\S]*?(```|$)/g, ' ').slice(0, 20000)).filter((h) => ['minors_sexual', 'threat', 'harm_request', 'hate', 'sexual'].includes(h.cat));
+    if (!hits.length) return;
+    await ensureMod(env);
+    const t = String(text), top = hits[0], from = Math.max(0, top.at - 100);
+    await env.DB.prepare("INSERT INTO mod_flags(email,at,src,cat,sev,strike,status,excerpt,ctx) VALUES(?,?,'ai',?,?,0,'open',?,?)").bind(a.email, new Date().toISOString(), top.cat, top.sev, t.slice(from, from + 400).replace(/\s+/g, ' '), modText(userPrompt).slice(0, 300).replace(/\s+/g, ' ')).run();
+  } catch (e) { /* never block a reply because logging failed */ }
+}
+async function modApi(env, req, path) {
+  const a = await authed(env, req);
+  if (!a) return json(env, req, { error: 'sign in' }, 401);
+  await ensureMod(env);
+  const fresh = await getUser(env, a.email);
+  if (path === '/api/mod/me') {
+    const n = await modStrikes(env, a.email);
+    const fl = (await env.DB.prepare("SELECT at, cat, status, src FROM mod_flags WHERE email=? AND strike=1 ORDER BY id DESC LIMIT 10").bind(a.email).all()).results || [];
+    const ap = await env.DB.prepare('SELECT id, at, status, reply FROM mod_appeals WHERE email=? ORDER BY id DESC LIMIT 1').bind(a.email).first();
+    return json(env, req, { strikes: n, max: MOD_MAX, days: MOD_DAYS, banned: !!(fresh && fresh.banned), reason: fresh && fresh.ban_reason || '', flags: fl.map((f) => ({ at: f.at, why: MOD_WHY[f.cat] || f.cat, status: f.status })), appeal: ap || null });
+  }
+  if (path === '/api/mod/appeal' && req.method === 'POST') {
+    const b = await req.json().catch(() => ({})), text = String(b.text || '').trim().slice(0, 1000);
+    if (text.length < 10) return json(env, req, { error: 'Tell us what happened in a few sentences.' }, 400);
+    if (!(fresh && fresh.banned)) return json(env, req, { error: 'Your account is not suspended.' }, 400);
+    if (await env.DB.prepare("SELECT 1 x FROM mod_appeals WHERE email=? AND status='open'").bind(a.email).first()) return json(env, req, { error: 'You already have an appeal waiting for review.' }, 409);
+    if ((await env.DB.prepare("SELECT COUNT(*) n FROM mod_appeals WHERE email=? AND status='denied'").bind(a.email).first()).n >= 2) return json(env, req, { error: 'Appeals are closed for this account.' }, 403);
+    await env.DB.prepare('INSERT INTO mod_appeals(email,at,text) VALUES(?,?,?)').bind(a.email, new Date().toISOString(), text).run();
+    return json(env, req, { ok: true });
+  }
+  return json(env, req, { error: 'not found' }, 404);
+}
+
 export default {
-  async scheduled(ev, env, ctx) { ctx.waitUntil(runDueJobs(env).then(() => autoBackup(env))); },
+  async scheduled(ev, env, ctx) { ctx.waitUntil(runDueJobs(env).then(() => autoBackup(env)).then(() => (new Date().getUTCMinutes() < 5 ? settleRefs(env).catch(() => 0) : 0))); },
   async fetch(req, env, ctx) {
     try { return await this._h(req, env, ctx); }
     catch (e) { console.log('worker error', req.method, new URL(req.url).pathname, e && e.stack || e); return json(env, req, { error: 'Server error: ' + (e && e.message || e) }, 500); }
@@ -917,6 +1124,7 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(env, req) });
     if (path.startsWith('/api/enterprise/')) return entApi(env, req, path);
     if (path.startsWith('/api/ref/') || path === '/api/promo/submit') return refApi(env, req, path);
+    if (path.startsWith('/api/mod/')) return modApi(env, req, path);
     if (path.startsWith('/api/host/')) return hostApi(env, req, path);
     if (path.startsWith('/h/')) return hostGet(env, req, path);
     if (path === '/api/node/admin' && (req.method === 'GET' || req.method === 'POST')) return nodeAdmin(env, req, url);
