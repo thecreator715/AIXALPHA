@@ -2,14 +2,19 @@ name = "aix-alpha"
 main = "index.js"
 compatibility_date = "2026-10-01"
 
-# No id here on purpose: wrangler creates the storage automatically on first deploy.
-[[kv_namespaces]]
-binding = "AIX"
+# The worker stores everything in this D1 database (binding DB). Keep the id: it is the live database.
+[[d1_databases]]
+binding = "DB"
+database_name = "aix-alpha-db"
+database_id = "d529bed8-608c-43bc-acd7-8e45d84b82cb"
+
+[observability]
+enabled = true
 
 [vars]
 ALLOWED_ORIGINS = "*"
 SIGNUP_CREDITS = "0"
-OWNER_EMAILS = ""
+OWNER_EMAILS = "divercityrecords@gmail.com"
 
 [ai]
 binding = "AI"
