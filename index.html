@@ -4023,7 +4023,7 @@ const withTools=f=>{const g=(a,o)=>(o&&o.tools&&o.tools.length)?toolLoop(f,a,o):
 /* page */
 function renderPlugins(){
   const el=$('#plugbody'),st=plugState(),ms=mcpList();
-  const eng=PROVON()?'your custom model':nodeOn()?'your Ollama node':'the cloud model';
+  const eng=PROVON()?'your custom model':nodeOn()?'your Ollama node':'the Alpha node';
   const card=pl=>{const s=st[pl.id]||{},on=!!s.on;return `<div class="bc"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b style="font-size:14px">${pl.icon} ${esc(pl.name)}</b><button class="tg ${on?'on':''}" data-pg="${pl.id}">${on?'On':'Off'}</button></div><div class="bs" style="margin:2px 0 6px">${esc(pl.blurb)}</div>${(pl.needs||[]).map(([k,l,ty])=>`<input data-pgc="${pl.id}:${k}" type="${ty||'text'}" placeholder="${esc(l)}" value="${esc(((s.cfg||{})[k])||'')}" style="${pgCss};width:100%;font-size:12px">`).join('')}</div>`};
   el.innerHTML=`<div class="ab" style="max-width:980px;margin:0 auto"><h2 class="mono" style="margin:0 0 4px">PLUG-INS</h2>
   <div class="mono" style="font-size:11px;color:var(--m);margin-bottom:12px">Give any model extra abilities. Turn a plug-in on, then just ask in chat (for example "weather in Tokyo"). Plug-ins work with <b>every engine</b>: the model writes a tool call, AIX runs it and hands back the result. Replies now run on ${eng}.</div>

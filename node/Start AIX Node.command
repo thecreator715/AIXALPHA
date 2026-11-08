@@ -109,7 +109,7 @@ cat <<MSG
   Public : $URL
   Cloud  : registers itself with AIX Alpha every minute. Every app (GitHub site, artifact,
            phones) now uses this Mac automatically for ECO and BALANCED replies.
-           If this Mac is off, replies fall back to the cloud model.
+           If this Mac is off, replies pause until it is back (node-only mode).
   Token  : .aix-token (keep it private)
   Panel  : http://localhost:$PORT/
 

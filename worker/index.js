@@ -102,6 +102,10 @@ async function sample(env, req) {
   const search = !!b.search && (owner || a.credits >= SEARCH_MIN_CREDITS);
   const content = (Array.isArray(b.images) ? b.images.slice(0, 4) : []).map((i) => ({ type: 'image', source: { type: 'base64', media_type: String(i.media_type || 'image/png'), data: String(i.data || '') } }));
   content.push({ type: 'text', text: prompt });
+  if ((await cfgAll(env)).nodeOnly) {   // Alpha runs only on the Mac node: no Anthropic fallback
+    const nd = await nodeGet(env), r = nd ? await viaNode(env, req, a, nd, prompt, stream, Math.min(Number(b.max_tokens) || 4096, 8192)) : null;
+    return r || json(env, req, { error: 'The Alpha node is offline right now (the Mac is asleep or the node stopped). Try again in a minute.', nodeOffline: true }, 503);
+  }
   if (!(Array.isArray(b.images) && b.images.length) && !b.search && ['eco', 'balanced'].includes(String(b.mode || ''))) { const nd = await nodeGet(env); if (nd) { const r = await viaNode(env, req, a, nd, prompt, stream, Math.min(Number(b.max_tokens) || 4096, 8192)); if (r) return r; } }
   const call = (withSearch) => fetch(env.UPSTREAM_URL || 'https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: MODEL, max_tokens: Math.min(Number(b.max_tokens) || 4096, 8192), stream, ...(withSearch ? { tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }] } : {}), messages: [{ role: 'user', content }] }) });
   let up = await call(search);
@@ -168,6 +172,7 @@ async function runPrompt(env, a, prompt) {
       if (up.ok) { const j = await up.json(); const t = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || ''; if (t) { await charge(env, a, { input: (j.usage && j.usage.prompt_tokens) || Math.ceil(prompt.length / 4), output: (j.usage && j.usage.completion_tokens) || Math.ceil(t.length / 4) }); return { text: t, engine: 'node' }; } }
     } catch (e) { /* fall through to cloud */ }
   }
+  if ((await cfgAll(env)).nodeOnly) throw new Error('Alpha node offline');
   const r = await fetch(env.UPSTREAM_URL || 'https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: MODEL, max_tokens: 2048, messages: [{ role: 'user', content: prompt }] }) });
   if (!r.ok) throw new Error('model error ' + r.status);
   const j = await r.json(); const t = (j.content || []).map((c) => c.text || '').join('');
@@ -372,7 +377,7 @@ async function v1Run(env, req, kr, a, b) {
   const sse = { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', ...cors(env, req) };
   const inTok = Math.ceil(total / 4);
   // 1) your Mac node, when online (unless the cloud model was asked for)
-  const nd = b.model === 'aix-alpha-cloud' ? null : await nodeGet(env);
+  const noOnly = !!(await cfgAll(env)).nodeOnly, nd = (b.model === 'aix-alpha-cloud' && !noOnly) ? null : await nodeGet(env);
   if (nd) {
     try {
       const up = await nfetch(nd.url.replace(/\/+$/, '') + '/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + nd.token, 'x-aix-user': a.email, 'x-aix-src': 'api' }, body: JSON.stringify({ model: nd.model, stream, max_tokens: maxTok, temperature: temp, messages: msgs }) }, stream ? 20000 : 110000);
@@ -392,6 +397,7 @@ async function v1Run(env, req, kr, a, b) {
       }
     } catch (e) { /* node unreachable: fall back to cloud */ }
   }
+  if (noOnly) return oaiErr(env, req, 503, 'The AIX Alpha node is offline right now. Try again in a minute.');
   // 2) cloud model
   const sys = msgs.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n');
   let conv = msgs.filter((m) => m.role !== 'system'); if (!conv.length) conv = [{ role: 'user', content: sys }];
@@ -1123,8 +1129,8 @@ async function modApi(env, req, path) {
 }
 
 // ---- Admin tools: live settings + kill switches, alerts, audit log, finance, user 360, abuse radar, support inbox, restore/export ----
-const CFG_DEF = { refNew: 10, refReferrer: 10, refMonthCap: 5, refCap: 50, refQualUse: 3, refQualHours: 24, modMax: 3, promoCredits: 100, alertSpendUsd: 20, alertFlagsHour: 10, pauseChat: 0, pauseSignup: 0, pauseReferrals: 0, pauseEnterprise: 0, banner: '', alertWebhook: '' };
-const CFG_LIM = { refNew: [0, 1000], refReferrer: [0, 1000], refMonthCap: [0, 100], refCap: [0, 1000], refQualUse: [0, 1000], refQualHours: [0, 720], modMax: [1, 20], promoCredits: [0, 10000], alertSpendUsd: [1, 100000], alertFlagsHour: [1, 1000], pauseChat: [0, 1], pauseSignup: [0, 1], pauseReferrals: [0, 1], pauseEnterprise: [0, 1] };
+const CFG_DEF = { refNew: 10, refReferrer: 10, refMonthCap: 5, refCap: 50, refQualUse: 3, refQualHours: 24, modMax: 3, promoCredits: 100, alertSpendUsd: 20, alertFlagsHour: 10, pauseChat: 0, pauseSignup: 0, pauseReferrals: 0, pauseEnterprise: 0, nodeOnly: 1, banner: '', alertWebhook: '' };
+const CFG_LIM = { refNew: [0, 1000], refReferrer: [0, 1000], refMonthCap: [0, 100], refCap: [0, 1000], refQualUse: [0, 1000], refQualHours: [0, 720], modMax: [1, 20], promoCredits: [0, 10000], alertSpendUsd: [1, 100000], alertFlagsHour: [1, 1000], pauseChat: [0, 1], pauseSignup: [0, 1], pauseReferrals: [0, 1], pauseEnterprise: [0, 1], nodeOnly: [0, 1] };
 let CFG_C = null, CFG_T = 0;
 async function cfgAll(env, force) {
   if (!force && CFG_C && Date.now() - CFG_T < 60000) return CFG_C;

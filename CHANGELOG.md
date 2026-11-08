@@ -1,5 +1,8 @@
 # AIX Alpha v3.0 - revision 8
 
+## Node-only Alpha
+- Alpha no longer calls Anthropic. Every chat, task and API call runs on the Mac node; if it is offline users get a clear "node offline" message (HTTP 503) and are not charged. Toggle `nodeOnly` in Settings (default on). Added `AIX MASTER.command` for a clean one-click restart.
+
 ## Admin control panel: 10 new tools (node v11)
 - Settings tab: live kill switches (pause chat, sign-ups, referrals, Enterprise), site-wide banner, and live tuning of referral rewards/caps, strike limit, promo reward and alert limits. No redeploy; owner accounts are never blocked. Worker `what=config|config_set`, public `/api/config` now returns `banner` and `paused`.
 - Alerts tab: node offline, 24h spend over limit, safety-flag spike, open appeals, held referrals, promo videos waiting, open tickets, bad Stripe signature. Checked every 5 minutes, optional push through a Discord webhook or ntfy.sh URL.
