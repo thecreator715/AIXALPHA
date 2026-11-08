@@ -95,3 +95,7 @@
 
 ## Web search from the cloud edge
 - The worker now searches the web itself (Bing, DuckDuckGo, Google News, CoinGecko for crypto) and only falls back to the Mac node. Shows a toast with the result count. Web badge says +3.5.
+
+## Web search reminder + docs
+- Worker adds an end-of-prompt reminder so old "I cannot search" replies in a chat are ignored when live results are present.
+- docs/COMMANDS.md: every command in one place.
