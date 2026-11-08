@@ -144,7 +144,7 @@ async function stripe(env, req) {
 }
 
 // ---- Scheduled tasks: run on time via a Cron Trigger even when no page is open ----
-let JOBS_READY = false;
+let JOBS_READY = true;
 async function ensureJobs(env) {
   if (JOBS_READY) return;
   await env.DB.prepare('CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY, email TEXT NOT NULL, title TEXT, prompt TEXT, due INTEGER, repeat TEXT DEFAULT \'none\', status TEXT DEFAULT \'pending\', last INTEGER, result TEXT, engine TEXT, created INTEGER)').run();
@@ -192,7 +192,7 @@ async function runDueJobs(env) {
   // un-stick anything left 'running' for over 10 minutes
   await env.DB.prepare("UPDATE jobs SET status='pending' WHERE status='running' AND (last IS NULL OR last<?)").bind(Date.now() - 600e3).run();
 }
-let SYNC_READY = false;
+let SYNC_READY = true;
 const SYNC_KEYS = ['aix3_chats', 'aix3_ws', 'aix3_memory', 'aix3_personas', 'aix3_remind'];
 async function ensureSync(env) {
   if (SYNC_READY) return;
@@ -263,7 +263,7 @@ async function nfetch(url, init, ms) {
   const ac = new AbortController(); const t = setTimeout(() => ac.abort(), ms);
   try { return await fetch(url, { ...init, signal: ac.signal }); } finally { clearTimeout(t); }
 }
-let KEYS_READY = false;
+let KEYS_READY = true;
 async function ensureKeys(env) {
   if (KEYS_READY) return;
   await env.DB.prepare('CREATE TABLE IF NOT EXISTS api_keys(key_hash TEXT PRIMARY KEY, email TEXT NOT NULL, name TEXT, prefix TEXT, created INTEGER, last INTEGER, requests INTEGER DEFAULT 0)').run();
@@ -397,7 +397,7 @@ async function v1Run(env, req, kr, a, b) {
 }
 
 // ---- Automatic backups: compact gzipped JSON of all important tables, once every 24h, last 14 kept in D1 ----
-let BK_READY = false;
+let BK_READY = true;
 async function ensureBackups(env) {
   if (BK_READY) return; BK_READY = true;
   await env.DB.prepare('CREATE TABLE IF NOT EXISTS backups(id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, rows INTEGER, bytes INTEGER, kind TEXT, data TEXT)').run();
@@ -422,14 +422,17 @@ async function autoBackup(env) {
 }
 
 // ---- Node control panel feed: read-only overview of the whole service, guarded by the node secret ----
+const NA_C = new Map();
 async function nodeAdmin(env, req, url) {
   if (!env.NODE_SECRET || req.headers.get('x-node-secret') !== env.NODE_SECRET) return json(env, req, { error: 'bad node secret' }, 401);
+  const ck = 'na:' + url.search, GETQ = req.method === 'GET', hit = NA_C.get(ck);
+  if (GETQ && hit && Date.now() - hit.t < 90000) return new Response(hit.b, { headers: { 'content-type': 'application/json', ...cors(env, req) } });   // panel polls: serve cached stats
   await ensureKeys(env); await ensureJobs(env);
   const what = url.searchParams.get('what') || 'overview', now = Date.now();
   const iso = (ms) => new Date(now - ms).toISOString();
   const q = async (sql, ...p) => ((await env.DB.prepare(sql).bind(...p).all()).results || []);
   const one = async (sql, ...p) => (await env.DB.prepare(sql).bind(...p).first()) || {};
-  const R = (o) => json(env, req, o);
+  const R = (o) => { const s = JSON.stringify(o); if (GETQ) { if (NA_C.size > 40) NA_C.clear(); NA_C.set(ck, { t: Date.now(), b: s }); } return new Response(s, { headers: { 'content-type': 'application/json', ...cors(env, req) } }); };
   if (what === 'overview') {
     const us = await one('SELECT COUNT(*) AS n, COALESCE(SUM(credits),0) AS cr FROM users');
     const n24 = await one('SELECT COUNT(*) AS n FROM users WHERE created>=?', iso(86400e3));
@@ -565,7 +568,7 @@ async function nodeAdmin(env, req, url) {
 }
 
 // ---- Shareable chat pages: a mini AIX chat bound to one of the owner's API keys; visitors spend the owner's credits ----
-let PAGES_READY = false;
+let PAGES_READY = true;
 async function ensurePages(env) {
   if (PAGES_READY) return; await ensureKeys(env);
   await env.DB.prepare('CREATE TABLE IF NOT EXISTS chat_pages(slug TEXT PRIMARY KEY, email TEXT NOT NULL, key_hash TEXT NOT NULL, name TEXT, welcome TEXT, system TEXT, color TEXT, model TEXT, day_cap INTEGER DEFAULT 200, ip_cap INTEGER DEFAULT 20, enabled INTEGER DEFAULT 1, created INTEGER, hits INTEGER DEFAULT 0)').run();
