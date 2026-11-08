@@ -3,6 +3,12 @@
 ## Node-only Alpha
 - Alpha no longer calls Anthropic. Every chat, task and API call runs on the Mac node; if it is offline users get a clear "node offline" message (HTTP 503) and are not charged. Toggle `nodeOnly` in Settings (default on). Added `AIX MASTER.command` for a clean one-click restart.
 
+## Node-only: modes, web search, images (node v12)
+- Modes now shape the node: Eco short and fast (low temperature, 1,500-token cap), Balanced default, Thorough/Auto step-by-step with an 8,192-token budget, Turbo complete-code build mode.
+- Web search works again: the Mac node searches (DuckDuckGo, then Mojeek), reads the top pages, and the worker hands the results to the model with citations. One search per reply, about 7 credits, charged only when results were found.
+- Images: the node uses a vision model (qwen2.5vl:7b on Macs with 16 GB or more); without one, Alpha says it cannot see the image.
+- The node model is created with a bigger context window (8K, 16K on 24 GB+ Macs).
+
 ## Admin control panel: 10 new tools (node v11)
 - Settings tab: live kill switches (pause chat, sign-ups, referrals, Enterprise), site-wide banner, and live tuning of referral rewards/caps, strike limit, promo reward and alert limits. No redeploy; owner accounts are never blocked. Worker `what=config|config_set`, public `/api/config` now returns `banner` and `paused`.
 - Alerts tab: node offline, 24h spend over limit, safety-flag spike, open appeals, held referrals, promo videos waiting, open tickets, bad Stripe signature. Checked every 5 minutes, optional push through a Discord webhook or ntfy.sh URL.

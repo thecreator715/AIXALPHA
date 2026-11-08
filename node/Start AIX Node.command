@@ -65,7 +65,27 @@ sleep 1
 [ "$HEADLESS" = "1" ] || open "http://localhost:$PORT/?v=$(date +%s)" 2>/dev/null || true
 say "Checking the model: $MODEL"
 "$OLLAMA" pull "$MODEL" || echo "Model download failed - the panel is already running; the node will retry when you start it again."
+# bigger context window (Ollama defaults to a small one, which cuts off long chats and web results)
+CTX=8192; [ "$GB" -ge 24 ] && CTX=16384
+mkdir -p runtime; printf 'FROM %s\nPARAMETER num_ctx %s\n' "$MODEL" "$CTX" > runtime/Modelfile.aix
+BASE="$MODEL"; AIXM="aix-alpha-$(printf %s "$MODEL" | tr ':/' '--')"
+"$OLLAMA" create "$AIXM" -f runtime/Modelfile.aix >/dev/null 2>&1 && MODEL="$AIXM" && echo "  Using $AIXM (context $CTX)"
+# vision model so Alpha can read images (needs 16 GB or more; skipped on smaller Macs)
+rm -f .aix-vision-model
+if [ "$GB" -ge 16 ]; then
+  VIS="qwen2.5vl:7b"
+  if "$OLLAMA" pull "$VIS" >/dev/null 2>&1; then
+    printf 'FROM %s\nPARAMETER num_ctx 8192\n' "$VIS" > runtime/Modelfile.vis
+    "$OLLAMA" create aix-alpha-vision -f runtime/Modelfile.vis >/dev/null 2>&1 && VIS=aix-alpha-vision
+    printf %s "$VIS" > .aix-vision-model; echo "  Vision model ready: $VIS"
+  else echo "  Vision model not available (images will be skipped)"; fi
+fi
 
+# restart the node so it registers the final model names
+kill $NODE_PID 2>/dev/null; sleep 1
+export MODEL; [ -s .aix-vision-model ] && export VISION_MODEL="$(cat .aix-vision-model)"
+node server.js &
+NODE_PID=$!
 # 6) public https address so the cloud (and every app: GitHub, artifact, phones) can reach this Mac. Cloudflare quick tunnel, no account.
 URL="http://localhost:$PORT"; TUN_PID=""
 ARCH=$([ "$(uname -m)" = "arm64" ] && echo arm64 || echo amd64)

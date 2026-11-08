@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path'), crypto = require('crypto');
-const VERSION = 11;   // bump on every release: nodes auto-update when GitHub has a higher number
+const VERSION = 12;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -21,6 +21,37 @@ const cors = (req) => ({
 let lastCpu = os.cpus().map((c) => ({ ...c.times })), cpuPct = 0;
 setInterval(() => { const n = os.cpus().map((c) => ({ ...c.times })); let idle = 0, tot = 0; n.forEach((t, i) => { const p = lastCpu[i]; for (const k in t) tot += t[k] - p[k]; idle += t.idle - p.idle; }); cpuPct = tot ? Math.round(100 * (1 - idle / tot)) : 0; lastCpu = n; }, 2000).unref();
 const J = (res, h, code, obj) => { res.writeHead(code, { ...h, 'content-type': 'application/json' }); res.end(JSON.stringify(obj)); };
+
+// ---- live web search for node-only Alpha (runs from this Mac's own connection) ----
+const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36';
+const clean = (t) => String(t || '').replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&').replace(/&#x27;|&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+async function getText(url, opt, ms) { const r = await fetch(url, { ...opt, signal: AbortSignal.timeout(ms || 8000), headers: { 'user-agent': UA, 'accept-language': 'en-US,en;q=0.9', ...((opt || {}).headers || {}) } }); if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); }
+async function searchDDG(q) {
+  const html = await getText('https://html.duckduckgo.com/html/', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'q=' + encodeURIComponent(q) });
+  const out = [], parts = html.split(/class="result__a"/).slice(1);
+  for (const seg of parts) {
+    if (out.length >= 8) break;
+    const hm = /href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/.exec(seg); if (!hm) continue;
+    let u = hm[1].replace(/&amp;/g, '&'); const g = /[?&]uddg=([^&]+)/.exec(u); if (g) u = decodeURIComponent(g[1]); if (u.startsWith('//')) u = 'https:' + u;
+    if (!/^https?:/.test(u) || /duckduckgo\.com\/y\.js/.test(u)) continue;
+    const sm = /class="result__snippet"[^>]*>([\s\S]*?)<\/(?:a|td|div)>/.exec(seg);
+    out.push({ title: clean(hm[2]), url: u, snippet: sm ? clean(sm[1]) : '' });
+  }
+  return out;
+}
+async function searchMojeek(q) {
+  const html = await getText('https://www.mojeek.com/search?q=' + encodeURIComponent(q));
+  const out = [], re = /<li[^>]*>\s*<a[^>]+class="ob"[^>]+href="([^"]+)"[\s\S]*?<a[^>]+class="title"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<p class="s">([\s\S]*?)<\/p>/g; let m;
+  while ((m = re.exec(html)) && out.length < 8) out.push({ title: clean(m[2]), url: m[1].replace(/&amp;/g, '&'), snippet: clean(m[3]) });
+  return out;
+}
+async function webSearch(q) {
+  let res = [], via = '';
+  for (const [n, f] of [['duckduckgo', searchDDG], ['mojeek', searchMojeek]]) { try { res = await f(q); if (res.length) { via = n; break; } } catch (e) { /* try next engine */ } }
+  const top = res.slice(0, 2);   // read the top two pages for real detail
+  await Promise.all(top.map(async (r) => { try { const t = await getText(r.url, {}, 6000); r.page = clean(t.replace(/<(script|style|nav|footer|header)[\s\S]*?<\/\1>/gi, ' ')).slice(0, 2500); } catch (e) { /* snippet only */ } }));
+  return { query: q, via, results: res.slice(0, 6) };
+}
 async function body(req) { const c = []; for await (const x of req) c.push(x); return Buffer.concat(c); }
 async function oll(p, opt) { const r = await fetch(OLLAMA + p, opt); return r; }
 // ---- Backups: every 24h pull a compact gzipped snapshot of the cloud database + a copy of the node's own log, keep 30 days ----
@@ -109,6 +140,11 @@ http.createServer(async (req, res) => {
       if (!ok) return J(res, h, 403, { error: 'Your role (' + ROLE + ') cannot use "' + wh + '".' });
     } else if (u !== '/admin/me' && u !== '/admin/status') return J(res, h, 403, { error: 'Your role (' + ROLE + ') cannot use this.' });
   }
+  if (u === '/search' && req.method === 'GET') {
+    const q = String(new URL(req.url, 'http://x').searchParams.get('q') || '').slice(0, 200).trim();
+    if (q.length < 2) return J(res, h, 400, { error: 'q required' });
+    try { return J(res, h, 200, await webSearch(q)); } catch (e) { return J(res, h, 502, { error: 'search failed: ' + e.message }); }
+  }
   if (u === '/admin/me') return J(res, h, 200, { name: ACTOR, role: ROLE, allowed: ROLE === 'owner' ? ['*'] : ROLE_OK[ROLE] || [] });
   if (u === '/admin/team') {
     if (ROLE !== 'owner') return J(res, h, 403, { error: 'Only the owner manages the team.' });
@@ -186,7 +222,7 @@ http.createServer(async (req, res) => {
     }
     if (u === '/admin/unload' && req.method === 'POST') { const b = JSON.parse((await body(req)).toString() || '{}'); await oll('/api/generate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: b.name, keep_alive: 0 }) }); return J(res, h, 200, { ok: true }); }
     if (u.startsWith('/v1/') || u === '/api/tags') {
-      const t0 = Date.now(); const buf = req.method === 'GET' ? undefined : await body(req); let model = '', pj = null; try { pj = JSON.parse(buf.toString()); model = pj.model || ''; } catch {}
+      const t0 = Date.now(); const buf = req.method === 'GET' ? undefined : await body(req); let model = '', pj = null; try { pj = JSON.parse(buf.toString()); model = pj.model || ''; if (pj.messages && process.env.VISION_MODEL && pj.messages.some((m) => Array.isArray(m.content) && m.content.some((c) => c && c.type === 'image_url'))) { pj.model = model = process.env.VISION_MODEL; buf = Buffer.from(JSON.stringify(pj)); } } catch {}
       ST.req++; const ent = { t: new Date().toISOString(), path: u, model, status: 0, ms: 0, tokens: 0, user: clip(req.headers['x-aix-user'], 80), src: clip(req.headers['x-aix-src'], 12) || 'direct', stream: !!(pj && pj.stream), msgs: pj && pj.messages ? pj.messages.length : 0, inChars: pj && pj.messages ? JSON.stringify(pj.messages).length : 0, prompt: LOGTEXT && pj ? clip(lastUser(pj.messages), 400) : '', reply: '' };
       let acc = '', rawAcc = '';
       const up = await fetch(OLLAMA + req.url, { method: req.method, headers: { 'content-type': 'application/json' }, body: buf });
