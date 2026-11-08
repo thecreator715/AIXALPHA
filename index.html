@@ -4174,8 +4174,9 @@ window.fitTabs=fit;[100,500,1500].forEach(t=>setTimeout(fit,t));if(document.font
 let NODEMODELS={},NODEAGE=null,NODESEEN=false,CLOUDMS=null,CLOUDOK=null;
 window.__lastTx='';
 const tierKey=m=>m==='eco'?'eco':m==='balanced'?'balanced':'thorough';
+const brand=m=>(m==='eco'||m==='balanced')?'AIX ALPHA LE V1.0':'AIX ALPHA QUANTUM V1.0';
 const pretty=n=>{n=String(n||'').replace(/^aix-alpha-/,'');const m=n.match(/^(.*?)-(\d+(?:\.\d+)?b)$/i);return m?m[1]+' '+m[2].toUpperCase():n};
-window.uxModel=function(t){try{const mode=(S.turbo&&TURBONOW)?'turbo':((t&&t.mode)||S.mode);const n=NODEMODELS[tierKey(mode)]||NODEMODEL;return{m:mode,n:pretty(n)}}catch{return null}};
+window.uxModel=function(t){try{const mode=(S.turbo&&TURBONOW)?'turbo':((t&&t.mode)||S.mode);const n=NODEMODELS[tierKey(mode)]||NODEMODEL;return{m:mode,n:brand(mode)}}catch{return null}};
 /* --- host status bar + polling --- */
 const _pn=window.pollNode;
 window.pollNode=async function(){const was=NODEUP;try{if(!BACKEND())return;const t0=Date.now();const j=await fetch(BACKEND()+'/api/node/status').then(r=>r.json());CLOUDMS=Date.now()-t0;CLOUDOK=true;NODEUP=!!j.online;NODEMODEL=j.model||'';NODEMODELS=j.models||{};NODEAGE=j.ageSec;NODESEEN=true;try{updateMeter()}catch{}}catch{CLOUDOK=false;NODESEEN=true}uxBar(was)};
@@ -4186,7 +4187,7 @@ function uxBar(was){let b=$('#nodebar');const off=!!(BACKEND()&&store.get(TOKK,'
 function retryLast(){const c=curChat();if(!c)return;let j=c.msgs.length-1;while(j>=0&&c.msgs[j].role!=='user')j--;if(j<0)return;const q=c.msgs[j].content;c.msgs.splice(j);save();send(q,{nocache:true})}
 /* --- status page --- */
 window.statusDialog=async function(){const d=dialog('<h3 style="margin:0 0 8px">System status</h3><div id="stbody" class="mono" style="font-size:12px;line-height:1.9">Checking…</div><div class="row" style="margin-top:12px"><button class="btn2" data-close>Close</button><button class="btn2" id="strf">Refresh</button></div>');
- const run=async()=>{await pollNode();const ok=(v,t)=>`<span style="color:${v?'#34d399':'#f87171'}">●</span> ${t}`;const m=NODEMODELS||{};const mm=['eco','balanced','thorough'].filter(k=>m[k]).map(k=>k.toUpperCase()+': '+pretty(m[k])).join(' · ')||pretty(NODEMODEL)||'—';
+ const run=async()=>{await pollNode();const ok=(v,t)=>`<span style="color:${v?'#34d399':'#f87171'}">●</span> ${t}`;const m=NODEMODELS||{};const mm=['eco','balanced','thorough'].map(k=>k.toUpperCase()+': '+brand(k)).join(' · ');
   const age=NODEAGE==null?'':' · last seen '+(NODEAGE<90?NODEAGE+'s':Math.round(NODEAGE/60)+' min')+' ago';
   $('#stbody').innerHTML=[ok(CLOUDOK,'Cloud: '+(CLOUDOK?'online'+(CLOUDMS!=null?' · '+CLOUDMS+' ms':''):'unreachable')),ok(NODEUP,'Alpha host: '+(NODEUP?'online':'offline')+age),'<span style="color:var(--m)">Models: '+esc(mm)+'</span>',ok(NODEUP,'Live web search: '+(NODEUP?'available (runs on the host)':'paused until the host is back')),ok(NODEUP,'Image reading: '+(NODEUP?'available':'paused until the host is back')),'<span style="color:var(--m)">Checked '+new Date().toLocaleTimeString()+'</span>'].join('<br>')};
  $('#strf').onclick=()=>{$('#stbody').textContent='Checking…';run()};run()};
@@ -4220,7 +4221,7 @@ window.uxContinue=function(){send('Continue exactly where you left off. Do not r
 window.uxBusy=function(v){const b=$('#send');if(!b)return;b.disabled=false;b.classList.toggle('stopb',!!v);b.textContent=v?'■ STOP':'SEND ➤'};
 document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('#send');if(b&&S.busy){e.preventDefault();e.stopImmediatePropagation();try{abort&&abort.abort()}catch{}toast('Stopping…')}},true);
 /* --- decorate after render --- */
-function decorate(){try{const e0=$('#msgs .empty');if(e0&&!store.get('aix3_onb',0)&&!$('#onb'))e0.insertAdjacentHTML('beforeend',tourHtml());const c=curChat();if(!c)return;document.querySelectorAll('#msgs .msg[data-m]').forEach(el=>{const m=c.msgs[+el.dataset.m];if(!m||m.role!=='assistant'||!m.mdl||el.dataset.lb)return;const w=el.querySelector('.who');if(w){el.dataset.lb=1;w.insertAdjacentHTML('beforeend',`<span class="chip" title="Mode and model that answered">${esc(String(m.mdl.m).toUpperCase())}${m.mdl.n?' · '+esc(m.mdl.n):''}</span>`)}});}catch{}}
+function decorate(){try{const e0=$('#msgs .empty');if(e0&&!store.get('aix3_onb',0)&&!$('#onb'))e0.insertAdjacentHTML('beforeend',tourHtml());const c=curChat();if(!c)return;document.querySelectorAll('#msgs .msg[data-m]').forEach(el=>{const m=c.msgs[+el.dataset.m];if(!m||m.role!=='assistant'||!m.mdl||el.dataset.lb)return;const w=el.querySelector('.who');if(w){el.dataset.lb=1;w.insertAdjacentHTML('beforeend',`<span class="chip" title="Mode and model that answered">${esc(brand(m.mdl.m))} · ${esc(String(m.mdl.m).toUpperCase())}</span>`)}});}catch{}}
 const _rm=window.renderMsgs;window.renderMsgs=function(){const r=_rm.apply(this,arguments);decorate();return r};
 const _um=window.updateMeter;window.updateMeter=function(){const r=_um.apply(this,arguments);try{const s=$('#sub');if(s){const c=curChat(),cr=c?(c.cost||0)/CR:0;let t=s.textContent;const add='This chat ≈ '+f1(cr)+' credits'+(BACKEND()&&BAL!=null?' · balance '+(+BAL).toFixed(1)+(BAL<10?' ⚠ low':''):'')+(S.web?' · web search ≈ 7 credits':'');s.textContent=add+(t?' · '+t:'');s.style.color=(BACKEND()&&BAL!=null&&BAL<10)?'#fbbf24':''}}catch{}return r};
 const _rc=window.renderCredits;window.renderCredits=function(){const r=_rc.apply(this,arguments);try{const v=$('#vcredits');if(v&&!v.querySelector('#rcptb')&&BACKEND())v.insertAdjacentHTML('beforeend','<div style="padding:0 16px 16px"><button class="btn2" id="rcptb">🧾 Receipts</button></div>')}catch{}return r};
