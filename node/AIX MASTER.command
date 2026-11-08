@@ -9,6 +9,7 @@ printf "${C}AIX MASTER${N}  %s\n" "$(date)"
 
 step "1/6  Stopping anything left over from earlier runs"
 PLIST="$HOME/Library/LaunchAgents/com.aix.node.plist"
+OLD="$HOME/Library/LaunchAgents/com.aix.alpha.plist"; [ -f "$OLD" ] && { launchctl unload "$OLD" 2>/dev/null; rm -f "$OLD"; }   # retired Anthropic master agent
 [ -f "$PLIST" ] && launchctl bootout gui/$(id -u) "$PLIST" 2>/dev/null
 pkill -f "Start AIX Node.command" 2>/dev/null
 pkill -f "AIX Node" 2>/dev/null
