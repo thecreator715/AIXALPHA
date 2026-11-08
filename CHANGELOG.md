@@ -82,3 +82,8 @@
 - Worker: buffered request log (one batch write instead of one write per request), new D1 indexes, hourly pruning + PRAGMA optimize, charge() uses RETURNING (one fewer read per reply), public /api/announcements, /api/flags, /api/promo/redeem.
 - Web search now bills ~3.5 credits (min balance 4).
 - App: announcements banner, redeem-code button, desktop More button, mobile menu scrolls and fits.
+
+## Image fixes, drag & drop (node v16)
+- Node: image requests were silently sent to the text-only model (a const reassignment error was swallowed). Now they route to the vision model, auto-detect any installed vision model, and start downloading qwen2.5vl:7b if none exists. Until it is ready the reply says so instead of "I can't see an image".
+- App: drag and drop images/files onto the chat, and paste images into the message box.
+- App: remaining "7 credits" web-search labels now say 3.5.

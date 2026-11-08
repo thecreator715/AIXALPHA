@@ -1121,7 +1121,7 @@ async function runLoop0(chat,prompt,onText,onStep){
     ;try{onStep&&onStep(x,k||'')}catch{}};
   if(S.autoNote)step(S.autoNote,'ok');
   S.emitStep=step;{const wc=String(prompt).trim().split(/\s+/).filter(Boolean).length;step(`Reading your message (${wc} word${wc==1?'':'s'}${(S.curImages&&S.curImages.length)?', '+S.curImages.length+' image'+(S.curImages.length>1?'s':''):''})`)}
-  const r=route(prompt);t.tier=r.tier;step(`Router → ${r.tier} tier · ${r.intent||'chat'} intent (local, 0 tokens)`);S.toolLog=[];S.toolTok=0;S.curTools=[];t.app=!!r.app;if(r.hist)step(`Context: keeping the last ${r.hist} messages plus your notes`);if(S.web)step('Live web search is ON: the model may search (about 7 credits each)','a');
+  const r=route(prompt);t.tier=r.tier;step(`Router → ${r.tier} tier · ${r.intent||'chat'} intent (local, 0 tokens)`);S.toolLog=[];S.toolTok=0;S.curTools=[];t.app=!!r.app;if(r.hist)step(`Context: keeping the last ${r.hist} messages plus your notes`);if(S.web)step('Live web search is ON: the model may search (about 3.5 credits each)','a');
   const out=(text,extra={})=>({text,t,...extra});
   if(r.command){step(`Local command /${r.command} (0 tokens)`,'ok');t.saved=100;
     if(r.command==='connect'){await loadLive();return out('**Plug-and-play connectors** — tap *Enable in chat* on any card, then just ask for what you need and I will reply right here.',{ui:'connect'})}
@@ -1681,7 +1681,7 @@ function measured(mode){
   const by={};S.chats.forEach(c=>c.msgs.forEach(m=>{if(m.t&&m.t.mode===mode&&m.t.calls){(by[m.t.tier]=by[m.t.tier]||[]).push(m.t.cost/CR)}}));
   const o={};for(const k in by)if(by[k].length>=2)o[k]=by[k].reduce((a,b)=>a+b,0)/by[k].length;return o}
 const f1=n=>n<10?n.toFixed(2):n<100?n.toFixed(1):String(Math.round(n));
-function estLine(){return estLine0()+(S.web?' · LIVE WEB +7 cr per search':'')}
+function estLine(){return estLine0()+(S.web?' · LIVE WEB +3.5 cr per search':'')}
 function estLine0(){if(S.auto){const e=modeEst('thorough',true);return `AUTO · picks the best mode per reply, cost ignored · up to DEEP ~${f1(e.DEEP.typ)} cr (max ${f1(e.DEEP.max)})`}const e=modeEst(S.mode,S.verify==='llm'),m=measured(S.mode);
   return `est. per reply · ${S.mode.toUpperCase()}${S.verify==='llm'?' + EVAL':''}: `+['MICRO','STANDARD','DEEP'].map(t=>`${t} ${f1(m[t]??e[t].typ)}${m[t]!=null?'*':''} cr`).join(' · ')+` (DEEP up to ${f1(e.DEEP.max)})`+(Object.keys(m).length?'  * measured':'')}
 function estPanel(){
@@ -4663,6 +4663,21 @@ buildPersonaSel();setStatus();if(S.chats.length)S.cur=S.chats[0].id;renderThread
   if(BACKEND()&&store.get(TOKK,'')){try{const mr=await fetch(BACKEND()+'/api/account/me',{headers:{authorization:'Bearer '+store.get(TOKK,'')}});if(mr.ok){const mj=await mr.json();BAL=mj.credits;UNAME=mj.username||'';EMAIL=mj.email||'';store.set('aix3_email',EMAIL);ISOWNER=!!mj.owner;store.set('aix3_owner',ISOWNER);FREE=!!mj.free_claimed;store.set('aix3_free',FREE);store.set('aix3_user',UNAME)}else if(mr.status===401){store.set(TOKK,'');sampleFn=null}}catch{}}
   setStatus();if(!SHARED&&!sampleFn&&BACKEND()&&!store.get(TOKK,'')&&!embKey()){setTimeout(()=>{try{openAccount(true)}catch{}},400)}
   if(!sampleFn){const pm=$('#pm');pm.style.cursor='pointer';pm.onclick=()=>openKey()}initDb();loadLive().then(()=>{try{rerenderConnCards()}catch{}})})();
+</script>
+<script>
+/* drag & drop + paste images/files into the chat */
+(function(){
+  const chatOn=()=>{const v=document.getElementById('vchat');return !v||v.classList.contains('on')};
+  const give=files=>{files=[...files||[]].filter(f=>f&&(/^image\//.test(f.type)||f.name));if(!files.length)return false;const fi=document.getElementById('fi');if(!fi)return false;try{const dt=new DataTransfer();files.forEach(f=>dt.items.add(f));fi.files=dt.files;fi.dispatchEvent(new Event('change',{bubbles:true}));return true}catch(e){return false}};
+  const hasFiles=e=>e.dataTransfer&&[...(e.dataTransfer.types||[])].includes('Files');
+  let ov=null;const show=on=>{if(!ov){ov=document.createElement('div');ov.style.cssText='position:fixed;inset:0;z-index:9998;pointer-events:none;border:3px dashed var(--ac,#34d399);background:rgba(52,211,153,.07);display:none;align-items:center;justify-content:center;font:600 15px system-ui;color:#fff';ov.textContent='Drop to attach to your message';document.body.appendChild(ov)}ov.style.display=on?'flex':'none'};
+  let n=0;
+  document.addEventListener('dragenter',e=>{if(hasFiles(e)&&chatOn()){n++;show(true)}});
+  document.addEventListener('dragleave',e=>{if(hasFiles(e)){n=Math.max(0,n-1);if(!n)show(false)}});
+  document.addEventListener('dragover',e=>{if(hasFiles(e)&&chatOn())e.preventDefault()});
+  document.addEventListener('drop',e=>{n=0;show(false);if(e.defaultPrevented||!hasFiles(e)||!chatOn())return;e.preventDefault();give(e.dataTransfer.files)});
+  const q=document.getElementById('q');if(q)q.addEventListener('paste',e=>{const fs=[...(e.clipboardData&&e.clipboardData.files||[])];if(fs.length&&fs.some(f=>/^image\//.test(f.type))){e.preventDefault();give(fs)}});
+})();
 </script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path'), crypto = require('crypto');
-const VERSION = 15;   // bump on every release: nodes auto-update when GitHub has a higher number
+const VERSION = 16;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -54,6 +54,17 @@ async function webSearch(q) {
 }
 async function body(req) { const c = []; for await (const x of req) c.push(x); return Buffer.concat(c); }
 async function oll(p, opt) { const r = await fetch(OLLAMA + p, opt); return r; }
+
+let VIS_C = { t: 0, m: '' }, VIS_PULL = 0;
+async function visionModel() {   // the vision model to use for images: env override, else any installed vision-capable model; pulls one in the background if none exists
+  if (process.env.VISION_MODEL) return process.env.VISION_MODEL;
+  if (Date.now() - VIS_C.t < 60000) return VIS_C.m;
+  let m = '';
+  try { const r = await oll('/api/tags'), j = await r.json(), names = (j.models || []).map((x) => x.name); m = names.find((n) => /aix-alpha-vision/.test(n)) || names.find((n) => /(vl|vision|llava|minicpm-v|gemma3|moondream|bakllava|llama3\.2-vision)/i.test(n)) || ''; } catch {}
+  VIS_C = { t: Date.now(), m };
+  if (!m && !VIS_PULL) { VIS_PULL = Date.now(); oll('/api/pull', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'qwen2.5vl:7b', stream: false }) }).then(() => { VIS_C.t = 0; }).catch(() => { VIS_PULL = 0; }); }
+  return m;
+}
 // ---- Backups: every 24h pull a compact gzipped snapshot of the cloud database + a copy of the node's own log, keep 30 days ----
 const zlib = require('zlib'), BKDIR = path.join(__dirname, 'backups'); let LASTBK = null, REGOK = false, LASTREG = null;
 try { fs.mkdirSync(BKDIR, { recursive: true }); } catch {}
@@ -260,7 +271,7 @@ http.createServer(async (req, res) => {
     }
     if (u === '/admin/unload' && req.method === 'POST') { const b = JSON.parse((await body(req)).toString() || '{}'); await oll('/api/generate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: b.name, keep_alive: 0 }) }); return J(res, h, 200, { ok: true }); }
     if (u.startsWith('/v1/') || u === '/api/tags') {
-      const t0 = Date.now(); const buf = req.method === 'GET' ? undefined : await body(req); let model = '', pj = null; try { pj = JSON.parse(buf.toString()); model = pj.model || ''; if (pj.messages && process.env.VISION_MODEL && pj.messages.some((m) => Array.isArray(m.content) && m.content.some((c) => c && c.type === 'image_url'))) { pj.model = model = process.env.VISION_MODEL; buf = Buffer.from(JSON.stringify(pj)); } } catch {}
+      const t0 = Date.now(); let buf = req.method === 'GET' ? undefined : await body(req); let model = '', pj = null; try { pj = JSON.parse(buf.toString()); model = pj.model || ''; const hasImg = pj.messages && pj.messages.some((m) => Array.isArray(m.content) && m.content.some((c) => c && c.type === 'image_url')); if (hasImg) { const vm = await visionModel(); if (vm) { pj.model = model = vm; } else { pj.messages = pj.messages.map((m) => (Array.isArray(m.content) ? { ...m, content: m.content.filter((c) => !(c && c.type === 'image_url')).map((c) => (c.type === 'text' ? c.text : '')).join('\n') + '\n\n(Note for the assistant: the user attached an image but the vision model is still being installed on this host. Tell them in one short sentence that image reading will be ready in a few minutes and to try again, then answer any text part of the question.)' } : m)); } buf = Buffer.from(JSON.stringify(pj)); } } catch (e) { console.log('vision route error', e && e.message); }
       ST.req++; const ent = { t: new Date().toISOString(), path: u, model, status: 0, ms: 0, tokens: 0, user: clip(req.headers['x-aix-user'], 80), src: clip(req.headers['x-aix-src'], 12) || 'direct', stream: !!(pj && pj.stream), msgs: pj && pj.messages ? pj.messages.length : 0, inChars: pj && pj.messages ? JSON.stringify(pj.messages).length : 0, prompt: LOGTEXT && pj ? clip(lastUser(pj.messages), 400) : '', reply: '' };
       let acc = '', rawAcc = '';
       const up = await fetch(OLLAMA + req.url, { method: req.method, headers: { 'content-type': 'application/json' }, body: buf });
