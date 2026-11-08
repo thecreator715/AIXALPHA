@@ -99,3 +99,6 @@
 ## Web search reminder + docs
 - Worker adds an end-of-prompt reminder so old "I cannot search" replies in a chat are ignored when live results are present.
 - docs/COMMANDS.md: every command in one place.
+
+## Node v18: start-up fix
+- Start AIX Node no longer crashes with EADDRINUSE: it frees port 8787 before each start, waits for the old node to exit before restarting, and server.js waits for a busy port instead of exiting.

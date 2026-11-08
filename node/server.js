@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path'), crypto = require('crypto');
-const VERSION = 17;   // bump on every release: nodes auto-update when GitHub has a higher number
+const VERSION = 18;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -152,7 +152,8 @@ const sessSave = () => { try { const now = Date.now(); for (const k of Object.ke
 const sessKey = (t) => crypto.createHash('sha256').update(t).digest('hex');
 const sessGet = (t) => { const s = t && t.startsWith('s_') && SESS[sessKey(t)]; if (s && s.exp > Date.now()) return s; return null; };
 let TOTP_FAIL = { n: 0, until: 0 };
-http.createServer(async (req, res) => {
+let LISTEN_TRY = 0;
+const SRV = http.createServer(async (req, res) => {
   const h = cors(req), u = req.url.split('?')[0];
   if (req.method === 'OPTIONS') { res.writeHead(204, h); return res.end(); }
   if (u === '/' || u === '/monitor' || u === '/monitor.html') { try { const f = await panelHtml(); res.writeHead(200, { ...h, 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); return res.end(f); } catch { res.writeHead(404, h); return res.end('monitor.html missing'); } }
@@ -301,6 +302,9 @@ http.createServer(async (req, res) => {
     }
     res.writeHead(404, h); res.end('not found');
   } catch (e) { ST.err++; try { J(res, h, 502, { error: 'Ollama not reachable: ' + e.message }); } catch {} }
+}).on('error', (e) => {   // an old node may still be shutting down: wait for the port instead of crashing
+  if (e && e.code === 'EADDRINUSE' && LISTEN_TRY < 40) { LISTEN_TRY++; if (LISTEN_TRY === 1) console.log(`Port ${PORT} is busy (an older AIX node is still closing). Waiting for it...`); setTimeout(() => { try { SRV.listen(PORT); } catch {} }, 1500); return; }
+  console.error('AIX node could not start:', e && e.message); process.exit(1);
 }).listen(PORT, () => {
   console.log(`AIX node v2 on :${PORT} -> ${OLLAMA}   dashboard: http://localhost:${PORT}/`);
   const W = process.env.AIX_WORKER, NS = process.env.AIX_NODE_SECRET, MODEL = process.env.MODEL || '';

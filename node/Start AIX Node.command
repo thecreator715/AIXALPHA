@@ -56,7 +56,9 @@ fi
 TOKEN=$(cat .aix-token)
 
 # 5b) start the node RIGHT AWAY so the control panel opens immediately; model download and the tunnel continue below
+free_port() { for _ in 1 2 3 4 5 6 7 8; do P=$(lsof -ti tcp:$PORT 2>/dev/null); [ -z "$P" ] && return 0; kill $P 2>/dev/null; sleep 1; done; P=$(lsof -ti tcp:$PORT 2>/dev/null); [ -n "$P" ] && kill -9 $P 2>/dev/null; sleep 1; }
 say "Starting AIX Node on port $PORT"
+free_port
 rm -f .aix-public-url
 export AIX_TOKEN="$TOKEN" AIX_WORKER="$WORKER" AIX_NODE_SECRET="$NODE_SECRET" MODEL="$MODEL"
 node server.js &
@@ -100,7 +102,7 @@ if [ "$GB" -ge 16 ]; then
 fi
 
 # restart the node so it registers the final model names
-kill $NODE_PID 2>/dev/null; sleep 1
+kill $NODE_PID 2>/dev/null; free_port
 export MODEL; [ -s .aix-vision-model ] && export VISION_MODEL="$(cat .aix-vision-model)"
 node server.js &
 NODE_PID=$!

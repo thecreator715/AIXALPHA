@@ -12,7 +12,7 @@ Unzip the package, open the `node` folder, and double-click:
 | `Open Node Panel.command` | Opens the node control panel at http://localhost:8787 (replaces any old node still running). |
 | `Install AutoStart.command` | Makes the node start at every login and restart if it stops. Run once. |
 
-The node updates itself from GitHub whenever the repo has a higher `VERSION` in `node/server.js` (now 17). To force it: quit the node window and double-click `AIX MASTER.command`.
+The node updates itself from GitHub whenever the repo has a higher `VERSION` in `node/server.js` (now 18). To force it: quit the node window and double-click `AIX MASTER.command`.
 
 Terminal equivalents:
 ```bash
