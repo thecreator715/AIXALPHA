@@ -705,9 +705,7 @@ dialog#dlg.sheet .sh-grab,dialog#dlg.sheet .sh-hd,dialog#dlg.sheet .mnu-srch,dia
 dialog#dlg.sheet .mnu-grid{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;padding:2px 2px 8px;margin:0 -2px}
 dialog#dlg.sheet .mnu-grid{grid-auto-rows:minmax(112px,max-content);align-content:start}dialog#dlg.sheet .mnu-t{min-height:112px;height:auto}dialog#dlg.sheet .mnu-srch{margin-bottom:10px}dialog#dlg.sheet .mnu-ft{padding-top:10px}
 html:has(dialog#dlg[open]),body:has(dialog#dlg[open]){overflow:hidden!important;overscroll-behavior:none}
-#moredsk{display:none;align-items:center;gap:7px;flex:0 0 auto;height:36px;padding:0 14px;border-radius:99px;background:var(--p2);border:1px solid var(--b);color:var(--t);font:inherit;font-weight:600;font-size:13px;cursor:pointer;white-space:nowrap}
-#moredsk:hover{border-color:var(--ac)}#moredsk svg{width:16px;height:16px}
-@media(min-width:901px){#moredsk{display:inline-flex}}
+#moredsk{display:none}@media(min-width:901px){#moredsk{display:inline-flex;align-items:center;gap:5px}}#tabmorebtn{display:none!important}
 @media(min-width:600px){dialog#dlg.sheet{max-width:640px}dialog#dlg.sheet .mnu-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:600px){.view,#main,main{-webkit-overflow-scrolling:touch}}
 /* mobile composer: compact icon buttons so the message box gets the room */
@@ -4185,7 +4183,7 @@ T.innerHTML=VIEWS.map(([k,l])=>`<button data-v="${k}" class="${k==='chat'?'on':'
 let pop=null;const closeP=()=>{if(pop){pop.remove();pop=null}};
 function fit(){if(innerWidth<=900)return;const bs=[...T.querySelectorAll('button[data-v]')],mb=T.querySelector('#tabmorebtn');bs.forEach(b=>b.classList.remove('tfh'));mb.style.display='none';
  const cs=getComputedStyle(T),avail=T.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight)-2,gap=parseFloat(cs.columnGap)||2;
- const w=b=>b.offsetWidth+gap;let tot=bs.reduce((a,b)=>a+w(b),0);
+ const w=b=>b.offsetWidth+gap;let tot=bs.reduce((a,b)=>a+w(b),0)+((T.querySelector('#moredsk')&&T.querySelector('#moredsk').offsetWidth)?w(T.querySelector('#moredsk')):0);
  if(tot<=avail)return;mb.style.display='';tot+=w(mb);
  for(let i=bs.length-1;i>0&&tot>avail;i--){if(bs[i].classList.contains('on'))continue;tot-=w(bs[i]);bs[i].classList.add('tfh')}}
 T.addEventListener('click',e=>{const m=e.target.closest('#tabmorebtn');if(!m)return;e.stopPropagation();e.preventDefault();if(pop){closeP();return}
@@ -4343,7 +4341,7 @@ const pe=$('#pedit');if(pe&&/Edit/.test(pe.textContent)&&pe.textContent.length<9
 ctxMark();
 })();
 /* desktop More button: opens the same icon menu as mobile */
-(function(){const T=$('#tabs');if(!T||$('#moredsk'))return;const b=document.createElement('button');b.id='moredsk';b.type='button';b.innerHTML=ico('more')+'<span>More</span>';b.onclick=e=>{e.stopPropagation();openMore()};T.insertAdjacentElement('afterend',b)})();
+(function(){const T=$('#tabs');if(!T||$('#moredsk'))return;const b=document.createElement('button');b.id='moredsk';b.type='button';b.innerHTML=ico('more')+'More';b.onclick=e=>{e.stopPropagation();openMore()};const o=T.querySelector('#tabmorebtn');if(o){o.title='More tabs';o.innerHTML=ico('more');T.insertBefore(b,o)}else T.appendChild(b)})();
 /* announcements, feature flags, promo codes (served by the control panel) */
 (function(){
 const hdr=()=>{const t=store.get(TOKK);return t?{authorization:'Bearer '+t}:{}};
