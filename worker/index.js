@@ -135,6 +135,10 @@ async function stripe(env, req) {
   if (ev.type === 'checkout.session.completed') {
     const o = ev.data.object, usd = (o.amount_total || 0) / 100, credits = (o.payment_link === 'plink_1UXx949X5nbnHzOgDiBZGcEO' && o.payment_status === 'paid') ? PACKS[usd] : 0;   // only the $9.99 credits link
     const email = String(o.client_reference_id || o.customer_details?.email || '').toLowerCase();
+    if (usd === ENT_USD && o.payment_status === 'paid' && email && (!env.ENT_PLINK || o.payment_link === env.ENT_PLINK) && (await getUser(env, email))) {   // Enterprise via Stripe: +1000 credits (carry over) and 30 days of the Company page
+      const ins = await env.DB.prepare('INSERT OR IGNORE INTO purchases(email,at,usd,credits,ref) VALUES(?,?,?,?,?)').bind(email, new Date().toISOString(), usd, ENT_CREDITS, o.id).run();
+      if (ins.meta && ins.meta.changes > 0) { await env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(ENT_CREDITS, email).run(); await entExtend(env, email, 'stripe'); }
+    }
     if (credits && (await getUser(env, email))) {
       const ins = await env.DB.prepare('INSERT OR IGNORE INTO purchases(email,at,usd,credits,ref) VALUES(?,?,?,?,?)').bind(email, new Date().toISOString(), usd, credits, o.id).run();
       if (ins.meta?.changes > 0) await env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(credits, email).run();
@@ -544,6 +548,50 @@ async function nodeAdmin(env, req, url) {
     const bal = await q("SELECT CASE WHEN credits<=0 THEN 'empty' WHEN credits<10 THEN 'under 10' WHEN credits<50 THEN '10-50' ELSE '50+' END AS b, COUNT(*) AS n FROM users GROUP BY b");
     return R({ signups: su, hourly: hr, revenue: rev, engines: eng, balances: bal });
   }
+  if (what === 'referrals') {
+    await ensureRef(env);
+    const t = await one('SELECT COUNT(*) n, COALESCE(SUM(referee_credits),0) a, COALESCE(SUM(referrer_credits),0) b FROM ref_uses');
+    const d7 = await one('SELECT COUNT(*) n FROM ref_uses WHERE at>=?', iso(7 * 86400e3));
+    const top = await q('SELECT referrer, COUNT(*) n, SUM(referrer_credits) c FROM ref_uses GROUP BY referrer ORDER BY n DESC LIMIT 15');
+    const recent = await q('SELECT id, code, referrer, referee, ip, at, referee_credits, referrer_credits FROM ref_uses ORDER BY id DESC LIMIT 60');
+    const ips = await q('SELECT ip, COUNT(*) n FROM ref_fail WHERE at>=? GROUP BY ip HAVING n>=3 ORDER BY n DESC LIMIT 10', iso(7 * 86400e3));
+    const fails = await q('SELECT email, ip, code, why, at FROM ref_fail ORDER BY id DESC LIMIT 40');
+    const why = await q('SELECT why, COUNT(*) n FROM ref_fail GROUP BY why');
+    const codes = await one('SELECT COUNT(*) n FROM ref_codes');
+    const daily = await q('SELECT substr(at,1,10) d, COUNT(*) n FROM ref_uses WHERE at>=? GROUP BY d ORDER BY d', iso(30 * 86400e3));
+    return R({ uses: t.n, creditsNew: t.a, creditsReferrers: t.b, creditsTotal: (t.a || 0) + (t.b || 0), last7d: d7.n, codes: codes.n, top, recent, suspicious: ips, failures: fails, failReasons: why, daily, rules: { newUser: REF_NEW, referrer: REF_REFERRER, cap: REF_CAP } });
+  }
+  if (what === 'promos') {
+    await ensureRef(env);
+    const st = url.searchParams.get('status') || '';
+    const rows = await q(st ? 'SELECT * FROM promos WHERE status=? ORDER BY id DESC LIMIT 100' : "SELECT * FROM promos ORDER BY (status='pending') DESC, id DESC LIMIT 100", ...(st ? [st] : []));
+    const sm = await q('SELECT status, COUNT(*) n, COALESCE(SUM(credits),0) c FROM promos GROUP BY status');
+    return R({ rows, summary: sm, reward: PROMO_CREDITS });
+  }
+  if (what === 'promo_decide') {
+    if (req.method !== 'POST') return json(env, req, { error: 'POST required' }, 405);
+    await ensureRef(env);
+    const b = await req.json().catch(() => ({})), id = Number(b.id), act = String(b.action || '');
+    const credits = Math.min(10000, Math.max(0, Number(b.credits == null ? PROMO_CREDITS : b.credits) || 0)), note = String(b.note || '').slice(0, 300);
+    if (!id || !['approve', 'reject'].includes(act)) return json(env, req, { error: 'id and action approve|reject required' }, 400);
+    const pr = await env.DB.prepare('SELECT * FROM promos WHERE id=?').bind(id).first();
+    if (!pr) return json(env, req, { error: 'not found' }, 404);
+    if (pr.status !== 'pending') return json(env, req, { error: 'already ' + pr.status }, 409);
+    const iso2 = new Date().toISOString();
+    const res = await env.DB.prepare("UPDATE promos SET status=?, credits=?, note=?, decided=? WHERE id=? AND status='pending'").bind(act === 'approve' ? 'approved' : 'rejected', act === 'approve' ? credits : 0, note, iso2, id).run();
+    if (!res.meta || !res.meta.changes) return json(env, req, { error: 'already decided' }, 409);
+    if (act === 'approve' && credits > 0) {
+      await env.DB.batch([env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(credits, pr.email), env.DB.prepare('INSERT OR IGNORE INTO purchases(email,at,usd,credits,ref) VALUES(?,?,0,?,?)').bind(pr.email, iso2, credits, 'promo-' + id)]);
+      AUTH_C.clear();
+    }
+    NA_C.clear();
+    return R({ ok: true, id, status: act === 'approve' ? 'approved' : 'rejected', credits: act === 'approve' ? credits : 0 });
+  }
+  if (what === 'enterprise') {
+    await ensureEnt(env);
+    const rows = await q('SELECT email, until, started, last_pay, via FROM enterprise ORDER BY until DESC'), now2 = Date.now();
+    return R({ price: ENT_USD, credits: ENT_CREDITS, active: rows.filter((r) => r.until > now2).length, subscribers: rows.map((r) => ({ ...r, active: r.until > now2 })) });
+  }
   if (what === 'storage') {   // per-user storage on the node: images + site files, plans, credits
     await ensureHost(env);
     const files = await q("SELECT email, SUM(CASE WHEN kind='site' THEN bytes ELSE 0 END) sb, SUM(CASE WHEN kind='img' THEN bytes ELSE 0 END) ib, COUNT(*) n, MAX(created) last FROM host_files GROUP BY email");
@@ -744,6 +792,120 @@ async function hostGet(env, req, path) {   // public image URLs for sites: /h/<u
   } catch { return new Response('storage node unreachable', { status: 502, headers: h }); }
 }
 
+// ---- Enterprise: $99.99 per 30 days through Stripe = 1000 credits (they carry over, never expire) + Company page access; or unlock 30 days with 1000 credits from the balance ----
+const ENT_USD = 99.99, ENT_CREDITS = 1000, ENT_DAYS = 30;
+let ENT_READY = false;
+async function ensureEnt(env) { if (ENT_READY) return; await env.DB.prepare('CREATE TABLE IF NOT EXISTS enterprise(email TEXT PRIMARY KEY, until INTEGER DEFAULT 0, started INTEGER, last_pay TEXT, via TEXT)').run(); ENT_READY = true; }
+async function entExtend(env, email, via) { await ensureEnt(env); const now = Date.now(), r = await env.DB.prepare('SELECT until FROM enterprise WHERE email=?').bind(email).first(), until = Math.max(now, (r && r.until) || 0) + ENT_DAYS * 864e5; await env.DB.prepare('INSERT INTO enterprise(email,until,started,last_pay,via) VALUES(?,?,?,?,?) ON CONFLICT(email) DO UPDATE SET until=excluded.until, last_pay=excluded.last_pay, via=excluded.via').bind(email, until, now, new Date().toISOString(), via).run(); return until; }
+async function entStatus(env, a) { await ensureEnt(env); const r = await env.DB.prepare('SELECT until, via FROM enterprise WHERE email=?').bind(a.email).first(), owner = owners(env).includes(a.email) && !a.meter, until = (r && r.until) || 0; return { active: owner || until > Date.now(), until, via: (r && r.via) || '', owner, priceUsd: ENT_USD, credits: ENT_CREDITS, days: ENT_DAYS }; }
+async function entApi(env, req, path) {
+  const a = await authed(env, req); if (!a) return json(env, req, { error: 'Sign in first.' }, 401);
+  if (path === '/api/enterprise/status') return json(env, req, { ...(await entStatus(env, a)), balance: +Number((await getUser(env, a.email)).credits).toFixed(2) });
+  if (path === '/api/enterprise/activate' && req.method === 'POST') {   // pay with credits: 1000 credits unlock 30 days (no new grant)
+    const owner = owners(env).includes(a.email) && !a.meter;
+    if (!owner) {
+      const up = await env.DB.prepare('UPDATE users SET credits=credits-? WHERE email=? AND credits>=?').bind(ENT_CREDITS, a.email, ENT_CREDITS).run();
+      if (!(up.meta && up.meta.changes > 0)) { const f = await getUser(env, a.email), have = Number(f.credits); return json(env, req, { error: 'Enterprise needs ' + ENT_CREDITS + ' credits. You have ' + have.toFixed(1) + '.', code: 'credits', need: Math.ceil(ENT_CREDITS - have), packs: Math.ceil((ENT_CREDITS - have) / 100) }, 402); }
+      await env.DB.prepare('INSERT INTO usage(email,at,input,output,credits) VALUES(?,?,0,0,?)').bind(a.email, new Date().toISOString(), ENT_CREDITS).run();
+    }
+    await entExtend(env, a.email, owner ? 'owner' : 'credits'); const f = await getUser(env, a.email);
+    return json(env, req, { ...(await entStatus(env, a)), balance: +Number(f.credits).toFixed(2) });
+  }
+  return json(env, req, { error: 'Unknown enterprise endpoint' }, 404);
+}
+
+
+// ---- Referral + affiliate promo program ----
+const REF_NEW = 10, REF_REFERRER = 10, REF_CAP = 100, PROMO_CREDITS = 100, PROMO_MAX_PENDING = 3, PROMO_MAX_APPROVED = 5;
+let REF_READY = false;
+async function ensureRef(env) {
+  if (REF_READY) return;
+  const st = [
+    'CREATE TABLE IF NOT EXISTS ref_codes(email TEXT PRIMARY KEY, code TEXT UNIQUE NOT NULL, created TEXT)',
+    'CREATE TABLE IF NOT EXISTS ref_uses(id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL, referrer TEXT NOT NULL, referee TEXT UNIQUE NOT NULL, ip TEXT, at TEXT, referee_credits REAL, referrer_credits REAL)',
+    'CREATE INDEX IF NOT EXISTS ref_uses_ref ON ref_uses(referrer)', 'CREATE INDEX IF NOT EXISTS ref_uses_ip ON ref_uses(ip)',
+    'CREATE TABLE IF NOT EXISTS ref_fail(id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT, ip TEXT, code TEXT, why TEXT, at TEXT)',
+    'CREATE TABLE IF NOT EXISTS promos(id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, url TEXT, vid TEXT UNIQUE, status TEXT DEFAULT \'pending\', credits REAL DEFAULT 0, note TEXT, created TEXT, decided TEXT)',
+    'CREATE INDEX IF NOT EXISTS promos_email ON promos(email)', 'CREATE INDEX IF NOT EXISTS promos_status ON promos(status)',
+  ];
+  for (const x of st) await env.DB.prepare(x).run();
+  REF_READY = true;
+}
+const REF_ABC = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+async function refCode(env, email) {
+  await ensureRef(env);
+  const r = await env.DB.prepare('SELECT code FROM ref_codes WHERE email=?').bind(email).first();
+  if (r) return r.code;
+  for (let i = 0; i < 6; i++) {
+    const code = 'AIX-' + [...crypto.getRandomValues(new Uint8Array(6))].map((b) => REF_ABC[b % REF_ABC.length]).join('');
+    try { await env.DB.prepare('INSERT INTO ref_codes(email,code,created) VALUES(?,?,?)').bind(email, code, new Date().toISOString()).run(); return code; }
+    catch (e) { const again = await env.DB.prepare('SELECT code FROM ref_codes WHERE email=?').bind(email).first(); if (again) return again.code; }
+  }
+  throw new Error('could not make a referral code');
+}
+function ytId(u) {
+  let x; try { x = new URL(String(u || '').trim()); } catch (e) { return ''; }
+  if (x.protocol !== 'https:' && x.protocol !== 'http:') return '';
+  const h = x.hostname.replace(/^www\.|^m\./, ''); let id = '';
+  if (h === 'youtu.be') id = x.pathname.slice(1).split('/')[0];
+  else if (h === 'youtube.com' || h === 'youtube-nocookie.com') {
+    if (x.pathname === '/watch') id = x.searchParams.get('v') || '';
+    else { const m = x.pathname.match(/^\/(shorts|embed|live|v)\/([\w-]{11})/); if (m) id = m[2]; }
+  }
+  return /^[\w-]{11}$/.test(id) ? id : '';
+}
+async function refApi(env, req, path) {
+  await ensureRef(env);
+  const a = await authed(env, req);
+  if (!a) return json(env, req, { error: 'sign in' }, 401);
+  const now = new Date().toISOString(), ip = req.headers.get('cf-connecting-ip') || 'unknown';
+  const myPromos = async () => (await env.DB.prepare('SELECT id,url,vid,status,credits,note,created,decided FROM promos WHERE email=? ORDER BY id DESC LIMIT 30').bind(a.email).all()).results || [];
+  if (path === '/api/ref/me') {
+    const code = await refCode(env, a.email);
+    const st = (await env.DB.prepare('SELECT COUNT(*) n, COALESCE(SUM(referrer_credits),0) c FROM ref_uses WHERE referrer=?').bind(a.email).first()) || {};
+    const recent = (await env.DB.prepare('SELECT referee, at, referrer_credits c FROM ref_uses WHERE referrer=? ORDER BY id DESC LIMIT 20').bind(a.email).all()).results || [];
+    const used = await env.DB.prepare('SELECT code, referee_credits c, at FROM ref_uses WHERE referee=?').bind(a.email).first();
+    return json(env, req, { code, invited: st.n || 0, earned: st.c || 0, cap: REF_CAP, newUserCredits: REF_NEW, referrerCredits: REF_REFERRER,
+      recent: recent.map((r) => ({ who: String(r.referee).replace(/^(.{2}).*?(@.*)?$/, (m, x, y) => x + '***' + (y || '')), at: r.at, credits: r.c })),
+      redeemed: used ? { code: used.code, credits: used.c, at: used.at } : null, canRedeem: !used && !!a.username,
+      promos: await myPromos(), promoCredits: PROMO_CREDITS });
+  }
+  if (path === '/api/ref/redeem' && req.method === 'POST') {
+    const b = await req.json().catch(() => ({})); const code = String(b.code || '').trim().toUpperCase();
+    const fail = async (why, status, msg) => { try { await env.DB.prepare('INSERT INTO ref_fail(email,ip,code,why,at) VALUES(?,?,?,?,?)').bind(a.email, ip, code.slice(0, 20), why, now).run(); } catch (e) {} return json(env, req, { error: msg }, status); };
+    if (!/^AIX-[A-Z0-9]{6}$/.test(code)) return fail('format', 400, 'That is not a referral code. It looks like AIX-ABC123.');
+    if (!a.username) return fail('guest', 403, 'Create your account (username + password) first, then enter the code.');
+    if (await env.DB.prepare('SELECT 1 x FROM ref_uses WHERE referee=?').bind(a.email).first()) return fail('twice', 409, 'You already used a referral code.');
+    const age = Date.now() - Date.parse(a.created || now);
+    if (age > 30 * 864e5) return fail('old', 403, 'Referral codes work only in the first 30 days of a new account.');
+    const rc = await env.DB.prepare('SELECT email FROM ref_codes WHERE code=?').bind(code).first();
+    if (!rc) return fail('unknown', 404, 'Code not found. Check it with the person who sent it.');
+    if (rc.email === a.email) return fail('self', 403, 'You cannot use your own code.');
+    if (await env.DB.prepare('SELECT 1 x FROM ref_uses WHERE ip=? LIMIT 1').bind(ip).first()) return fail('ip', 429, 'A referral code was already used from this network.');
+    const cnt = await env.DB.prepare('SELECT COUNT(*) n FROM ref_uses WHERE referrer=?').bind(rc.email).first();
+    const full = (cnt.n || 0) >= REF_CAP, rr = full ? 0 : REF_REFERRER;
+    try { await env.DB.prepare('INSERT INTO ref_uses(code,referrer,referee,ip,at,referee_credits,referrer_credits) VALUES(?,?,?,?,?,?,?)').bind(code, rc.email, a.email, ip, now, REF_NEW, rr).run(); }
+    catch (e) { return json(env, req, { error: 'You already used a referral code.' }, 409); }
+    const ops = [env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(REF_NEW, a.email), env.DB.prepare('INSERT OR IGNORE INTO purchases(email,at,usd,credits,ref) VALUES(?,?,0,?,?)').bind(a.email, now, REF_NEW, 'ref-new-' + a.email)];
+    if (rr) ops.push(env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(rr, rc.email), env.DB.prepare('INSERT OR IGNORE INTO purchases(email,at,usd,credits,ref) VALUES(?,?,0,?,?)').bind(rc.email, now, rr, 'ref-by-' + a.email));
+    await env.DB.batch(ops); AUTH_C.clear();
+    const u = await getUser(env, a.email);
+    return json(env, req, { ok: true, credits: REF_NEW, balance: u ? u.credits : undefined });
+  }
+  if (path === '/api/promo/submit' && req.method === 'POST') {
+    const b = await req.json().catch(() => ({})); const vid = ytId(b.url);
+    if (!vid) return json(env, req, { error: 'Paste a YouTube link (youtube.com/watch, youtu.be or Shorts).' }, 400);
+    if (!a.username) return json(env, req, { error: 'Create your account (username + password) first.' }, 403);
+    const c = await env.DB.prepare("SELECT SUM(status='pending') p, SUM(status='approved') ok FROM promos WHERE email=?").bind(a.email).first() || {};
+    if ((c.p || 0) >= PROMO_MAX_PENDING) return json(env, req, { error: 'You already have ' + PROMO_MAX_PENDING + ' videos waiting for review. Wait for a decision first.' }, 429);
+    if ((c.ok || 0) >= PROMO_MAX_APPROVED) return json(env, req, { error: 'You reached the limit of ' + PROMO_MAX_APPROVED + ' rewarded videos.' }, 429);
+    try { await env.DB.prepare("INSERT INTO promos(email,url,vid,status,created) VALUES(?,?,?,'pending',?)").bind(a.email, 'https://www.youtube.com/watch?v=' + vid, vid, now).run(); }
+    catch (e) { return json(env, req, { error: 'That video was already submitted.' }, 409); }
+    return json(env, req, { ok: true, promos: await myPromos() });
+  }
+  return json(env, req, { error: 'not found' }, 404);
+}
+
 export default {
   async scheduled(ev, env, ctx) { ctx.waitUntil(runDueJobs(env).then(() => autoBackup(env))); },
   async fetch(req, env, ctx) {
@@ -753,6 +915,8 @@ export default {
   async _h(req, env) {
     const url = new URL(req.url), path = url.pathname;
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(env, req) });
+    if (path.startsWith('/api/enterprise/')) return entApi(env, req, path);
+    if (path.startsWith('/api/ref/') || path === '/api/promo/submit') return refApi(env, req, path);
     if (path.startsWith('/api/host/')) return hostApi(env, req, path);
     if (path.startsWith('/h/')) return hostGet(env, req, path);
     if (path === '/api/node/admin' && (req.method === 'GET' || req.method === 'POST')) return nodeAdmin(env, req, url);
