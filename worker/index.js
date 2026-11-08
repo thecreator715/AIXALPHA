@@ -72,13 +72,14 @@ const MODE_SYS = {
 };
 const MODE_TOK = { eco: 1500, balanced: 4096, thorough: 8192, turbo: 8192 };
 const modeOf = (m) => (m === 'auto' ? 'thorough' : (MODE_SYS[m] ? m : 'balanced'));
+function tierModel(nd, mode) { const m = nd.models || {}; const k = mode === 'eco' ? 'eco' : mode === 'balanced' ? 'balanced' : 'thorough'; return m[k] || nd.model; }
 async function viaNode(env, req, a, nd, prompt, stream, maxTok, mode, images) {
   mode = modeOf(mode); maxTok = Math.min(maxTok || 4096, MODE_TOK[mode] || 4096);
   const imgs = (Array.isArray(images) ? images : []).slice(0, 4).filter((i) => i && i.data);
   const userContent = imgs.length ? [{ type: 'text', text: prompt }, ...imgs.map((i) => ({ type: 'image_url', image_url: { url: 'data:' + String(i.media_type || 'image/png') + ';base64,' + i.data } }))] : prompt;
   let up;
   try {
-    up = await nfetch(nd.url.replace(/\/+$/, '') + '/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + nd.token, 'x-aix-user': a.email, 'x-aix-src': 'chat' }, body: JSON.stringify({ model: nd.model, stream, max_tokens: maxTok, temperature: mode === 'eco' ? 0.3 : mode === 'turbo' ? 0.2 : 0.6, messages: [{ role: 'system', content: MODE_SYS[mode] }, { role: 'user', content: userContent }] }) }, stream ? 20000 : 90000);
+    up = await nfetch(nd.url.replace(/\/+$/, '') + '/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + nd.token, 'x-aix-user': a.email, 'x-aix-src': 'chat' }, body: JSON.stringify({ model: tierModel(nd, mode), stream, max_tokens: maxTok, temperature: mode === 'eco' ? 0.3 : mode === 'turbo' ? 0.2 : 0.6, messages: [{ role: 'system', content: MODE_SYS[mode] }, { role: 'user', content: userContent }] }) }, stream ? 20000 : 90000);
   } catch { return null; }
   if (!up.ok) return null;
   const inTok = Math.ceil(prompt.length / 4);
@@ -1498,7 +1499,7 @@ export default {
       if (!env.NODE_SECRET || req.headers.get('x-node-secret') !== env.NODE_SECRET) return json(env, req, { error: 'bad node secret' }, 401);
       const b = await req.json().catch(() => ({})); const url = String(b.url || '');
       if (!/^https:\/\//.test(url) || !b.token || !b.model) return json(env, req, { error: 'https url, token and model required' }, 400);
-      await env.DB.prepare("INSERT INTO settings(k,v) VALUES('node',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(JSON.stringify({ url, token: String(b.token), model: String(b.model), at: Date.now() })).run();
+      await env.DB.prepare("INSERT INTO settings(k,v) VALUES('node',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(JSON.stringify({ url, token: String(b.token), model: String(b.model), models: (b.models && typeof b.models === 'object') ? Object.fromEntries(['eco', 'balanced', 'thorough'].filter((k) => b.models[k]).map((k) => [k, String(b.models[k]).slice(0, 80)])) : {}, at: Date.now() })).run();
       return json(env, req, { ok: true });
     }
     if (path === '/api/node/status') { const n = await nodeGet(env); return json(env, req, { online: !!n, model: n ? n.model : '' }); }

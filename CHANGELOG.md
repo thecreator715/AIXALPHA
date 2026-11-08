@@ -57,3 +57,6 @@
 - Quota per user: 5 MB included with hosting (images + site files). Above that a storage plan of N MB costs N credits per 30 days (prorated upgrades, monthly auto-renew; lapsed plans block new uploads, files are kept).
 - App: Studio "Image" button (device, computer or camera), Sites page Storage panel (usage, calculator, per-site, image gallery, history), deploy blocked with a top-up prompt when over quota.
 - Control panel (node): new Storage tab for admins (all users, plans, folders, largest files, uploads per day, node disk).
+
+## Node v13 – model ladder
+- Higher mode = bigger model: Eco < Balanced < Thorough/Auto/Turbo. The start script pulls the smaller tiers in the background and writes `.aix-models`; the node reports them on register; the worker picks the model per mode (falls back to the main model until the smaller ones finish downloading). Images still use the vision model.

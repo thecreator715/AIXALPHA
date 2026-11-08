@@ -70,6 +70,24 @@ CTX=8192; [ "$GB" -ge 24 ] && CTX=16384
 mkdir -p runtime; printf 'FROM %s\nPARAMETER num_ctx %s\n' "$MODEL" "$CTX" > runtime/Modelfile.aix
 BASE="$MODEL"; AIXM="aix-alpha-$(printf %s "$MODEL" | tr ':/' '--')"
 "$OLLAMA" create "$AIXM" -f runtime/Modelfile.aix >/dev/null 2>&1 && MODEL="$AIXM" && echo "  Using $AIXM (context $CTX)"
+# model ladder: higher mode = bigger model (eco < balanced < thorough/auto/turbo). Smaller tiers download in the background.
+if   [ "$GB" -ge 64 ]; then T_BAL="qwen2.5-coder:14b"; T_ECO="qwen2.5-coder:7b"
+elif [ "$GB" -ge 32 ]; then T_BAL="qwen2.5-coder:7b";  T_ECO="llama3.2:3b"
+elif [ "$GB" -ge 16 ]; then T_BAL="llama3.2:3b";       T_ECO="llama3.2:1b"
+else T_BAL="llama3.2:3b"; T_ECO="llama3.2:1b"; fi
+ECOV="$MODEL"; BALV="$MODEL"
+write_tiers() { printf '{"eco":"%s","balanced":"%s","thorough":"%s"}' "$ECOV" "$BALV" "$MODEL" > .aix-models; }
+mk_tier() { # base -> prints usable model name
+  local b="$1" n="aix-alpha-$(printf %s "$1" | tr ':/' '--')"
+  [ "$b" = "$BASE" ] && { printf %s "$MODEL"; return; }
+  "$OLLAMA" pull "$b" >/dev/null 2>&1 || return 1
+  printf 'FROM %s\nPARAMETER num_ctx %s\n' "$b" "$CTX" > "runtime/Modelfile.$n"
+  "$OLLAMA" create "$n" -f "runtime/Modelfile.$n" >/dev/null 2>&1 && printf %s "$n" || printf %s "$b"
+}
+write_tiers
+( B=$(mk_tier "$T_BAL") && [ -n "$B" ] && BALV="$B" && write_tiers
+  E=$(mk_tier "$T_ECO") && [ -n "$E" ] && ECOV="$E" && write_tiers
+  echo "  Model ladder ready: eco=$ECOV  balanced=$BALV  thorough=$MODEL" ) &
 # vision model so Alpha can read images (needs 16 GB or more; skipped on smaller Macs)
 rm -f .aix-vision-model
 if [ "$GB" -ge 16 ]; then
