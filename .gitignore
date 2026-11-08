@@ -11,3 +11,5 @@ node/.aix-public-url
 node/runtime/
 node/tunnel.log
 .aix-models
+.aix-node-id
+.aix-priority

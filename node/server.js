@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path'), crypto = require('crypto');
-const VERSION = 13;   // bump on every release: nodes auto-update when GitHub has a higher number
+const VERSION = 14;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -245,8 +245,10 @@ http.createServer(async (req, res) => {
   const W = process.env.AIX_WORKER, NS = process.env.AIX_NODE_SECRET, MODEL = process.env.MODEL || '';
   const PUF = path.join(__dirname, '.aix-public-url'), getPU = () => { try { return fs.readFileSync(PUF, 'utf8').trim(); } catch { return process.env.AIX_PUBLIC_URL || ''; } };
   if (W && NS && MODEL) {
+    const NODEID = () => { const f = path.join(__dirname, '.aix-node-id'); try { return fs.readFileSync(f, 'utf8').trim() || 'main'; } catch { const id = (os.hostname().replace(/[^\w]/g, '').slice(0, 12) || 'host') + '-' + crypto.randomBytes(3).toString('hex'); try { fs.writeFileSync(f, id); } catch {} return id; } };
+    const NODEPRIO = () => { try { return Math.max(1, Math.min(9, parseInt(fs.readFileSync(path.join(__dirname, '.aix-priority'), 'utf8')) || +process.env.NODE_PRIO || 1)); } catch { return Math.max(1, Math.min(9, +process.env.NODE_PRIO || 1)); } };
     const readTiers = () => { try { const t = JSON.parse(fs.readFileSync(path.join(__dirname, '.aix-models'), 'utf8')); const o = {}; for (const k of ['eco', 'balanced', 'thorough']) if (t[k]) o[k] = String(t[k]); return o; } catch { return {}; } };
-    const reg = async () => { const PU = getPU(); if (!PU) return; try { const r = await fetch(W.replace(/\/+$/, '') + '/api/node/register', { method: 'POST', headers: { 'content-type': 'application/json', 'x-node-secret': NS }, body: JSON.stringify({ url: PU, token: TOKEN, model: MODEL, models: readTiers() }) }); REGOK = r.ok; LASTREG = Date.now(); if (!reg.ok) { reg.ok = r.ok; console.log(r.ok ? 'Registered with AIX cloud: apps will use this node automatically' : 'Register failed: HTTP ' + r.status); } } catch (e) { console.log('Register error: ' + e.message); reg.ok = false; } };
+    const reg = async () => { const PU = getPU(); if (!PU) return; try { const r = await fetch(W.replace(/\/+$/, '') + '/api/node/register', { method: 'POST', headers: { 'content-type': 'application/json', 'x-node-secret': NS }, body: JSON.stringify({ url: PU, token: TOKEN, model: MODEL, models: readTiers(), id: NODEID(), prio: NODEPRIO(), name: os.hostname().slice(0, 30) }) }); REGOK = r.ok; LASTREG = Date.now(); if (!reg.ok) { reg.ok = r.ok; console.log(r.ok ? 'Registered with AIX cloud: apps will use this node automatically' : 'Register failed: HTTP ' + r.status); } } catch (e) { console.log('Register error: ' + e.message); reg.ok = false; } };
     reg(); setInterval(reg, 60000);
   } else console.log('Cloud registration off (needs AIX_WORKER, AIX_NODE_SECRET, MODEL)');
 });

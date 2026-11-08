@@ -70,3 +70,9 @@
 - Credits: per-chat total, balance and low-balance warning, web-search cost note; Receipts (download) in Credits via new `/api/account/receipts`.
 - Cmd+K shows recent chats first and new commands; Studio ↶ Undo and 🩹 Fix errors buttons.
 - Mobile: bigger touch targets, edge-swipe between chats, haptic on send. Worker `/api/node/status` now returns the model tiers.
+
+## App + worker + node v14 – features 5–20
+- Chat: pinned context per chat (📌), smart routing (thin Eco/Balanced answers get a Retry-with-Quantum bar, or auto-escalate when switched on in Cmd+K), offline queue (messages wait and send when the host returns) with reply notifications.
+- Studio: template gallery, 🚀 Publish (opens site deploy prefilled), 🧪 Auto-test (clicks every control, reports errors, Fix with Alpha), 🕘 Timeline slider with live preview and restore.
+- Credits: 80%/100% cap alerts, low-balance reminder with one-tap Top up, usage CSV and printable PDF report, referral dashboard summary, team credits (`/api/team*`: owner allocates credits to members with a per-member limit).
+- Host: multiple hosts can register (`.aix-node-id`, optional `.aix-priority`); cloud uses the lowest priority online host and fails over to the next. Status page shows hosts, 24h uptime chart and response times.

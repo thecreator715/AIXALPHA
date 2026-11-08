@@ -59,10 +59,78 @@ async function charge(env, a, usage) {
 }
 
 
+
+// ---- Team credits: an owner allocates credits to members, each with a total cap ----
+let TEAM_READY = false;
+async function ensureTeams(env) {
+  if (TEAM_READY) return; TEAM_READY = true;
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS teams(owner TEXT NOT NULL, member TEXT NOT NULL, cap REAL NOT NULL DEFAULT 0, given REAL NOT NULL DEFAULT 0, at INTEGER, PRIMARY KEY(owner,member))').run();
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS grants(id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, at INTEGER, credits REAL, note TEXT)').run();
+}
+async function teamApi(env, req, path, a) {
+  await ensureTeams(env);
+  const E = (m, c = 400) => json(env, req, { error: m }, c), em = (x) => String(x || '').trim().toLowerCase();
+  if (path === '/api/team' && req.method === 'GET') {
+    const mine = await env.DB.prepare('SELECT member, cap, given FROM teams WHERE owner=? ORDER BY at').bind(a.email).all();
+    const my = await env.DB.prepare('SELECT owner, cap, given FROM teams WHERE member=?').bind(a.email).first();
+    return json(env, req, { members: mine.results || [], memberOf: my || null });
+  }
+  const b = await req.json().catch(() => ({}));
+  if (path === '/api/team/add') {
+    const m = em(b.email), cap = Math.max(0, Math.min(100000, +b.cap || 0));
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(m) || m === a.email) return E('Enter a different valid email');
+    const n = await env.DB.prepare('SELECT COUNT(*) AS n FROM teams WHERE owner=?').bind(a.email).first(); if (n.n >= 25) return E('Teams are limited to 25 members');
+    await env.DB.prepare('INSERT INTO teams(owner,member,cap,given,at) VALUES(?,?,?,0,?) ON CONFLICT(owner,member) DO UPDATE SET cap=excluded.cap').bind(a.email, m, cap, Date.now()).run();
+    return json(env, req, { ok: true });
+  }
+  if (path === '/api/team/remove') { await env.DB.prepare('DELETE FROM teams WHERE owner=? AND member=?').bind(a.email, em(b.email)).run(); return json(env, req, { ok: true }); }
+  if (path === '/api/team/allocate') {
+    const m = em(b.email), amt = Math.round((+b.credits || 0) * 100) / 100;
+    if (!(amt > 0) || amt > 100000) return E('Enter a credit amount');
+    const t = await env.DB.prepare('SELECT cap, given FROM teams WHERE owner=? AND member=?').bind(a.email, m).first(); if (!t) return E('Add them to your team first');
+    if (t.given + amt > t.cap + 1e-9) return E('That is over their limit (' + t.cap + ' credits total, ' + t.given + ' already given)');
+    const tgt = await getUser(env, m); if (!tgt) return E('They need to create an account first');
+    const isOwner = owners(env).includes(a.email);
+    if (!isOwner) { const r = await env.DB.prepare('UPDATE users SET credits=credits-? WHERE email=? AND credits>=?').bind(amt, a.email, amt).run(); if (!r.meta || !r.meta.changes) return E('You do not have enough credits'); }
+    await env.DB.batch([
+      env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(amt, m),
+      env.DB.prepare('UPDATE teams SET given=given+? WHERE owner=? AND member=?').bind(amt, a.email, m),
+      env.DB.prepare('INSERT INTO grants(email,at,credits,note) VALUES(?,?,?,?)').bind(m, Date.now(), amt, 'Team allocation from ' + a.email),
+    ]);
+    const f = await getUser(env, a.email); AUTH_C.clear();
+    return json(env, req, { ok: true, credits: +Number(f.credits).toFixed(2) });
+  }
+  return E('not found', 404);
+}
 // ---- Mac/Ollama node registered with this Worker: ECO/BALANCED replies run there, billed like Haiku, falling back to Haiku if the node is down ----
 let NODE_C = null, NODE_T = 0;   // isolate cache: spares D1 reads on every poll
 async function nodeGet(env) {
-  try { if (Date.now() - NODE_T < 30000) return NODE_C; const r = await env.DB.prepare("SELECT v FROM settings WHERE k='node'").first(); let n = null; if (r) { n = JSON.parse(r.v); if (Date.now() - n.at >= 420000) n = null; } NODE_C = n; NODE_T = Date.now(); return n; } catch { return null; }
+  try {
+    if (Date.now() - NODE_T < 30000) return NODE_C;
+    const rs = await env.DB.prepare("SELECT k,v FROM settings WHERE k IN ('nodes','node')").all(); const m = {};
+    for (const r of rs.results || []) m[r.k] = r.v;
+    let list = [];
+    if (m.nodes) { try { list = Object.values(JSON.parse(m.nodes)); } catch {} } else if (m.node) { try { list = [JSON.parse(m.node)]; } catch {} }
+    const now = Date.now();
+    list = list.filter((n) => n && n.url && now - n.at < 420000).sort((x, y) => (x.prio || 1) - (y.prio || 1) || y.at - x.at);
+    const n = list[0] ? { ...list[0], alts: list.slice(1) } : null;
+    NODE_C = n; NODE_T = now; return n;
+  } catch { return null; }
+}
+async function nodeList(env) { try { const r = await env.DB.prepare("SELECT v FROM settings WHERE k='nodes'").first(); return r ? Object.values(JSON.parse(r.v)) : []; } catch { return []; } }
+let HIST_C = null, HIST_T = 0;
+async function nodeHist(env) {
+  if (Date.now() - HIST_T < 60000 && HIST_C) return HIST_C;
+  let h = {}; try { const r = await env.DB.prepare("SELECT v FROM settings WHERE k='nodehist'").first(); if (r) h = JSON.parse(r.v); } catch {}
+  const out = [], now = Date.now(); let first = null, up = 0;
+  for (let i = 23; i >= 0; i--) { const d = new Date(now - i * 3600e3), k = d.toISOString().slice(0, 13), b = h[k] || ''; const n = (b.match(/1/g) || []).length; if (n && first === null) first = 24 - i; out.push({ h: k.slice(11), up: n }); up += n; }
+  const span = first === null ? 0 : Math.min(1440, (25 - first) * 60);
+  HIST_C = { hist: out, uptime24: span ? Math.min(100, Math.round(up / span * 100)) : null }; HIST_T = Date.now(); return HIST_C;
+}
+async function viaNode(env, req, a, nd, ...rest) {
+  let r = await viaNode1(env, req, a, nd, ...rest); if (r) return r;
+  for (const alt of (nd.alts || [])) { r = await viaNode1(env, req, a, alt, ...rest); if (r) return r; }
+  return null;
 }
 const MODE_SYS = {
   eco: 'You are AIX Alpha. Answer briefly and directly, in as few words as are useful. No preamble.',
@@ -73,7 +141,7 @@ const MODE_SYS = {
 const MODE_TOK = { eco: 1500, balanced: 4096, thorough: 8192, turbo: 8192 };
 const modeOf = (m) => (m === 'auto' ? 'thorough' : (MODE_SYS[m] ? m : 'balanced'));
 function tierModel(nd, mode) { const m = nd.models || {}; const k = mode === 'eco' ? 'eco' : mode === 'balanced' ? 'balanced' : 'thorough'; return m[k] || nd.model; }
-async function viaNode(env, req, a, nd, prompt, stream, maxTok, mode, images) {
+async function viaNode1(env, req, a, nd, prompt, stream, maxTok, mode, images) {
   mode = modeOf(mode); maxTok = Math.min(maxTok || 4096, MODE_TOK[mode] || 4096);
   const imgs = (Array.isArray(images) ? images : []).slice(0, 4).filter((i) => i && i.data);
   const userContent = imgs.length ? [{ type: 'text', text: prompt }, ...imgs.map((i) => ({ type: 'image_url', image_url: { url: 'data:' + String(i.media_type || 'image/png') + ';base64,' + i.data } }))] : prompt;
@@ -1499,10 +1567,24 @@ export default {
       if (!env.NODE_SECRET || req.headers.get('x-node-secret') !== env.NODE_SECRET) return json(env, req, { error: 'bad node secret' }, 401);
       const b = await req.json().catch(() => ({})); const url = String(b.url || '');
       if (!/^https:\/\//.test(url) || !b.token || !b.model) return json(env, req, { error: 'https url, token and model required' }, 400);
-      await env.DB.prepare("INSERT INTO settings(k,v) VALUES('node',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(JSON.stringify({ url, token: String(b.token), model: String(b.model), models: (b.models && typeof b.models === 'object') ? Object.fromEntries(['eco', 'balanced', 'thorough'].filter((k) => b.models[k]).map((k) => [k, String(b.models[k]).slice(0, 80)])) : {}, at: Date.now() })).run();
+      const models = (b.models && typeof b.models === 'object') ? Object.fromEntries(['eco', 'balanced', 'thorough'].filter((k) => b.models[k]).map((k) => [k, String(b.models[k]).slice(0, 80)])) : {};
+      const id = String(b.id || 'main').replace(/[^\w.-]/g, '').slice(0, 40) || 'main', now = Date.now();
+      const me = { id, url, token: String(b.token), model: String(b.model), models, prio: Math.max(1, Math.min(9, +b.prio || 1)), name: String(b.name || id).slice(0, 40), at: now };
+      let map = {}; try { const r0 = await env.DB.prepare("SELECT v FROM settings WHERE k='nodes'").first(); if (r0) map = JSON.parse(r0.v); } catch {}
+      for (const k of Object.keys(map)) if (now - (map[k].at || 0) > 7 * 86400e3) delete map[k];
+      map[id] = me;
+      let hist = {}; try { const r1 = await env.DB.prepare("SELECT v FROM settings WHERE k='nodehist'").first(); if (r1) hist = JSON.parse(r1.v); } catch {}
+      const hk = new Date(now).toISOString().slice(0, 13), mi = new Date(now).getUTCMinutes(); let bk = (hist[hk] || '').padEnd(60, '0'); bk = bk.slice(0, mi) + '1' + bk.slice(mi + 1); hist[hk] = bk;
+      for (const k of Object.keys(hist).sort().slice(0, Math.max(0, Object.keys(hist).length - 48))) delete hist[k];
+      await env.DB.batch([
+        env.DB.prepare("INSERT INTO settings(k,v) VALUES('nodes',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(JSON.stringify(map)),
+        env.DB.prepare("INSERT INTO settings(k,v) VALUES('node',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(JSON.stringify(me)),
+        env.DB.prepare("INSERT INTO settings(k,v) VALUES('nodehist',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(JSON.stringify(hist)),
+      ]);
       return json(env, req, { ok: true });
     }
-    if (path === '/api/node/status') { const n = await nodeGet(env); return json(env, req, { online: !!n, model: n ? n.model : '', models: n && n.models ? n.models : {}, ageSec: n ? Math.round((Date.now() - n.at) / 1000) : null }); }
+    if (path === '/api/node/status') { const n = await nodeGet(env), hs = await nodeHist(env), all = (await nodeList(env)).map((x) => ({ name: x.name || x.id, model: x.model, prio: x.prio || 1, online: Date.now() - x.at < 420000, ageSec: Math.round((Date.now() - x.at) / 1000) })); return json(env, req, { online: !!n, model: n ? n.model : '', models: n && n.models ? n.models : {}, ageSec: n ? Math.round((Date.now() - n.at) / 1000) : null, hosts: all, hist: hs.hist, uptime24: hs.uptime24 }); }
+    if (path === '/api/team' || path.startsWith('/api/team/')) { const a = await authed(env, req); if (!a) return json(env, req, { error: 'sign in' }, 401); return teamApi(env, req, path, a); }
     if (path === '/api/account/receipts') { const a = await authed(env, req); if (!a) return json(env, req, { error: 'sign in' }, 401); const rs = await env.DB.prepare('SELECT at, usd, credits, ref FROM purchases WHERE email=? ORDER BY id DESC LIMIT 50').bind(a.email).all(); return json(env, req, { email: a.email, receipts: (rs.results || []).map((r) => ({ at: r.at, usd: r.usd, credits: r.credits, ref: String(r.ref || '').slice(-10) })) }); }
     if (path === '/api/node/charge' && req.method === 'POST') {          // replies served by a local Ollama node: same credit scaling as the cloud model
       const a = await authed(env, req); if (!a) return json(env, req, { error: 'sign in' }, 401);
