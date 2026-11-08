@@ -7,6 +7,15 @@ ok(){ printf "  ${G}OK${N}   %s\n" "$1"; }; bad(){ printf "  ${R}FIX${N}  %s\n" 
 step(){ printf "\n${C}==> %s${N}\n" "$1"; }
 printf "${C}AIX MASTER${N}  %s\n" "$(date)"
 
+# macOS blocks background agents from Downloads/Desktop/Documents, which makes auto-start hang. Run from a normal folder instead.
+case "$PWD" in
+  "$HOME"/Downloads/*|"$HOME"/Desktop/*|"$HOME"/Documents/*)
+    DEST="$HOME/AIX-Node"
+    printf "${Y}NOTE${N} Moving the node to %s (macOS blocks auto-start inside Downloads, Desktop and Documents)\n" "$DEST"
+    mkdir -p "$DEST" && rsync -a --exclude runtime ./ "$DEST"/ && chmod +x "$DEST"/*.command && xattr -dr com.apple.quarantine "$DEST" 2>/dev/null
+    [ -f "$DEST/AIX MASTER.command" ] && exec "$DEST/AIX MASTER.command" ;;
+esac
+
 step "1/6  Stopping anything left over from earlier runs"
 PLIST="$HOME/Library/LaunchAgents/com.aix.node.plist"
 OLD="$HOME/Library/LaunchAgents/com.aix.alpha.plist"; [ -f "$OLD" ] && { launchctl unload "$OLD" 2>/dev/null; rm -f "$OLD"; }   # retired Anthropic master agent
@@ -55,10 +64,15 @@ fi
 step "6/6  Starting AIX Node, tunnel and model"
 echo "     The control panel opens in your browser. Keep this window open."
 if [ -f "$PLIST" ]; then
-  launchctl bootstrap gui/$(id -u) "$PLIST" 2>/dev/null || launchctl load "$PLIST" 2>/dev/null
-  echo "     Auto-start service restarted. Waiting for the panel..."
+  bash "./Install AutoStart.command" --silent >/dev/null 2>&1   # rewrites the agent so it points at THIS folder
+  echo "     Auto-start service restarted. Waiting for the panel (up to 60 s)..."
   for i in $(seq 1 60); do curl -fs -m 2 http://localhost:$PORT/ >/dev/null 2>&1 && break; sleep 1; done
-  open "http://localhost:$PORT/?v=$(date +%s)"
-  echo "     Running in the background (log: node.log). You can close this window."; sleep 5; exit 0
+  if curl -fs -m 2 http://localhost:$PORT/ >/dev/null 2>&1; then
+    open "http://localhost:$PORT/?v=$(date +%s)"
+    echo "     Running in the background (log: node.log). You can close this window."; sleep 5; exit 0
+  fi
+  printf "  ${R}FIX${N}  the background service did not start. Last log lines:\n"; tail -8 node.log 2>/dev/null | sed 's/^/     /'
+  echo "     Starting directly in this window instead (keep it open)."
+  launchctl unload "$PLIST" 2>/dev/null
 fi
 exec "./Start AIX Node.command"
