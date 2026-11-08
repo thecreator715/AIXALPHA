@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path');
-const VERSION = 7;   // bump on every release: nodes auto-update when GitHub has a higher number
+const VERSION = 8;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -92,6 +92,29 @@ http.createServer(async (req, res) => {
   if (u === '/health') return J(res, h, 200, { status: 'ok', engine: 'aix-node', build: 3, version: VERSION, update: UPDST });
   const localAdmin = u.startsWith('/admin') && /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(req.headers.host || '') && !req.headers['x-forwarded-for'] && !req.headers['cf-connecting-ip'] && (!req.headers.origin || req.headers.origin === 'http://' + req.headers.host);
   if (!localAdmin && (req.headers.authorization || '') !== 'Bearer ' + TOKEN) return J(res, h, 401, { error: 'bad token' });
+  // ---- Hosted images for sites: the cloud (gatekeeper: quota + billing) stores/serves user images here, on this Mac ----
+  if (u.startsWith('/host/')) {
+    const HD = path.join(__dirname, 'hosted'), okUid = (x) => /^[a-f0-9]{16}$/.test(x || ''), okName = (x) => /^[\w.\-]+(\/[\w.\-]+){0,6}$/.test(x || '') && x.length <= 160 && !x.includes('..');
+    const MT = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', avif: 'image/avif' };
+    try {
+      if (u === '/host/put' && req.method === 'POST') {
+        const b = JSON.parse((await body(req)).toString() || '{}'); if (!okUid(b.uid) || !okName(b.name)) return J(res, h, 400, { error: 'bad name' });
+        const buf = Buffer.from(String(b.data || ''), 'base64'); if (!buf.length && b.name !== '_owner.json' || buf.length > 5 * 1024 * 1024) return J(res, h, 400, { error: 'bad size' });
+        const fp = path.join(HD, b.uid, b.name); fs.mkdirSync(path.dirname(fp), { recursive: true }); fs.writeFileSync(fp, buf); return J(res, h, 200, { ok: true, bytes: buf.length });
+      }
+      if (u === '/host/get') {
+        const q = new URL(req.url, 'http://x').searchParams, uid = q.get('uid'), nm = q.get('name'); if (!okUid(uid) || !okName(nm)) return J(res, h, 400, { error: 'bad name' });
+        const f = path.join(HD, uid, nm); if (!fs.existsSync(f)) return J(res, h, 404, { error: 'not found' });
+        const buf = fs.readFileSync(f); res.writeHead(200, { ...h, 'content-type': MT[nm.split('.').pop().toLowerCase()] || 'application/octet-stream', 'content-length': buf.length, 'cache-control': 'public, max-age=3600' }); return res.end(buf);
+      }
+      if (u === '/host/del' && req.method === 'POST') {
+        const b = JSON.parse((await body(req)).toString() || '{}'); if (!okUid(b.uid) || !okName(b.name)) return J(res, h, 400, { error: 'bad name' });
+        try { fs.unlinkSync(path.join(HD, b.uid, b.name)); } catch {} return J(res, h, 200, { ok: true });
+      }
+      if (u === '/host/stats') { let n = 0, bytes = 0; try { for (const d of fs.readdirSync(HD)) for (const f of fs.readdirSync(path.join(HD, d))) { n++; bytes += fs.statSync(path.join(HD, d, f)).size; } } catch {} return J(res, h, 200, { files: n, bytes }); }
+    } catch (e) { return J(res, h, 500, { error: 'host error: ' + e.message }); }
+    return J(res, h, 404, { error: 'unknown host endpoint' });
+  }
   try {
     if (u === '/admin/status') {
       let ps = [], up = false, ver = '';

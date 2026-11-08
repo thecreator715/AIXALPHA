@@ -544,6 +544,19 @@ async function nodeAdmin(env, req, url) {
     const bal = await q("SELECT CASE WHEN credits<=0 THEN 'empty' WHEN credits<10 THEN 'under 10' WHEN credits<50 THEN '10-50' ELSE '50+' END AS b, COUNT(*) AS n FROM users GROUP BY b");
     return R({ signups: su, hourly: hr, revenue: rev, engines: eng, balances: bal });
   }
+  if (what === 'storage') {   // per-user storage on the node: images + site files, plans, credits
+    await ensureHost(env);
+    const files = await q("SELECT email, SUM(CASE WHEN kind='site' THEN bytes ELSE 0 END) sb, SUM(CASE WHEN kind='img' THEN bytes ELSE 0 END) ib, COUNT(*) n, MAX(created) last FROM host_files GROUP BY email");
+    const plans = await q('SELECT * FROM host_plan'), pm = new Map(plans.map((p) => [p.email, p])), fm = new Map(files.map((f) => [f.email, f]));
+    const emails = [...new Set([...files.map((f) => f.email), ...plans.map((p) => p.email)])];
+    const users = await Promise.all(emails.map(async (e) => { const f = fm.get(e) || {}, p = pm.get(e) || { mb: HOST_FREE, paid_until: 0 }, used = (f.sb || 0) + (f.ib || 0); return { email: e, uid: await hostUid(e), planMb: p.mb, paidUntil: p.paid_until, imgBytes: f.ib || 0, siteBytes: f.sb || 0, usedBytes: used, files: f.n || 0, last: f.last || 0, creditsPerMonth: p.mb > HOST_FREE ? p.mb : 0, over: used > p.mb * MB }; }));
+    users.sort((a, b) => b.usedBytes - a.usedBytes);
+    const top = await q('SELECT email, name, bytes, created FROM host_files ORDER BY bytes DESC LIMIT 15');
+    const daily = await q("SELECT strftime('%Y-%m-%d', created/1000, 'unixepoch') AS d, COUNT(*) AS n, SUM(bytes) AS b FROM host_files WHERE created>? GROUP BY d ORDER BY d", now - 14 * 864e5);
+    let disk = null; const nd = await nodeGet(env); if (nd) { try { const r = await nfetch(nd.url.replace(/\/+$/, '') + '/host/stats', { headers: { authorization: 'Bearer ' + nd.token } }); if (r.ok) disk = await r.json(); } catch {} }
+    const sum = (k) => users.reduce((s, u) => s + u[k], 0);
+    return R({ totals: { users: users.length, usedBytes: sum('usedBytes'), imgBytes: sum('imgBytes'), siteBytes: sum('siteBytes'), files: sum('files'), paying: users.filter((u) => u.creditsPerMonth).length, creditsPerMonth: sum('creditsPerMonth'), over: users.filter((u) => u.over).length, freeMb: HOST_FREE }, users, top, daily, disk, nodeOnline: !!nd });
+  }
   if (what === 'health') {
     const cnt = {};
     for (const t of ['users', 'usage', 'purchases', 'api_keys', 'api_usage', 'jobs', 'job_runs', 'apps', 'grants']) { try { cnt[t] = (await one('SELECT COUNT(*) AS n FROM ' + t)).n; } catch (e) { cnt[t] = null; } }
@@ -638,6 +651,99 @@ async function pagesApi(env, req, path) {
   return json(env, req, { error: 'Unknown page endpoint' }, 404);
 }
 
+
+// ---- User storage on the Mac node: images + site project files. 5 MB included with hosting; above that 1 credit per MB per 30 days (plan sized in MB) ----
+const HOST_FREE = 5, MB = 1048576;
+let HOST_READY = false;
+async function ensureHost(env) {
+  if (HOST_READY) return;
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS host_files(email TEXT NOT NULL, name TEXT NOT NULL, bytes INTEGER, ctype TEXT, kind TEXT, created INTEGER, PRIMARY KEY(email,name))').run();
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS host_plan(email TEXT PRIMARY KEY, mb INTEGER DEFAULT 5, paid_until INTEGER DEFAULT 0)').run();
+  HOST_READY = true;
+}
+const hostUid = async (email) => (await sha('host:' + email)).slice(0, 16);
+const hostOwner = (env, a) => owners(env).includes(a.email) && !a.meter;
+async function hostSummary(env, a) {
+  await ensureHost(env);
+  const now = Date.now(), owner = hostOwner(env, a);
+  let p = (await env.DB.prepare('SELECT * FROM host_plan WHERE email=?').bind(a.email).first()) || { mb: HOST_FREE, paid_until: 0 }, lapsed = false;
+  if (p.mb > HOST_FREE && p.paid_until < now) {   // monthly renewal of the storage plan
+    let ok = owner;
+    if (!owner) { const up = await env.DB.prepare('UPDATE users SET credits=credits-? WHERE email=? AND credits>=?').bind(p.mb, a.email, p.mb).run(); ok = !!(up.meta && up.meta.changes > 0); if (ok) await env.DB.prepare('INSERT INTO usage(email,at,input,output,credits) VALUES(?,?,0,0,?)').bind(a.email, new Date().toISOString(), p.mb).run(); }
+    if (ok) { p.paid_until = now + 30 * 864e5; await env.DB.prepare('INSERT INTO host_plan(email,mb,paid_until) VALUES(?,?,?) ON CONFLICT(email) DO UPDATE SET mb=excluded.mb, paid_until=excluded.paid_until').bind(a.email, p.mb, p.paid_until).run(); }
+    else { lapsed = true; p = { mb: HOST_FREE, paid_until: 0 }; await env.DB.prepare('INSERT INTO host_plan(email,mb,paid_until) VALUES(?,?,0) ON CONFLICT(email) DO UPDATE SET mb=?, paid_until=0').bind(a.email, HOST_FREE, HOST_FREE).run(); }
+  }
+  const rows = (await env.DB.prepare('SELECT name,bytes,ctype,kind,created FROM host_files WHERE email=? ORDER BY created DESC').bind(a.email).all()).results || [];
+  let imgBytes = 0, siteBytes = 0; for (const r of rows) { if (r.kind === 'site') siteBytes += r.bytes; else imgBytes += r.bytes; }
+  const used = imgBytes + siteBytes;
+  return { uid: await hostUid(a.email), planMb: p.mb, freeMb: HOST_FREE, paidUntil: p.paid_until, creditsPerMonth: owner ? 0 : (p.mb > HOST_FREE ? p.mb : 0), usedBytes: used, imgBytes, siteBytes, over: used > p.mb * MB, lapsed, owner, files: rows.slice(0, 400), credits: +Number(a.credits).toFixed(2) };
+}
+const hostNodeCall = async (env, nd, path, body) => { const r = await nfetch(nd.url.replace(/\/+$/, '') + path, { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + nd.token }, body: JSON.stringify(body) }); if (!r.ok) throw new Error('node ' + r.status); return r; };
+const cleanSeg = (x) => String(x).replace(/[^\w.\-]/g, '_').replace(/^\.+/, '_').slice(-60) || '_';
+async function hostApi(env, req, path) {
+  const a = await authed(env, req); if (!a) return json(env, req, { error: 'Sign in to use hosted storage.' }, 401);
+  if (path === '/api/host/usage') return json(env, req, await hostSummary(env, a));
+  const b = await req.json().catch(() => ({}));
+  const uid = await hostUid(a.email);
+  if (path === '/api/host/put') {
+    const kind = b.kind === 'site' ? 'site' : 'img', raw = String(b.name || '').replace(/\\/g, '/').split('/').filter((x) => x && x !== '.' && x !== '..').map(cleanSeg);
+    if (!raw.length || raw.length > 6) return json(env, req, { error: 'Bad file name.' }, 400);
+    let name = kind + '/' + raw.join('/'); const ctype = String(b.type || '').slice(0, 60);
+    if (kind === 'img' && !/^image\/(png|jpe?g|gif|webp|svg\+xml|avif)$/.test(ctype)) return json(env, req, { error: 'Only PNG, JPEG, GIF, WebP, SVG or AVIF images.' }, 400);
+    if (kind === 'img' && raw.length > 1) return json(env, req, { error: 'Bad image name.' }, 400);
+    const data = String(b.data || ''), bytes = Math.floor(data.length * 3 / 4) - (data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0);
+    if (!data || bytes <= 0) return json(env, req, { error: 'Empty file.' }, 400);
+    if (bytes > 4 * MB) return json(env, req, { error: 'One file can be at most 4 MB.' }, 413);
+    if (kind === 'img') {   // content-addressed, IPFS style: the same picture always gets the same name and is stored once
+      let bin; try { bin = Uint8Array.from(atob(data), (c) => c.charCodeAt(0)); } catch { return json(env, req, { error: 'Bad image data.' }, 400); }
+      const cid = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bin))].map((x) => x.toString(16).padStart(2, '0')).join('').slice(0, 32);
+      name = 'img/' + cid + '.' + ({ 'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/svg+xml': 'svg', 'image/avif': 'avif' }[ctype] || 'bin');
+    }
+    const s = await hostSummary(env, a), prev = s.files.find((f) => f.name === name), newUsed = s.usedBytes - (prev ? prev.bytes : 0) + bytes;
+    if (newUsed > s.planMb * MB) { const needMb = Math.max(HOST_FREE + 1, Math.ceil(newUsed / MB)); return json(env, req, { error: 'Storage full: this needs ' + (newUsed / MB).toFixed(2) + ' MB and your plan is ' + s.planMb + ' MB.', code: 'quota', usedBytes: s.usedBytes, planMb: s.planMb, needMb, creditsPerMonth: needMb }, 413); }
+    const nd = await nodeGet(env); if (!nd) return json(env, req, { error: 'The storage node is offline right now. Try again shortly.' }, 503);
+    try {
+      if (!s.files.length) await hostNodeCall(env, nd, '/host/put', { uid, name: '_owner.json', data: btoa(JSON.stringify({ email: a.email, since: new Date().toISOString() })) });
+      await hostNodeCall(env, nd, '/host/put', { uid, name, data });
+    } catch (e) { return json(env, req, { error: 'Could not store the file on the node (' + (e.message || e) + ').' }, 502); }
+    await env.DB.prepare('INSERT INTO host_files(email,name,bytes,ctype,kind,created) VALUES(?,?,?,?,?,?) ON CONFLICT(email,name) DO UPDATE SET bytes=excluded.bytes, ctype=excluded.ctype, created=excluded.created').bind(a.email, name, bytes, ctype, kind, Date.now()).run();
+    return json(env, req, { ok: true, name, bytes, url: kind === 'img' ? new URL(req.url).origin + '/h/' + uid + '/' + name : null, usedBytes: s.usedBytes - (prev ? prev.bytes : 0) + bytes, planMb: s.planMb });
+  }
+  if (path === '/api/host/prune') {   // drop a site's files that are no longer in the project
+    const pre = 'site/' + cleanSeg(b.slug || '') + '/', keep = new Set((Array.isArray(b.keep) ? b.keep : []).map((x) => pre + String(x).split('/').map(cleanSeg).join('/')));
+    await ensureHost(env); const rows = (await env.DB.prepare('SELECT name FROM host_files WHERE email=? AND name LIKE ?').bind(a.email, pre + '%').all()).results || [], nd = await nodeGet(env); let n = 0;
+    for (const r of rows) if (!keep.has(r.name)) { if (nd) { try { await hostNodeCall(env, nd, '/host/del', { uid, name: r.name }); } catch {} } await env.DB.prepare('DELETE FROM host_files WHERE email=? AND name=?').bind(a.email, r.name).run(); n++; }
+    return json(env, req, { ok: true, removed: n });
+  }
+  if (path === '/api/host/delete') {
+    await ensureHost(env); const nm = String(b.name || ''), prefix = !!b.prefix, nd = await nodeGet(env);
+    const rows = prefix ? ((await env.DB.prepare('SELECT name FROM host_files WHERE email=? AND name LIKE ?').bind(a.email, nm.replace(/[%_]/g, '') + '%').all()).results || []) : [{ name: nm }];
+    for (const r of rows.slice(0, 300)) { if (nd) { try { await hostNodeCall(env, nd, '/host/del', { uid, name: r.name }); } catch {} } await env.DB.prepare('DELETE FROM host_files WHERE email=? AND name=?').bind(a.email, r.name).run(); }
+    return json(env, req, { ok: true, removed: rows.length });
+  }
+  if (path === '/api/host/plan') {
+    const mb = Math.floor(Number(b.mb)); if (!(mb >= HOST_FREE && mb <= 2000)) return json(env, req, { error: 'Pick a size between ' + HOST_FREE + ' and 2000 MB.' }, 400);
+    const s = await hostSummary(env, a); if (mb * MB < s.usedBytes) return json(env, req, { error: 'You are using ' + (s.usedBytes / MB).toFixed(2) + ' MB. Delete files first or pick at least ' + Math.ceil(s.usedBytes / MB) + ' MB.' }, 409);
+    const owner = hostOwner(env, a), now = Date.now(), left = s.planMb > HOST_FREE && s.paidUntil > now ? Math.ceil(s.planMb * (s.paidUntil - now) / (30 * 864e5)) : 0;
+    const charge = mb <= HOST_FREE || owner ? 0 : Math.max(0, mb - left);   // prorated credit for the unused part of the current plan
+    if (charge > 0) { const up = await env.DB.prepare('UPDATE users SET credits=credits-? WHERE email=? AND credits>=?').bind(charge, a.email, charge).run(); if (!(up.meta && up.meta.changes > 0)) return json(env, req, { error: 'Not enough credits: this plan needs ' + charge + ' credits now.', code: 'credits', need: charge }, 402); await env.DB.prepare('INSERT INTO usage(email,at,input,output,credits) VALUES(?,?,0,0,?)').bind(a.email, new Date().toISOString(), charge).run(); }
+    const pu = mb <= HOST_FREE ? 0 : now + 30 * 864e5;
+    await env.DB.prepare('INSERT INTO host_plan(email,mb,paid_until) VALUES(?,?,?) ON CONFLICT(email) DO UPDATE SET mb=excluded.mb, paid_until=excluded.paid_until').bind(a.email, mb, pu).run();
+    const f = await getUser(env, a.email); const out = await hostSummary(env, { ...a, credits: f.credits }); out.charged = charge; return json(env, req, out);
+  }
+  return json(env, req, { error: 'Unknown storage endpoint' }, 404);
+}
+async function hostGet(env, req, path) {   // public image URLs for sites: /h/<uid>/img/<file>, served from the node
+  const m = path.match(/^\/h\/([a-f0-9]{16})\/(img\/[\w.\-]{1,80})$/); const h = { 'access-control-allow-origin': '*' };
+  if (!m) return new Response('not found', { status: 404, headers: h });
+  const nd = await nodeGet(env); if (!nd) return new Response('storage node offline', { status: 503, headers: h });
+  try {
+    const r = await nfetch(nd.url.replace(/\/+$/, '') + '/host/get?uid=' + m[1] + '&name=' + encodeURIComponent(m[2]), { headers: { authorization: 'Bearer ' + nd.token } });
+    if (!r.ok) return new Response('not found', { status: r.status === 404 ? 404 : 502, headers: h });
+    return new Response(r.body, { headers: { ...h, 'content-type': r.headers.get('content-type') || 'application/octet-stream', 'cache-control': 'public, max-age=3600', 'x-content-type-options': 'nosniff' } });
+  } catch { return new Response('storage node unreachable', { status: 502, headers: h }); }
+}
+
 export default {
   async scheduled(ev, env, ctx) { ctx.waitUntil(runDueJobs(env).then(() => autoBackup(env))); },
   async fetch(req, env, ctx) {
@@ -647,6 +753,8 @@ export default {
   async _h(req, env) {
     const url = new URL(req.url), path = url.pathname;
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(env, req) });
+    if (path.startsWith('/api/host/')) return hostApi(env, req, path);
+    if (path.startsWith('/h/')) return hostGet(env, req, path);
     if (path === '/api/node/admin' && (req.method === 'GET' || req.method === 'POST')) return nodeAdmin(env, req, url);
     if (path.startsWith('/api/keys')) return keysApi(env, req, path);
     if (path.startsWith('/api/page')) return pagesApi(env, req, path);
