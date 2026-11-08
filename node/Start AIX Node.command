@@ -107,7 +107,7 @@ cat <<MSG
   AIX Node is running.
   Engine : $MODEL via Ollama
   Public : $URL
-  Cloud  : registers itself with AIX Alpha every 2.5 min. Every app (GitHub site, artifact,
+  Cloud  : registers itself with AIX Alpha every minute. Every app (GitHub site, artifact,
            phones) now uses this Mac automatically for ECO and BALANCED replies.
            If this Mac is off, replies fall back to the cloud model.
   Token  : .aix-token (keep it private)

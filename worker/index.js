@@ -426,7 +426,7 @@ const NA_C = new Map();
 async function nodeAdmin(env, req, url) {
   if (!env.NODE_SECRET || req.headers.get('x-node-secret') !== env.NODE_SECRET) return json(env, req, { error: 'bad node secret' }, 401);
   const ck = 'na:' + url.search, GETQ = req.method === 'GET', hit = NA_C.get(ck);
-  if (GETQ && hit && Date.now() - hit.t < 90000) return new Response(hit.b, { headers: { 'content-type': 'application/json', ...cors(env, req) } });   // panel polls: serve cached stats
+  if (GETQ && hit && Date.now() - hit.t < 15000) return new Response(hit.b, { headers: { 'content-type': 'application/json', ...cors(env, req) } });   // panel polls: serve cached stats
   await ensureKeys(env); await ensureJobs(env);
   const what = url.searchParams.get('what') || 'overview', now = Date.now();
   const iso = (ms) => new Date(now - ms).toISOString();

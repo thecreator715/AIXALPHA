@@ -156,6 +156,6 @@ http.createServer(async (req, res) => {
   const PUF = path.join(__dirname, '.aix-public-url'), getPU = () => { try { return fs.readFileSync(PUF, 'utf8').trim(); } catch { return process.env.AIX_PUBLIC_URL || ''; } };
   if (W && NS && MODEL) {
     const reg = async () => { const PU = getPU(); if (!PU) return; try { const r = await fetch(W.replace(/\/+$/, '') + '/api/node/register', { method: 'POST', headers: { 'content-type': 'application/json', 'x-node-secret': NS }, body: JSON.stringify({ url: PU, token: TOKEN, model: MODEL }) }); REGOK = r.ok; LASTREG = Date.now(); if (!reg.ok) { reg.ok = r.ok; console.log(r.ok ? 'Registered with AIX cloud: apps will use this node automatically' : 'Register failed: HTTP ' + r.status); } } catch (e) { console.log('Register error: ' + e.message); reg.ok = false; } };
-    reg(); setInterval(reg, 150000);
+    reg(); setInterval(reg, 60000);
   } else console.log('Cloud registration off (needs AIX_WORKER, AIX_NODE_SECRET, MODEL)');
 });

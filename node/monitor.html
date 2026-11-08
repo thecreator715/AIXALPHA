@@ -121,7 +121,7 @@ function renderLive(){
 }
 $('#lsrc').onchange=renderLive;$('#lq').oninput=renderLive;
 setInterval(()=>{if(TOK&&$('#main').style.display!=='none'&&CUR==='live')loadLive()},3000);
-setInterval(()=>{if(TOK&&$('#main').style.display!=='none')loadCloud()},120000);
+setInterval(()=>{if(TOK&&$('#main').style.display!=='none')loadCloud()},30000);
 const _w=setInterval(()=>{if($('#main').style.display!=='none'){clearInterval(_w);loadCloud()}},400);
 /* ===== extras: grant credits, user detail, health, backups, live stats, growth ===== */
 const toastX=(m,bad)=>{let t=document.getElementById('toastx');if(!t){t=document.createElement('div');t.id='toastx';t.style.cssText='position:fixed;bottom:18px;left:50%;transform:translateX(-50%);padding:10px 16px;border-radius:10px;font-size:13px;z-index:99;background:#1b1b1f;border:1px solid var(--b)';document.body.appendChild(t)}t.style.color=bad?'var(--bad)':'var(--ac)';t.textContent=m;t.style.display='block';clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',3500)};
