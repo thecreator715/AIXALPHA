@@ -710,6 +710,16 @@ html:has(dialog#dlg[open]),body:has(dialog#dlg[open]){overflow:hidden!important;
 @media(min-width:901px){#moredsk{display:inline-flex}}
 @media(min-width:600px){dialog#dlg.sheet{max-width:640px}dialog#dlg.sheet .mnu-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:600px){.view,#main,main{-webkit-overflow-scrolling:touch}}
+/* mobile composer: compact icon buttons so the message box gets the room */
+@media(max-width:600px){
+#inp #f{gap:2px!important;padding-left:8px!important;padding-right:6px!important;align-items:center}
+#inp #f>button.btn2{flex:0 0 28px!important;width:28px!important;min-width:0!important;height:28px!important;min-height:28px!important;padding:0!important;border-radius:50%!important;border-color:transparent!important;background:transparent!important;display:inline-grid;place-items:center;font-size:14px!important;line-height:1}
+#inp #f>button.btn2 svg{width:17px!important;height:17px!important}
+#inp #f>textarea#q{flex:1 1 0!important;min-width:0!important;width:auto!important}#inp #f>textarea#q{font-size:16px!important;line-height:1.3;padding-top:8px}#inp #f>textarea#q::placeholder{font-size:13px;white-space:nowrap}
+#inp #f>button#send{flex:0 0 36px!important;width:36px!important;height:36px!important;min-height:36px!important}
+#inp #f>button#send svg{width:18px!important;height:18px!important}
+}
+
 </style>
 </head>
 <body>
