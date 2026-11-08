@@ -87,3 +87,8 @@
 - Node: image requests were silently sent to the text-only model (a const reassignment error was swallowed). Now they route to the vision model, auto-detect any installed vision model, and start downloading qwen2.5vl:7b if none exists. Until it is ready the reply says so instead of "I can't see an image".
 - App: drag and drop images/files onto the chat, and paste images into the message box.
 - App: remaining "7 credits" web-search labels now say 3.5.
+
+## Live web search fixes (node v17)
+- Node: more search engines (Bing RSS, DuckDuckGo, Mojeek, Google News for news-type questions) with per-engine errors logged; before, one blocked engine meant no search.
+- App: the exact question is sent as the search query; the direct-to-Mac path now runs live search too (it skipped it before).
+- When search returns nothing, the model is told to say so instead of implying it browsed.

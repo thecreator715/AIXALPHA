@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path'), crypto = require('crypto');
-const VERSION = 16;   // bump on every release: nodes auto-update when GitHub has a higher number
+const VERSION = 17;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -45,12 +45,24 @@ async function searchMojeek(q) {
   while ((m = re.exec(html)) && out.length < 8) out.push({ title: clean(m[2]), url: m[1].replace(/&amp;/g, '&'), snippet: clean(m[3]) });
   return out;
 }
+const xml = (t, tag) => { const m = new RegExp('<' + tag + '[^>]*>([\\s\\S]*?)</' + tag + '>').exec(t); return m ? m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1') : ''; };
+async function searchRSS(url, n) {
+  const t = await getText(url, { headers: { accept: 'application/rss+xml,text/xml,*/*' } }), out = [];
+  for (const it of t.split(/<item>/).slice(1)) { if (out.length >= 8) break; const u = clean(xml(it, 'link')); if (/^https?:/.test(u)) out.push({ title: clean(xml(it, 'title')), url: u, snippet: clean(xml(it, 'description')).slice(0, 300) }); }
+  return out;
+}
+const searchBing = (q) => searchRSS('https://www.bing.com/search?format=rss&q=' + encodeURIComponent(q));
+const searchNews = (q) => searchRSS('https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q=' + encodeURIComponent(q));
 async function webSearch(q) {
-  let res = [], via = '';
-  for (const [n, f] of [['duckduckgo', searchDDG], ['mojeek', searchMojeek]]) { try { res = await f(q); if (res.length) { via = n; break; } } catch (e) { /* try next engine */ } }
+  let res = [], via = '', errs = [];
+  const fresh = /\b(news|today|latest|current|now|score|price|weather|recent|this week|tonight|yesterday|202\d)\b/i.test(q);
+  const engines = [['bing', searchBing], ['duckduckgo', searchDDG], ['mojeek', searchMojeek], ['google-news', searchNews]];
+  if (fresh) engines.splice(1, 0, engines.pop());
+  for (const [n, f] of engines) { try { res = await f(q); if (res.length) { via = n; break; } errs.push(n + ': no results'); } catch (e) { errs.push(n + ': ' + e.message); } }
   const top = res.slice(0, 2);   // read the top two pages for real detail
   await Promise.all(top.map(async (r) => { try { const t = await getText(r.url, {}, 6000); r.page = clean(t.replace(/<(script|style|nav|footer|header)[\s\S]*?<\/\1>/gi, ' ')).slice(0, 2500); } catch (e) { /* snippet only */ } }));
-  return { query: q, via, results: res.slice(0, 6) };
+  if (!res.length) console.log('web search found nothing for', JSON.stringify(q), errs.join(' | '));
+  return { query: q, via, errors: res.length ? undefined : errs, results: res.slice(0, 6) };
 }
 async function body(req) { const c = []; for await (const x of req) c.push(x); return Buffer.concat(c); }
 async function oll(p, opt) { const r = await fetch(OLLAMA + p, opt); return r; }
