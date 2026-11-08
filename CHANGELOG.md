@@ -63,3 +63,10 @@
 
 ## App – tab bar
 - Top tabs now fit any width: what does not fit moves into a "More" menu (with icons); every tab has an icon; mobile menu gained the missing Affiliate icon.
+
+## App – UX pack
+- Quick-start card for new users; Stop button (■) while Alpha is writing, partial text kept with a Continue button; "Retry in a higher mode" on replies.
+- Each reply shows the mode and model that answered; offline-host banner with Check again, System status and "What can Alpha do?" dialogs; auto "back online" notice with Retry.
+- Credits: per-chat total, balance and low-balance warning, web-search cost note; Receipts (download) in Credits via new `/api/account/receipts`.
+- Cmd+K shows recent chats first and new commands; Studio ↶ Undo and 🩹 Fix errors buttons.
+- Mobile: bigger touch targets, edge-swipe between chats, haptic on send. Worker `/api/node/status` now returns the model tiers.

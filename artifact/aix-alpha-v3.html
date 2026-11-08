@@ -676,6 +676,23 @@ dialog#dlg.sheet::backdrop{background:rgba(0,0,0,.6);backdrop-filter:blur(6px)}
 }
 @media(min-width:1350px){#tabs{max-width:none!important;width:100%!important}#top{grid-template-columns:210px minmax(0,1fr) auto!important}}
 </style>
+<style id="uxpack">
+#nodebar{display:none;position:fixed;left:0;right:0;top:var(--topH,56px);z-index:18;background:#3b2f0a;border-bottom:1px solid #fbbf2466;color:#fde68a;font-size:12px;padding:6px 12px;align-items:center;gap:10px;justify-content:center;flex-wrap:wrap}
+#nodebar.on{display:flex}#nodebar button{background:#fbbf24;color:#000;border:0;border-radius:6px;padding:3px 10px;font:inherit;font-weight:600}
+body.hasnb #msgs{padding-top:34px}
+#send.stopb{background:#ef4444!important;color:#fff!important;border-color:#ef4444!important}
+.onb{max-width:760px;margin:18px auto 0;border:1px solid var(--b);border-radius:14px;background:linear-gradient(160deg,#101014,#0b0b0e);padding:12px 14px;text-align:left}
+.onbh{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.onbs{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.onbs>div{display:flex;flex-direction:column;gap:6px;font-size:12px}.onbs span{width:20px;height:20px;border-radius:50%;background:var(--ac);color:#000;display:grid;place-items:center;font-weight:700;font-size:11px}
+.onbs small{color:var(--m);line-height:1.5}.onbs a{color:var(--ac)}.onbm{display:flex;gap:6px;flex-wrap:wrap}.onbm .btn2.on{background:#fff;color:#000}
+@media(max-width:900px){
+.onbs{grid-template-columns:1fr}
+#f #att,#f #mic{min-width:44px;min-height:44px}#send{width:44px;height:44px;min-height:44px;min-width:44px}#send.stopb::before{content:"\25A0";font-size:16px}
+#modes button,#estb{min-height:40px}
+.mtools button{min-width:36px;min-height:36px}
+#nodebar{top:calc(var(--topH,56px))}
+}
+</style>
 </head>
 <body>
 <aside id="prog"><div class="pgtop"><div class="pgttl"><span class="logo">◈</span><div><b>Progress</b><small class="mono">steps · outputs · usage</small></div></div><button class="btn2" id="progx" aria-label="Close">✕</button></div><div id="progbody"></div></aside><div id="scrim"></div><nav id="bnav"></nav><div id="siteview"></div><div id="pal"><div class="box"><input id="pin" placeholder="Type a command…"><div id="pl"></div></div></div><div id="toast"></div>
@@ -1027,6 +1044,7 @@ function openKey(force){if(!force)return openAccount();
   $('#aclr').onclick=()=>{store.set(KEYK,'');if(sampleFn&&!window.claude)sampleFn=null;setStatus();d.close()};
 }
 async function ask(promptStr,onText,signal,images,tools){
+  signal=signal||(abort&&!abort.signal.aborted?abort.signal:null);
   let eng=null;if(PROVON()&&!(images&&images.length))eng=provWrap();
   if(!eng&&tools&&tools.length&&nodeOn()&&!(images&&images.length))eng=nodeWrap();
   if(!eng&&nodeForMode()&&!(images&&images.length))eng=nodeWrap();
@@ -1404,27 +1422,27 @@ async function send(text,opts={}){
   let full=text;const imgs=[];
   for(const a of ATT){if(a.type==='text')full+=`\n\n[Attached file: ${a.name}]\n\`\`\`\n${a.text.slice(0,20000)}\n\`\`\``;else if(a.type==='image')imgs.push(a.blob)}
   S.curImages=imgs;ATT=[];renderAtt();text=full;
-  c.msgs.push({role:'user',content:text,ts:Date.now()});S.busy=true;$('#send').disabled=true;renderThreads();renderMsgs();
-  {const sj=imgs.length?null:parseSchedule(text);if(sj){let msg;try{msg=await scheduleJob(sj)}finally{S.busy=false;$('#send').disabled=false}c.msgs.push({role:'assistant',content:msg,ts:Date.now()});save();renderThreads();renderMsgs();return}}
-  if(!imgs.length&&/^\/agent\b/i.test(text)){try{toast('Agent: planning your goal…');await agentPlan(c,text.replace(/^\/agent\s*/i,'').trim()||text)}finally{S.busy=false;$('#send').disabled=false;save();renderThreads();renderMsgs()}return}
-  if(!imgs.length&&(/^\/council\b/i.test(text)||(S.council&&text.length>12&&!BUILDINT.test(text)&&!VIDINTENT.test(text)&&!IMGINTENT.test(text)))){try{toast('Council: 3 voices and a judge (4 model calls)');await councilAsk(c,text)}finally{S.busy=false;$('#send').disabled=false;save();renderThreads();renderMsgs()}return}
-  if(askOn()&&!opts.clarified&&!imgs.length&&!S.vid&&!S.img&&askWorth(text)&&!VIDINTENT.test(text)&&!IMGINTENT.test(text)){const lv=document.createElement('div');lv.className='msg';lv.id='asklive';lv.innerHTML='<div class="who mono"><b>AIX ALPHA</b><span class="typing"><i></i><i></i><i></i></span></div><div class="mono" style="font-size:11px;color:var(--m)">checking whether I need any details…</div>';$('#msgs').appendChild(lv);$('#chat').scrollTop=1e9;const qs=await clarify(c.msgs.slice(0,-1),text);const lvn=$('#asklive');if(lvn)lvn.remove();if(qs){c.msgs.push({role:'assistant',content:'Questions: '+qs.map(q=>q.q).join(' | '),ask:{qs,ans:{},other:{},orig:text},ts:Date.now()});S.busy=false;$('#send').disabled=false;save();renderThreads();renderMsgs();return}}
-  if(S.vid||VIDINTENT.test(text)){const blob=imgs[0]||null;try{await chatVideo(c,text,blob)}finally{S.busy=false;$('#send').disabled=false;save();renderThreads();renderMsgs()}return}
-  if((S.img||IMGINTENT.test(text))&&!imgs.length){try{await chatFlux(c,text)}finally{S.busy=false;$('#send').disabled=false;save();renderThreads();renderMsgs()}return}
+  c.msgs.push({role:'user',content:text,ts:Date.now()});S.busy=true;uxBusy(true);renderThreads();renderMsgs();
+  {const sj=imgs.length?null:parseSchedule(text);if(sj){let msg;try{msg=await scheduleJob(sj)}finally{S.busy=false;uxBusy(false)}c.msgs.push({role:'assistant',content:msg,ts:Date.now()});save();renderThreads();renderMsgs();return}}
+  if(!imgs.length&&/^\/agent\b/i.test(text)){try{toast('Agent: planning your goal…');await agentPlan(c,text.replace(/^\/agent\s*/i,'').trim()||text)}finally{S.busy=false;uxBusy(false);save();renderThreads();renderMsgs()}return}
+  if(!imgs.length&&(/^\/council\b/i.test(text)||(S.council&&text.length>12&&!BUILDINT.test(text)&&!VIDINTENT.test(text)&&!IMGINTENT.test(text)))){try{toast('Council: 3 voices and a judge (4 model calls)');await councilAsk(c,text)}finally{S.busy=false;uxBusy(false);save();renderThreads();renderMsgs()}return}
+  if(askOn()&&!opts.clarified&&!imgs.length&&!S.vid&&!S.img&&askWorth(text)&&!VIDINTENT.test(text)&&!IMGINTENT.test(text)){const lv=document.createElement('div');lv.className='msg';lv.id='asklive';lv.innerHTML='<div class="who mono"><b>AIX ALPHA</b><span class="typing"><i></i><i></i><i></i></span></div><div class="mono" style="font-size:11px;color:var(--m)">checking whether I need any details…</div>';$('#msgs').appendChild(lv);$('#chat').scrollTop=1e9;const qs=await clarify(c.msgs.slice(0,-1),text);const lvn=$('#asklive');if(lvn)lvn.remove();if(qs){c.msgs.push({role:'assistant',content:'Questions: '+qs.map(q=>q.q).join(' | '),ask:{qs,ans:{},other:{},orig:text},ts:Date.now()});S.busy=false;uxBusy(false);save();renderThreads();renderMsgs();return}}
+  if(S.vid||VIDINTENT.test(text)){const blob=imgs[0]||null;try{await chatVideo(c,text,blob)}finally{S.busy=false;uxBusy(false);save();renderThreads();renderMsgs()}return}
+  if((S.img||IMGINTENT.test(text))&&!imgs.length){try{await chatFlux(c,text)}finally{S.busy=false;uxBusy(false);save();renderThreads();renderMsgs()}return}
   const live=document.createElement('div');live.className='msg';live.innerHTML='<div class="who mono"><b>AIX ALPHA</b><span class="typing"><i></i><i></i><i></i></span></div><div id="livelog"></div><div class="mono" id="livestat" style="font-size:11px;color:var(--m)"></div><div class="body" id="live"></div><div id="livepvw"></div>';$('#msgs').appendChild(live);$('#chat').scrollTop=1e9;
   try{
-    abort=new AbortController();let lastPv=0;const stp=[];const t0=Date.now();let ttl='Planning the answer',openL=true;
+    abort=new AbortController();window.__lastTx='';let lastPv=0;const stp=[];const t0=Date.now();let ttl='Planning the answer',openL=true;
     const drawL=()=>{const el=$('#livelog');if(!el)return;const was=el.querySelector('.act2');if(was&&was.classList.contains('closed'))openL=false;el.innerHTML=liveActHtml(stp,ttl,Math.round((Date.now()-t0)/1000));const a2=el.querySelector('.act2');if(!openL)a2.classList.add('closed');el.querySelector('.ah').onclick=()=>{a2.classList.toggle('closed');openL=!a2.classList.contains('closed')};$('#chat').scrollTop=1e9};
     const tick=setInterval(()=>{const e=$('#livelog .el');if(e)e.textContent=Math.round((Date.now()-t0)/1000)+'s'},1000);
     const onStep=(x,k,ms)=>{stp.push([x,k,ms]);ttl=friendly(x);drawL();if($('#prog').classList.contains('on'))renderProg()};drawL();
-    const onText=x=>{const tx=x.text||'';const e=$('#live');if(e)e.innerHTML=md(tx);const st=$('#livestat');if(st)st.textContent=`writing… ${tx.length.toLocaleString()} chars · ${(tx.match(/\n/g)||[]).length+1} lines`;if(ttl.indexOf('Writing')!==0||tx.length%7===0){ttl='Writing… '+tx.length.toLocaleString()+' chars';const h2=$('#livelog .ah span:nth-child(2)');if(h2)h2.textContent=ttl}
+    const onText=x=>{const tx=x.text||'';window.__lastTx=tx;const e=$('#live');if(e)e.innerHTML=md(tx);const st=$('#livestat');if(st)st.textContent=`writing… ${tx.length.toLocaleString()} chars · ${(tx.match(/\n/g)||[]).length+1} lines`;if(ttl.indexOf('Writing')!==0||tx.length%7===0){ttl='Writing… '+tx.length.toLocaleString()+' chars';const h2=$('#livelog .ah span:nth-child(2)');if(h2)h2.textContent=ttl}
       const h=extractHtml(tx);if(h&&Date.now()-lastPv>800){lastPv=Date.now();let fr=$('#livepv');if(!fr){$('#livepvw').innerHTML='<div class="mono" style="font-size:10px;color:var(--ac);margin:6px 0 2px">LIVE PREVIEW — updates as it is written</div><iframe id="livepv" sandbox="allow-scripts" class="inpvf"></iframe>';fr=$('#livepv')}fr.srcdoc=h}
       $('#chat').scrollTop=1e9};
     const rc=recallCtx(text,c.id);const um=c.msgs[c.msgs.length-1];const orig=um.content;if(rc.n){um.content=orig+rc.ctx;onStep('Recalled '+rc.n+' snippet'+(rc.n>1?'s':'')+' from other chats: '+rc.titles.join(', '),'ok')}let r;try{r=await runLoop(c,rc.n?orig+rc.ctx:text,onText,onStep)}finally{um.content=orig}clearInterval(tick);const dur=Date.now()-t0;
-    c.msgs.push({role:'assistant',content:r.text,t:r.t,pid:S.pid,mesh:r.mesh,ui:r.ui,doc:r.doc,ts:Date.now(),dur});try{if(extractHtml(r.text))importChat(r.text,{silent:true,label:'Synced from chat'})}catch(e){}
+    c.msgs.push({role:'assistant',content:r.text,t:r.t,pid:S.pid,mdl:uxModel(r.t),mesh:r.mesh,ui:r.ui,doc:r.doc,ts:Date.now(),dur});try{if(extractHtml(r.text))importChat(r.text,{silent:true,label:'Synced from chat'})}catch(e){}
     c.cost=(c.cost||0)+r.t.cost;c.calls=(c.calls||0)+r.t.calls;S.ledger[today()]=daySpend()+r.t.cost;trackUsage(r.t);if((V.auto||S.talk)&&!r.t.blocked)speak(r.text);
-  }catch(e){try{clearInterval(tick)}catch{}c.msgs.push({role:'assistant',content:'⚠️ '+(e.message||e.code||'Request failed')+(e.code==='not_granted'?' — grant the permission when prompted.':''),err:1})}
-  S.busy=false;$('#send').disabled=false;save();renderThreads();renderMsgs();
+  }catch(e){try{clearInterval(tick)}catch{}if(e&&(e.name==='AbortError'||/abort/i.test(e.message||''))){c.msgs.push({role:'assistant',content:(window.__lastTx?window.__lastTx+'\n\n':'')+'⏹ Stopped.',partial:1,ts:Date.now()});window.__lastTx=''}else c.msgs.push({role:'assistant',content:'⚠️ '+(e.message||e.code||'Request failed')+(e.code==='not_granted'?' — grant the permission when prompted.':''),err:1})}
+  S.busy=false;uxBusy(false);save();renderThreads();renderMsgs();
 }
 
 /* ============ dialogs ============ */
@@ -1536,12 +1554,12 @@ function renderAnaBase(){
 $('#srch').oninput=renderThreads;
 const ACC={emerald:'#34d399',cyan:'#22d3ee',violet:'#a78bfa',amber:'#fbbf24',rose:'#fb7185'};
 function setAccent(n){document.documentElement.style.setProperty('--ac',ACC[n]);store.set('aix3_acc',n)}setAccent(store.get('aix3_acc','emerald'));
-const ACTIONS=()=>[['New chat','⌘N',()=>$('#newc').click()],['Go to Chat','',()=>setView('chat')],['Go to Analytics','',()=>setView('ana')],['Go to Studio','',()=>setView('studio')],['Go to Plug-ins','',()=>setView('plugins')],['Toggle progress panel','',()=>toggleProg()],['Go to Users & platform','',()=>setView('users')],['Voice settings','',()=>$('#voice').click()],['Backup / import','',()=>$('#bk').click()],
+const ACTIONS=()=>[...EXTRA_ACT(),['New chat','⌘N',()=>$('#newc').click()],['Go to Chat','',()=>setView('chat')],['Go to Analytics','',()=>setView('ana')],['Go to Studio','',()=>setView('studio')],['Go to Plug-ins','',()=>setView('plugins')],['Toggle progress panel','',()=>toggleProg()],['Go to Users & platform','',()=>setView('users')],['Voice settings','',()=>$('#voice').click()],['Backup / import','',()=>$('#bk').click()],
  ['Mode: AUTO (best for each reply)','',()=>{S.auto=true;store.set('aix3_auto',true);updateMeter()}],['Mode: ECO','',()=>{S.mode='eco';store.set('aix3_mode','eco');updateMeter()}],['Mode: BALANCED','',()=>{S.mode='balanced';store.set('aix3_mode','balanced');updateMeter()}],['Mode: THOROUGH','',()=>{S.mode='thorough';store.set('aix3_mode','thorough');updateMeter()}],
  ['Toggle evaluator','',()=>$('#evalb').click()],['Go to Persona Hub','',()=>setView('personas')],['Go to Sites','',()=>setView('sites')],['Go to Gallery','',()=>setView('gallery')],['Go to Memory','',()=>setView('memory')],['Go to Tasks','',()=>setView('tasks')],['Go to Company','',()=>setView('enterprise')],['Prompt library','',()=>promptDialog()],['Export run log','',()=>progExport()],['Go to Credits','',()=>setView('credits')],['Go to Members & pricing','',()=>setView('members')],['Go to About','',()=>setView('about')],['Spend caps / settings','',openSettings],['Export chat','',()=>$('#exp').click()],
  ...Object.keys(ACC).map(k=>['Accent: '+k,'',()=>setAccent(k)]),...personas().map(p=>['Persona: '+p.name,'',()=>{S.pid=p.id;store.set('aix3_pid',p.id);buildPersonaSel();updateMeter()}])];
 let pi=0,pf=[];
-function palContent(q){const out=[];if(q.length<2)return out;const has=t=>String(t||'').toLowerCase().includes(q);
+function palContent(q){const out=[];if(q.length<2){try{S.chats.slice(0,5).forEach(c=>out.push(['🕘 '+c.title,'recent',()=>{S.cur=c.id;save();setView('chat');renderThreads();renderMsgs()}]))}catch{}return out}const has=t=>String(t||'').toLowerCase().includes(q);
  try{S.chats.filter(c=>has(c.title)||(c.msgs||[]).some(m=>has(m.content))).slice(0,6).forEach(c=>out.push(['💬 '+c.title,'chat',()=>{S.cur=c.id;save();setView('chat');renderThreads();renderMsgs()}]))}catch{}
  try{PROJECTS.filter(x=>has(x.title)).slice(0,4).forEach(x=>out.push(['🧩 '+x.title,'app',()=>{CURP=x.id;projSave();setView('studio')}]))}catch{}
  try{tkAll().filter(x=>has(x.t)).slice(0,4).forEach(x=>out.push(['✅ '+x.t,'task',()=>{setView('tasks');setTimeout(()=>tkDetails(x.id),200)}]))}catch{}
@@ -1549,7 +1567,7 @@ function palContent(q){const out=[];if(q.length<2)return out;const has=t=>String
  try{SITES.filter(x=>has(x.name)).slice(0,3).forEach(x=>out.push(['🌐 '+x.name,'site',()=>setView('sites')]))}catch{}
  try{const pl=promptList().filter(x=>has(x.name)||has(x.text)).slice(0,3);pl.forEach(x=>out.push(['📚 '+x.name,'prompt',()=>{$('#q').value=x.text;setView('chat');$('#q').focus()}]))}catch{}
  return out}
-function palRender(){const q=$('#pin').value.toLowerCase();pf=ACTIONS().filter(a=>a[0].toLowerCase().includes(q)).concat(palContent(q));pi=Math.min(pi,Math.max(0,pf.length-1));$('#pl').innerHTML=pf.map((a,i)=>`<div class="pi ${i===pi?'on':''}" data-i="${i}">${esc(a[0])}<small class="mono">${a[1]}</small></div>`).join('')||'<div class="pi">No match</div>'}
+function palRender(){const q=$('#pin').value.toLowerCase();pf=q?ACTIONS().filter(a=>a[0].toLowerCase().includes(q)).concat(palContent(q)):palContent(q).concat(ACTIONS());pi=Math.min(pi,Math.max(0,pf.length-1));$('#pl').innerHTML=pf.map((a,i)=>`<div class="pi ${i===pi?'on':''}" data-i="${i}">${esc(a[0])}<small class="mono">${a[1]}</small></div>`).join('')||'<div class="pi">No match</div>'}
 function palOpen(){$('#pal').classList.add('on');$('#pin').value='';pi=0;palRender();$('#pin').focus()}
 function palRun(i){const a=pf[i];$('#pal').classList.remove('on');if(a)a[2]()}
 $('#kbar').onclick=palOpen;$('#pin').oninput=()=>{pi=0;palRender()};
@@ -2997,7 +3015,7 @@ function wireMembers(){$('#membersbody').onclick=async e=>{const t=e.target;
 const IC=(d,extra='')=>`<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${d}${extra}</svg>`;
 const ICONS={copy:IC('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/>'),edit:IC('<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>'),add:IC('<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 8v8M8 12h8"/>'),regen:IC('<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>'),speak:IC('<path d="M4 10v4h4l5 4V6L8 10z"/><path d="M16.5 9a4 4 0 0 1 0 6"/>'),share:IC('<path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/>'),trash:IC('<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/>')};
 function mtools(i,role,scope){const b=(a,t,ic)=>`<button data-mt="${a}" data-i="${i}" data-sc="${scope||'chat'}" title="${t}" aria-label="${t}">${ic}</button>`;
-  return `<div class="mtools">${b('copy','Copy',ICONS.copy)}${role==='user'?b('edit','Edit and resend',ICONS.edit):b('add','Add to chat — quote and type more',ICONS.add)}${scope!=='studio'?b('pin','Pin this message','📌')+b('branch','Branch: continue a copy of this chat from here','⑂'):''}${role==='assistant'&&scope!=='studio'?b('regen','Regenerate',ICONS.regen)+b('speak','Read aloud',ICONS.speak):''}${b('share','Share',ICONS.share)}${b('del','Remove',ICONS.trash)}</div>`}
+  return `<div class="mtools">${b('copy','Copy',ICONS.copy)}${role==='user'?b('edit','Edit and resend',ICONS.edit):b('add','Add to chat — quote and type more',ICONS.add)}${scope!=='studio'?b('pin','Pin this message','📌')+b('branch','Branch: continue a copy of this chat from here','⑂'):''}${role==='assistant'&&scope!=='studio'?b('regen','Regenerate',ICONS.regen)+uxBtns(i)+b('speak','Read aloud',ICONS.speak):''}${b('share','Share',ICONS.share)}${b('del','Remove',ICONS.trash)}</div>`}
 const stripAtt=t=>t.replace(/\n*\[Attached file: ([^\]]+)\]\n```[\s\S]*?```/g,'').trim();
 function mtAction(a,i,sc){const studio=sc==='studio';const list=studio?proj().chat:(curChat()||{msgs:[]}).msgs;const m=list[i];if(!m)return;const inp=studio?$('#stq'):$('#q');
   if(a==='copy')return navigator.clipboard?.writeText(m.content).then(()=>toast('Copied'),()=>toast('Select & copy manually'));
@@ -3006,6 +3024,8 @@ function mtAction(a,i,sc){const studio=sc==='studio';const list=studio?proj().ch
   if(a==='branch'){const c=curChat();if(!c||studio)return;const nc={id:uid(),title:'Branch: '+c.title.slice(0,28),msgs:JSON.parse(JSON.stringify(c.msgs.slice(0,i+1))),cost:0,calls:0,notes:[],pid:c.pid,ws:c.ws};S.chats.unshift(nc);S.cur=nc.id;save();renderThreads();renderMsgs();toast('Branched. The original chat is unchanged.');return}
   if(a==='edit'){if(studio)S.stEdit=i;else{S.editIdx=i;$('#editban').style.display='flex'}inp.value=stripAtt(m.content);inp.focus();inp.dispatchEvent(new Event('input'));if(!studio)toast('Editing — sending replaces this message and the replies after it');return}
   if(a==='add'){const q=m.content.replace(/```[\s\S]*?```/g,'[code]').trim().split('\n').filter(Boolean).slice(0,4).join('\n').slice(0,400).split('\n').map(l=>'> '+l).join('\n');inp.value=(inp.value?inp.value+'\n\n':'')+q+'\n\n';inp.focus();inp.dispatchEvent(new Event('input'));inp.setSelectionRange(inp.value.length,inp.value.length);return}
+  if(a==='up'){uxRetryUp(i,list);return}
+  if(a==='cont'){uxContinue();return}
   if(a==='regen'){let j=i-1;while(j>=0&&list[j].role!=='user')j--;if(j>=0){const q=list[j].content;list.splice(j);save();send(q,{nocache:true})}return}
   if(a==='share')return shareMsg(i,sc);
   if(a==='del'){const n=(m.role==='user'&&list[i+1]&&list[i+1].role==='assistant')?2:1;const removed=list.splice(i,n);if(studio){projSave();renderStChat()}else{save();renderMsgs()}
@@ -4148,6 +4168,72 @@ document.addEventListener('click',e=>{if(pop&&!e.target.closest('#tabmore'))clos
 T.addEventListener('click',e=>{if(e.target.closest('button[data-v]'))setTimeout(fit,0)});
 addEventListener('resize',fit);try{new ResizeObserver(fit).observe(T)}catch{}
 window.fitTabs=fit;[100,500,1500].forEach(t=>setTimeout(fit,t));if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fit);
+})();
+/* ===== UX pack: onboarding, host status, stop/continue, model labels, retry higher, credits, studio quick fixes, receipts ===== */
+(function(){
+let NODEMODELS={},NODEAGE=null,NODESEEN=false,CLOUDMS=null,CLOUDOK=null;
+window.__lastTx='';
+const tierKey=m=>m==='eco'?'eco':m==='balanced'?'balanced':'thorough';
+const pretty=n=>{n=String(n||'').replace(/^aix-alpha-/,'');const m=n.match(/^(.*?)-(\d+(?:\.\d+)?b)$/i);return m?m[1]+' '+m[2].toUpperCase():n};
+window.uxModel=function(t){try{const mode=(S.turbo&&TURBONOW)?'turbo':((t&&t.mode)||S.mode);const n=NODEMODELS[tierKey(mode)]||NODEMODEL;return{m:mode,n:pretty(n)}}catch{return null}};
+/* --- host status bar + polling --- */
+const _pn=window.pollNode;
+window.pollNode=async function(){const was=NODEUP;try{if(!BACKEND())return;const t0=Date.now();const j=await fetch(BACKEND()+'/api/node/status').then(r=>r.json());CLOUDMS=Date.now()-t0;CLOUDOK=true;NODEUP=!!j.online;NODEMODEL=j.model||'';NODEMODELS=j.models||{};NODEAGE=j.ageSec;NODESEEN=true;try{updateMeter()}catch{}}catch{CLOUDOK=false;NODESEEN=true}uxBar(was)};
+function uxBar(was){let b=$('#nodebar');const off=!!(BACKEND()&&store.get(TOKK,'')&&NODESEEN&&!NODEUP);
+ if(!b){b=document.createElement('div');b.id='nodebar';b.innerHTML='<span>⏸ Alpha\'s host is offline. Replies resume as soon as it is back.</span><button id="nbr">Check again</button><button id="nbs">Status</button>';document.body.appendChild(b);b.querySelector('#nbr').onclick=()=>{toast('Checking…');pollNode()};b.querySelector('#nbs').onclick=()=>statusDialog()}
+ b.classList.toggle('on',off);document.body.classList.toggle('hasnb',off);
+ if(was===false&&NODEUP&&NODESEEN){const c=curChat(),last=c&&c.msgs[c.msgs.length-1];toast('Alpha is back online');if(last&&last.err){const t=$('#toast');t.insertAdjacentHTML('beforeend',' <button id="tretry2" style="margin-left:8px;border:0;background:#34d399;color:#000;border-radius:6px;padding:2px 10px;font:inherit;cursor:pointer">Retry last message</button>');const r=$('#tretry2');if(r)r.onclick=()=>{t.classList.remove('on');retryLast()}}}}
+function retryLast(){const c=curChat();if(!c)return;let j=c.msgs.length-1;while(j>=0&&c.msgs[j].role!=='user')j--;if(j<0)return;const q=c.msgs[j].content;c.msgs.splice(j);save();send(q,{nocache:true})}
+/* --- status page --- */
+window.statusDialog=async function(){const d=dialog('<h3 style="margin:0 0 8px">System status</h3><div id="stbody" class="mono" style="font-size:12px;line-height:1.9">Checking…</div><div class="row" style="margin-top:12px"><button class="btn2" data-close>Close</button><button class="btn2" id="strf">Refresh</button></div>');
+ const run=async()=>{await pollNode();const ok=(v,t)=>`<span style="color:${v?'#34d399':'#f87171'}">●</span> ${t}`;const m=NODEMODELS||{};const mm=['eco','balanced','thorough'].filter(k=>m[k]).map(k=>k.toUpperCase()+': '+pretty(m[k])).join(' · ')||pretty(NODEMODEL)||'—';
+  const age=NODEAGE==null?'':' · last seen '+(NODEAGE<90?NODEAGE+'s':Math.round(NODEAGE/60)+' min')+' ago';
+  $('#stbody').innerHTML=[ok(CLOUDOK,'Cloud: '+(CLOUDOK?'online'+(CLOUDMS!=null?' · '+CLOUDMS+' ms':''):'unreachable')),ok(NODEUP,'Alpha host: '+(NODEUP?'online':'offline')+age),'<span style="color:var(--m)">Models: '+esc(mm)+'</span>',ok(NODEUP,'Live web search: '+(NODEUP?'available (runs on the host)':'paused until the host is back')),ok(NODEUP,'Image reading: '+(NODEUP?'available':'paused until the host is back')),'<span style="color:var(--m)">Checked '+new Date().toLocaleTimeString()+'</span>'].join('<br>')};
+ $('#strf').onclick=()=>{$('#stbody').textContent='Checking…';run()};run()};
+/* --- what Alpha can do --- */
+window.capsDialog=function(){dialog(`<h3 style="margin:0 0 8px">What Alpha can and can't do</h3><div style="font-size:13px;line-height:1.6"><b>Can</b><ul style="margin:4px 0 10px 18px"><li>Answer, write, plan and explain</li><li>Build single-file apps in Studio with live preview, history and undo</li><li>Search the live web (about 7 credits per search)</li><li>Read images you attach and generate images</li><li>Remember things across chats (Memory) and run tasks</li></ul><b>Can't / limits</b><ul style="margin:4px 0 10px 18px"><li>It runs on the host Mac: when that Mac is off or asleep, replies pause</li><li>Eco uses a smaller, faster model. Use Thorough for hard problems</li><li>Answers can be wrong. Check facts, numbers and code before relying on them</li><li>It can't open private sites or act outside this app on its own</li></ul></div><div class="row" style="margin-top:8px"><button class="btn2" data-close>Close</button><button class="btn2" id="cps">System status</button></div>`);$('#cps').onclick=()=>{$('#dlg').close();statusDialog()}};
+/* --- onboarding card in empty chat + tour --- */
+const MODEHELP={eco:['Eco','Fast and cheapest. Quick questions.'],balanced:['Balanced','Good everyday default.'],thorough:['Thorough','Biggest model. Hard problems and builds.']};
+window.tourHtml=()=>`<div class="onb" id="onb"><div class="onbh"><b>Quick start</b><button class="btn2" id="onbx" aria-label="Dismiss">✕</button></div><div class="onbs"><div><span>1</span><b>Pick a mode</b><div class="onbm">${['eco','balanced','thorough'].map(k=>`<button class="btn2${S.mode===k&&!S.auto?' on':''}" data-onbm="${k}" title="${MODEHELP[k][1]}">${MODEHELP[k][0]}</button>`).join('')}</div><small>Higher mode = bigger model.</small></div><div><span>2</span><b>Ask or build</b><small>Try: <a href="#" data-onbp="Explain how a mutex works in 3 sentences">explain something</a> · <a href="#" data-onbp="Build a single html pomodoro timer app with dark UI">build an app</a></small></div><div><span>3</span><b>Add extras</b><small>Turn on Web for live answers, or attach an image for Alpha to read. <a href="#" data-onbs="1">Check status</a> · <a href="#" data-onbc="1">What can it do?</a></small></div></div></div>`;
+document.addEventListener('click',e=>{const t=e.target;let x;
+ if(x=t.closest&&t.closest('[data-onbm]')){e.preventDefault();S.auto=false;store.set('aix3_auto',false);S.mode=x.dataset.onbm;store.set('aix3_mode',S.mode);updateMeter();document.querySelectorAll('[data-onbm]').forEach(b=>b.classList.toggle('on',b===x));toast('Mode: '+MODEHELP[S.mode][0]);return}
+ if(x=t.closest&&t.closest('[data-onbp]')){e.preventDefault();$('#q').value=x.dataset.onbp;$('#q').focus();return}
+ if(t.closest&&t.closest('[data-onbs]')){e.preventDefault();statusDialog();return}
+ if(t.closest&&t.closest('[data-onbc]')){e.preventDefault();capsDialog();return}
+ if(t.closest&&t.closest('#onbx')){store.set('aix3_onb',1);const o=$('#onb');if(o)o.remove();return}
+ if(t.closest&&t.closest('#rcptb')){receiptsDialog();return}
+ if(t.closest&&t.closest('#stundo')){studioUndo();return}
+ if(t.closest&&t.closest('#stfixerr')){studioFixErrors();return}});
+/* --- receipts --- */
+window.receiptsDialog=async function(){const tok=store.get(TOKK,'');if(!tok||!BACKEND())return toast('Sign in to see receipts');const d=dialog('<h3 style="margin:0 0 8px">Receipts</h3><div id="rcbody" class="mono" style="font-size:12px">Loading…</div><div class="row" style="margin-top:12px"><button class="btn2" data-close>Close</button></div>');
+ try{const j=await fetch(BACKEND()+'/api/account/receipts',{headers:{authorization:'Bearer '+tok}}).then(r=>r.json());const R=j.receipts||[];$('#rcbody').innerHTML=R.length?`<table class="t mono" style="width:100%"><tr><th align="left">DATE</th><th align="left">USD</th><th align="left">CREDITS</th><th></th></tr>${R.map((r,i)=>`<tr><td>${esc(String(r.at).slice(0,10))}</td><td>$${(+r.usd).toFixed(2)}</td><td>${r.credits}</td><td><button class="btn2" data-rc="${i}">Download</button></td></tr>`).join('')}</table>`:'No purchases yet.';
+  d.onclick=ev=>{const b=ev.target.closest('[data-rc]');if(!b)return;const r=R[+b.dataset.rc];const h=`<!doctype html><meta charset="utf-8"><title>AIX Alpha receipt</title><body style="font-family:system-ui;max-width:480px;margin:40px auto"><h2>AIX Alpha receipt</h2><p>Account: ${esc(j.email)}<br>Date: ${esc(String(r.at).slice(0,10))}<br>Amount: $${(+r.usd).toFixed(2)}<br>Credits: ${r.credits}<br>Reference: ${esc(r.ref||'')}</p><p style="color:#666">Credits are non-refundable once used.</p></body>`;const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([h],{type:'text/html'}));a.download='aix-receipt-'+String(r.at).slice(0,10)+'.html';a.click()}}catch{$('#rcbody').textContent='Could not load receipts. Try again later.'}};
+/* --- studio quick fixes --- */
+window.studioUndo=function(){try{if(!LASTCH)return toast('Nothing to undo yet');const f=proj().files.find(x=>x.name===LASTCH.name);if(!f)return toast('Nothing to undo');const prev=LASTCH.prev;setContent(f,prev,'Undo');renderStudio();toast('Last change undone (kept in History)')}catch{toast('Nothing to undo')}};
+window.studioFixErrors=function(){try{const errs=LOGS.filter(l=>l.level==='error').slice(-5).map(l=>String(l.args)).join('\n');if(!errs)return toast('No errors in the preview');P.active=activeFile().name;editWithAI('Fix these runtime errors with the smallest possible edit:\n'+errs)}catch(e){toast('Could not start the fix')}};
+function studioBtns(){const a=$('#pjall');if(!a||$('#stundo'))return;a.insertAdjacentHTML('afterend','<button class="btn2" id="stundo" title="Undo the last change">↶ Undo</button><button class="btn2" id="stfixerr" title="Send the preview errors to Alpha to fix">🩹 Fix errors</button>')}
+/* --- toolbar buttons: retry higher / continue --- */
+window.uxBtns=function(i){const c=curChat(),m=c&&c.msgs[i];if(!m)return '';let o='';const mode=(m.t&&m.t.mode)||S.mode;if(mode!=='thorough'&&!m.err)o+=`<button data-mt="up" data-i="${i}" data-sc="chat" title="Retry in a higher mode (bigger model)" aria-label="Retry in a higher mode">⬆</button>`;if(m.partial)o+=`<button data-mt="cont" data-i="${i}" data-sc="chat" title="Continue" aria-label="Continue">…</button>`;return o};
+window.uxRetryUp=function(i,list){const order=['eco','balanced','thorough'];const cur=(list[i]&&list[i].t&&list[i].t.mode)||S.mode;const nx=order[Math.min(2,Math.max(0,order.indexOf(cur))+1)];if(cur===nx||cur==='thorough'){toast('Already on the highest mode');return}S.auto=false;store.set('aix3_auto',false);S.mode=nx;store.set('aix3_mode',nx);updateMeter();let j=i-1;while(j>=0&&list[j].role!=='user')j--;if(j>=0){const q=list[j].content;list.splice(j);save();toast('Retrying in '+nx.toUpperCase());send(q,{nocache:true})}};
+window.uxContinue=function(){send('Continue exactly where you left off. Do not repeat what you already wrote.',{nocache:true})};
+/* --- stop button --- */
+window.uxBusy=function(v){const b=$('#send');if(!b)return;b.disabled=false;b.classList.toggle('stopb',!!v);b.textContent=v?'■ STOP':'SEND ➤'};
+document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('#send');if(b&&S.busy){e.preventDefault();e.stopImmediatePropagation();try{abort&&abort.abort()}catch{}toast('Stopping…')}},true);
+/* --- decorate after render --- */
+function decorate(){try{const e0=$('#msgs .empty');if(e0&&!store.get('aix3_onb',0)&&!$('#onb'))e0.insertAdjacentHTML('beforeend',tourHtml());const c=curChat();if(!c)return;document.querySelectorAll('#msgs .msg[data-m]').forEach(el=>{const m=c.msgs[+el.dataset.m];if(!m||m.role!=='assistant'||!m.mdl||el.dataset.lb)return;const w=el.querySelector('.who');if(w){el.dataset.lb=1;w.insertAdjacentHTML('beforeend',`<span class="chip" title="Mode and model that answered">${esc(String(m.mdl.m).toUpperCase())}${m.mdl.n?' · '+esc(m.mdl.n):''}</span>`)}});}catch{}}
+const _rm=window.renderMsgs;window.renderMsgs=function(){const r=_rm.apply(this,arguments);decorate();return r};
+const _um=window.updateMeter;window.updateMeter=function(){const r=_um.apply(this,arguments);try{const s=$('#sub');if(s){const c=curChat(),cr=c?(c.cost||0)/CR:0;let t=s.textContent;const add='This chat ≈ '+f1(cr)+' credits'+(BACKEND()&&BAL!=null?' · balance '+(+BAL).toFixed(1)+(BAL<10?' ⚠ low':''):'')+(S.web?' · web search ≈ 7 credits':'');s.textContent=add+(t?' · '+t:'');s.style.color=(BACKEND()&&BAL!=null&&BAL<10)?'#fbbf24':''}}catch{}return r};
+const _rc=window.renderCredits;window.renderCredits=function(){const r=_rc.apply(this,arguments);try{const v=$('#vcredits');if(v&&!v.querySelector('#rcptb')&&BACKEND())v.insertAdjacentHTML('beforeend','<div style="padding:0 16px 16px"><button class="btn2" id="rcptb">🧾 Receipts</button></div>')}catch{}return r};
+const _rs=window.renderStudio;if(_rs)window.renderStudio=function(){const r=_rs.apply(this,arguments);studioBtns();return r};
+setTimeout(studioBtns,300);
+/* --- palette extras (recent chats, status, tour) --- */
+window.EXTRA_ACT=()=>[['System status','',()=>statusDialog()],['What can Alpha do?','',()=>capsDialog()],['Quick start tour','',()=>{store.set('aix3_onb',0);setView('chat');if(curChat()&&curChat().msgs.length){$('#newc').click()}else{renderMsgs()}}],['Receipts','',()=>receiptsDialog()],['Undo last Studio change','',()=>studioUndo()],['Fix Studio errors','',()=>studioFixErrors()]];
+/* --- mobile: edge swipe between chats + haptic on send --- */
+let tx=0,ty=0,tt=0,ok=false;
+document.addEventListener('touchstart',e=>{const t=e.touches[0];tx=t.clientX;ty=t.clientY;tt=Date.now();ok=(tx<28||tx>innerWidth-28)&&!!e.target.closest('#chat,#msgs')},{passive:true});
+document.addEventListener('touchend',e=>{if(!ok)return;ok=false;const t=e.changedTouches[0],dx=t.clientX-tx,dy=t.clientY-ty;if(Math.abs(dx)<90||Math.abs(dy)>50||Date.now()-tt>600)return;const i=S.chats.findIndex(c=>c.id===S.cur),n=dx<0?i+1:i-1;if(i<0||n<0||n>=S.chats.length)return;S.cur=S.chats[n].id;save();renderThreads();renderMsgs();toast(S.chats[n].title||'Chat');try{navigator.vibrate&&navigator.vibrate(8)}catch{}},{passive:true});
+document.addEventListener('submit',e=>{if(e.target&&e.target.id==='f'){try{navigator.vibrate&&navigator.vibrate(10)}catch{}}},true);
+setTimeout(()=>pollNode(),800);setInterval(()=>{if(!document.hidden)pollNode()},45000);decorate();setTimeout(decorate,600);
 })();
 $('#bnav').onclick=e=>{const b=e.target.closest('button');if(!b)return;if(b.id==='bmore')openMore();else setView(b.dataset.v)};
 $('#scrim').onclick=()=>{$('#side').classList.remove('open');$('#scrim').classList.remove('on')};

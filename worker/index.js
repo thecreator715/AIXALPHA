@@ -1502,7 +1502,8 @@ export default {
       await env.DB.prepare("INSERT INTO settings(k,v) VALUES('node',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(JSON.stringify({ url, token: String(b.token), model: String(b.model), models: (b.models && typeof b.models === 'object') ? Object.fromEntries(['eco', 'balanced', 'thorough'].filter((k) => b.models[k]).map((k) => [k, String(b.models[k]).slice(0, 80)])) : {}, at: Date.now() })).run();
       return json(env, req, { ok: true });
     }
-    if (path === '/api/node/status') { const n = await nodeGet(env); return json(env, req, { online: !!n, model: n ? n.model : '' }); }
+    if (path === '/api/node/status') { const n = await nodeGet(env); return json(env, req, { online: !!n, model: n ? n.model : '', models: n && n.models ? n.models : {}, ageSec: n ? Math.round((Date.now() - n.at) / 1000) : null }); }
+    if (path === '/api/account/receipts') { const a = await authed(env, req); if (!a) return json(env, req, { error: 'sign in' }, 401); const rs = await env.DB.prepare('SELECT at, usd, credits, ref FROM purchases WHERE email=? ORDER BY id DESC LIMIT 50').bind(a.email).all(); return json(env, req, { email: a.email, receipts: (rs.results || []).map((r) => ({ at: r.at, usd: r.usd, credits: r.credits, ref: String(r.ref || '').slice(-10) })) }); }
     if (path === '/api/node/charge' && req.method === 'POST') {          // replies served by a local Ollama node: same credit scaling as the cloud model
       const a = await authed(env, req); if (!a) return json(env, req, { error: 'sign in' }, 401);
       const b = await req.json().catch(() => ({})); const inp = Math.min(400000, Math.max(0, Number(b.input) || 0)), out = Math.min(200000, Math.max(0, Number(b.output) || 0));
