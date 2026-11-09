@@ -42,8 +42,8 @@ async function authed0(env, req) {
   if (u) { if (AUTH_C.size > 200) AUTH_C.clear(); AUTH_C.set(th, { t: Date.now(), a: u }); A2W.set(req, u.email); }
   return u;
 }
-const SEARCH_USD = 0.0049;          // billed to users at ~3.5 credits per search (Anthropic's own cost is $0.01)
-const SEARCH_MIN_CREDITS = 4;       // a user needs at least this balance to allow live search on a reply
+const SEARCH_USD = 0.0014;          // billed to users at ~1 credit per search
+const SEARCH_MIN_CREDITS = 2;       // a user needs at least this balance to allow live search on a reply
 const costUsd = (u) => (u.searches || 0) * SEARCH_USD + ((u.input || 0) * PRICE.in + (u.output || 0) * PRICE.out + (u.cacheRead || 0) * PRICE.cr + (u.cacheWrite || 0) * PRICE.cw) / 1e6;
 
 // Atomic in SQL: no lost updates when requests overlap.

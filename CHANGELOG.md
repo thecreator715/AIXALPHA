@@ -137,3 +137,6 @@
 ## App - unique designs + fewer truncated builds
 - Builds no longer default to dark glass. A design-direction system (18 styles: Editorial Paper, Neo-Brutalist, Phosphor Terminal, Swiss Grid, Warm Organic, Fintech Clean, Synthwave, Clay Pastel, Industrial HUD, Luxury Noir, Notebook, Bauhaus, Clinical, Sport, Cinema, Topographic, Glass Aurora, Clean Product) is picked from the prompt's theme, plus a random layout archetype, signature features and an advanced-GUI checklist. Follow-up edits keep the existing look; say "different style" to reroll.
 - Build output cap raised to 8192 tokens (balanced 6144) so first drafts are not cut off mid-file.
+
+## Web search now 1 credit
+- Live web search billed at about 1 credit per search (was 3.5); minimum balance to allow it is 2. App labels and worker (live-patched) updated.
