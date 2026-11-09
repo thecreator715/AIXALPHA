@@ -79,7 +79,7 @@ say "Checking the model: $MODEL"
 if [ "$GB" -ge 32 ]; then for Q4 in qwen4:27b qwen4.0:27b; do "$OLLAMA" show "$Q4" >/dev/null 2>&1 || "$OLLAMA" pull "$Q4" >/dev/null 2>&1; "$OLLAMA" show "$Q4" >/dev/null 2>&1 && { echo "  Qwen 4 found: $Q4 -> ALPHA XQ"; MODEL="$Q4"; break; }; done; fi
 "$OLLAMA" pull "$MODEL" || { FB="${MODEL%%:*}"; [ "$FB" = "qwen3.8" ] && { echo "  $MODEL needs a newer Ollama - falling back to qwen3.6:27b (update Ollama to get 3.8)"; MODEL="qwen3.6:27b"; "$OLLAMA" pull "$MODEL"; } ; } || echo "Model download failed - the panel is already running; the node will retry when you start it again."
 # bigger context window (Ollama defaults to a small one, which cuts off long chats and web results)
-CTX=8192; [ "$GB" -ge 24 ] && CTX=16384; [ "$GB" -ge 32 ] && CTX=32768   # room for 16K-token replies plus the prompt
+CTX=8192; [ "$GB" -ge 24 ] && CTX=16384; [ "$GB" -ge 32 ] && CTX=65536   # room for 16K-token replies plus the prompt
 mkdir -p runtime; printf 'FROM %s\nPARAMETER num_ctx %s\n' "$MODEL" "$CTX" > runtime/Modelfile.aix
 BASE="$MODEL"; AIXM="aix-alpha-$(printf %s "$MODEL" | tr ':/' '--')"
 "$OLLAMA" create "$AIXM" -f runtime/Modelfile.aix >/dev/null 2>&1 && MODEL="$AIXM" && echo "  Using $AIXM (context $CTX)"

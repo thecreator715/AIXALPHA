@@ -1,5 +1,8 @@
 # AIX Alpha v3.0 - revision 8
 
+## ALPHA XQ upgrade (node v26)
+- XQ output limit doubled to 49,152 tokens, thinking mode on for XQ only, temperature 0.5, plan/compare/re-check method in its prompt. Node context window raised to 65,536 on 32 GB+ Macs to fit it.
+
 ## ALPHA XQ (node v25)
 - New persona **ALPHA XQ**: always runs on the Thorough tier (newest, largest model on the node). Qwen 4 is not released yet, so today it runs qwen3.8:27b; `Start AIX Node.command` auto-pulls `qwen4:27b` on 32 GB+ Macs as soon as Ollama has it. Panel lists qwen4:27b as a one-click download.
 

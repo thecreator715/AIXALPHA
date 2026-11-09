@@ -191,12 +191,13 @@ async function edgeSearch1(q) {
   return { via, errors: res.length ? undefined : errs, results: res.slice(0, 7) };
 }
 async function viaNode1(env, req, a, nd, prompt, stream, maxTok, mode, images) {
-  mode = modeOf(mode); maxTok = /BUILD RULE/.test(String(prompt)) ? Math.max(Math.min(maxTok || 4096, 24576), mode === 'eco' ? 18432 : 24576) : Math.min(maxTok || 4096, MODE_TOK[mode] || 4096);
+  mode = modeOf(mode); const XQ = /ALPHA XQ, the flagship AIX engine/.test(String(prompt));
+  maxTok = XQ ? Math.min(Math.max(maxTok || 4096, 49152), 49152) : /BUILD RULE/.test(String(prompt)) ? Math.max(Math.min(maxTok || 4096, 24576), mode === 'eco' ? 18432 : 24576) : Math.min(maxTok || 4096, MODE_TOK[mode] || 4096);
   const imgs = (Array.isArray(images) ? images : []).slice(0, 4).filter((i) => i && i.data);
   const userContent = imgs.length ? [{ type: 'text', text: prompt }, ...imgs.map((i) => ({ type: 'image_url', image_url: { url: 'data:' + String(i.media_type || 'image/png') + ';base64,' + i.data } }))] : prompt;
   let up;
   try {
-    up = await nfetch(nd.url.replace(/\/+$/, '') + '/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + nd.token, 'x-aix-user': a.email, 'x-aix-src': 'chat' }, body: JSON.stringify({ model: tierModel(nd, mode), stream, max_tokens: maxTok, temperature: mode === 'eco' ? 0.3 : mode === 'turbo' ? 0.2 : 0.6, messages: [{ role: 'system', content: MODE_SYS[mode] }, { role: 'user', content: userContent }] }) }, stream ? 110000 : 120000);
+    up = await nfetch(nd.url.replace(/\/+$/, '') + '/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + nd.token, 'x-aix-user': a.email, 'x-aix-src': 'chat', ...(XQ ? { 'x-aix-think': '1' } : {}) }, body: JSON.stringify({ model: tierModel(nd, mode), stream, max_tokens: maxTok, temperature: XQ ? 0.5 : mode === 'eco' ? 0.3 : mode === 'turbo' ? 0.2 : 0.6, messages: [{ role: 'system', content: MODE_SYS[mode] }, { role: 'user', content: userContent }] }) }, stream ? 110000 : 120000);
   } catch { return null; }
   if (!up.ok) return null;
   const inTok = Math.ceil(prompt.length / 4);
