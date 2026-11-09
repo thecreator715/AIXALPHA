@@ -1,5 +1,8 @@
 # AIX Alpha v3.0 - revision 8
 
+## ALPHA XQ (node v25)
+- New persona **ALPHA XQ**: always runs on the Thorough tier (newest, largest model on the node). Qwen 4 is not released yet, so today it runs qwen3.8:27b; `Start AIX Node.command` auto-pulls `qwen4:27b` on 32 GB+ Macs as soon as Ollama has it. Panel lists qwen4:27b as a one-click download.
+
 ## Node-only Alpha
 - Alpha no longer calls Anthropic. Every chat, task and API call runs on the Mac node; if it is offline users get a clear "node offline" message (HTTP 503) and are not charged. Toggle `nodeOnly` in Settings (default on). Added `AIX MASTER.command` for a clean one-click restart.
 

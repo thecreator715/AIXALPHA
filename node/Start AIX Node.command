@@ -75,6 +75,8 @@ NODE_PID=$!
 sleep 1
 [ "$HEADLESS" = "1" ] || open "http://localhost:$PORT/?v=$(date +%s)" 2>/dev/null || true
 say "Checking the model: $MODEL"
+# ALPHA XQ: use Qwen 4 the moment Ollama ships it (32GB+ Macs), otherwise stay on the current best
+if [ "$GB" -ge 32 ]; then for Q4 in qwen4:27b qwen4.0:27b; do "$OLLAMA" show "$Q4" >/dev/null 2>&1 || "$OLLAMA" pull "$Q4" >/dev/null 2>&1; "$OLLAMA" show "$Q4" >/dev/null 2>&1 && { echo "  Qwen 4 found: $Q4 -> ALPHA XQ"; MODEL="$Q4"; break; }; done; fi
 "$OLLAMA" pull "$MODEL" || { FB="${MODEL%%:*}"; [ "$FB" = "qwen3.8" ] && { echo "  $MODEL needs a newer Ollama - falling back to qwen3.6:27b (update Ollama to get 3.8)"; MODEL="qwen3.6:27b"; "$OLLAMA" pull "$MODEL"; } ; } || echo "Model download failed - the panel is already running; the node will retry when you start it again."
 # bigger context window (Ollama defaults to a small one, which cuts off long chats and web results)
 CTX=8192; [ "$GB" -ge 24 ] && CTX=16384; [ "$GB" -ge 32 ] && CTX=32768   # room for 16K-token replies plus the prompt
