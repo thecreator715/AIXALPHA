@@ -115,3 +115,5 @@
 - Worker: node reply wait raised (stream 20s->110s) so a cold/loading 14B model no longer shows "node offline"; node v20 keeps the main model warm.
 
 - App: split view panels same height and each scrolls; live preview no longer reloads while the pointer is over it (2.5 s refresh); chat no longer force-scrolls to the bottom while a reply streams if you scrolled up.
+
+- App: built-in tested game cartridges (Atari-style Asteroids, Breakout, Snake, Pong, Space Invaders, Tetris) load instantly with 0 tokens when asked by name; any other game uses a dedicated game rulebook (loop, states, input, WebAudio, particles, high score, era-accurate art) instead of the glass-app template; "finish/continue/fix it" follow-ups edit the last build; game code is checked for a loop and input. Sources in games/.
