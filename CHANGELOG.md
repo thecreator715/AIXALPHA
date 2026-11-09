@@ -146,3 +146,8 @@
 
 ## Output limits x3 (node v24)
 - Max reply tokens: Eco 4,500, Balanced 12,288, Thorough/Turbo 24,576; builds up to 24,576 (Eco 18,432). Mac context window 32K on 32 GB+ Macs with flash attention and a q8 KV cache so long replies fit.
+
+## Smarter build loop
+- Free local auto-fix: a file that is complete but missing a closing fence or </body></html> is repaired locally with no model call.
+- If a continue pass restarts the whole file, the new full version replaces the cut-off one instead of being appended (no duplicated code).
+- Every reply that needed repairs ends with a "What the loop did" note in plain language.
