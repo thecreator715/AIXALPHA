@@ -117,3 +117,7 @@
 - App: split view panels same height and each scrolls; live preview no longer reloads while the pointer is over it (2.5 s refresh); chat no longer force-scrolls to the bottom while a reply streams if you scrolled up.
 
 - App: built-in tested game cartridges (Atari-style Asteroids, Breakout, Snake, Pong, Space Invaders, Tetris) load instantly with 0 tokens when asked by name; any other game uses a dedicated game rulebook (loop, states, input, WebAudio, particles, high score, era-accurate art) instead of the glass-app template; "finish/continue/fix it" follow-ups edit the last build; game code is checked for a loop and input. Sources in games/.
+
+## Node v21 - Qwen 3.x
+- Models moved from Qwen 2.5 to Qwen 3.x: 32 GB Macs run qwen3.8:27b (thorough), qwen3.5:9b (balanced), qwen3.5:4b (eco); vision is qwen3-vl:8b. Falls back to qwen3.6:27b when Ollama is too old for 3.8.
+- Thinking is off by default on Qwen3 models (fast chat); opt in with header x-aix-think or AIX_THINK=1.

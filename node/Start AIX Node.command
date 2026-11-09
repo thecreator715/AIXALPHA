@@ -34,10 +34,11 @@ fi
 # 3) pick a model for this Mac's memory (override: MODEL=name ./Start...)
 GB=$(( $(sysctl -n hw.memsize) / 1073741824 ))
 if [ -z "$MODEL" ]; then
-  if   [ "$GB" -ge 64 ]; then MODEL="qwen2.5-coder:32b"
-  elif [ "$GB" -ge 32 ]; then MODEL="qwen2.5-coder:14b"
-  elif [ "$GB" -ge 16 ]; then MODEL="qwen2.5-coder:7b"
-  else MODEL="llama3.2:3b"; fi
+  # Qwen 3.x line (newest that Ollama ships). 27B dense is ~18 GB and fits a 32 GB Mac's GPU budget.
+  if   [ "$GB" -ge 64 ]; then MODEL="qwen3.8:27b-q8_0"
+  elif [ "$GB" -ge 32 ]; then MODEL="qwen3.8:27b"
+  elif [ "$GB" -ge 16 ]; then MODEL="qwen3.5:9b"
+  else MODEL="qwen3.5:4b"; fi
 fi
 say "This Mac has ${GB} GB. Using model: $MODEL (first download can take a while)"
 
@@ -74,17 +75,17 @@ NODE_PID=$!
 sleep 1
 [ "$HEADLESS" = "1" ] || open "http://localhost:$PORT/?v=$(date +%s)" 2>/dev/null || true
 say "Checking the model: $MODEL"
-"$OLLAMA" pull "$MODEL" || echo "Model download failed - the panel is already running; the node will retry when you start it again."
+"$OLLAMA" pull "$MODEL" || { FB="${MODEL%%:*}"; [ "$FB" = "qwen3.8" ] && { echo "  $MODEL needs a newer Ollama - falling back to qwen3.6:27b (update Ollama to get 3.8)"; MODEL="qwen3.6:27b"; "$OLLAMA" pull "$MODEL"; } ; } || echo "Model download failed - the panel is already running; the node will retry when you start it again."
 # bigger context window (Ollama defaults to a small one, which cuts off long chats and web results)
 CTX=8192; [ "$GB" -ge 24 ] && CTX=16384
 mkdir -p runtime; printf 'FROM %s\nPARAMETER num_ctx %s\n' "$MODEL" "$CTX" > runtime/Modelfile.aix
 BASE="$MODEL"; AIXM="aix-alpha-$(printf %s "$MODEL" | tr ':/' '--')"
 "$OLLAMA" create "$AIXM" -f runtime/Modelfile.aix >/dev/null 2>&1 && MODEL="$AIXM" && echo "  Using $AIXM (context $CTX)"
 # model ladder: higher mode = bigger model (eco < balanced < thorough/auto/turbo). Smaller tiers download in the background.
-if   [ "$GB" -ge 64 ]; then T_BAL="qwen2.5-coder:14b"; T_ECO="qwen2.5-coder:7b"
-elif [ "$GB" -ge 32 ]; then T_BAL="qwen2.5-coder:7b";  T_ECO="llama3.2:3b"
-elif [ "$GB" -ge 16 ]; then T_BAL="llama3.2:3b";       T_ECO="llama3.2:1b"
-else T_BAL="llama3.2:3b"; T_ECO="llama3.2:1b"; fi
+if   [ "$GB" -ge 64 ]; then T_BAL="qwen3.6:35b-a3b"; T_ECO="qwen3.5:9b"
+elif [ "$GB" -ge 32 ]; then T_BAL="qwen3.5:9b";      T_ECO="qwen3.5:4b"
+elif [ "$GB" -ge 16 ]; then T_BAL="qwen3.5:4b";      T_ECO="qwen3.5:2b"
+else T_BAL="qwen3.5:2b"; T_ECO="qwen3.5:0.8b"; fi
 ECOV="$MODEL"; BALV="$MODEL"
 write_tiers() { printf '{"eco":"%s","balanced":"%s","thorough":"%s"}' "$ECOV" "$BALV" "$MODEL" > .aix-models; }
 mk_tier() { # base -> prints usable model name
@@ -101,7 +102,7 @@ write_tiers
 # vision model so Alpha can read images (needs 16 GB or more; skipped on smaller Macs)
 rm -f .aix-vision-model
 if [ "$GB" -ge 16 ]; then
-  VIS="qwen2.5vl:7b"
+  VIS="qwen3-vl:8b"; [ "$GB" -lt 24 ] && VIS="qwen3-vl:4b"
   if "$OLLAMA" pull "$VIS" >/dev/null 2>&1; then
     printf 'FROM %s\nPARAMETER num_ctx 8192\n' "$VIS" > runtime/Modelfile.vis
     "$OLLAMA" create aix-alpha-vision -f runtime/Modelfile.vis >/dev/null 2>&1 && VIS=aix-alpha-vision
