@@ -141,7 +141,7 @@ const MODE_SYS = {
   thorough: 'You are AIX Alpha. Think the problem through step by step before answering. Be complete, structured and precise, check facts, edge cases and any code or math, and state uncertainty honestly.',
   turbo: 'You are AIX Alpha in build mode. Produce complete, working code and files the first time, with no placeholders and no commentary beyond what is needed.',
 };
-const MODE_TOK = { eco: 1500, balanced: 4096, thorough: 8192, turbo: 8192 };
+const MODE_TOK = { eco: 1500, balanced: 6144, thorough: 8192, turbo: 8192 };
 const modeOf = (m) => (m === 'auto' ? 'thorough' : (MODE_SYS[m] ? m : 'balanced'));
 function tierModel(nd, mode) { const m = nd.models || {}; const k = mode === 'eco' ? 'eco' : mode === 'balanced' ? 'balanced' : 'thorough'; return m[k] || nd.model; }
 // ---- live web search from the cloud edge (works even when the Mac node's own search is blocked or old) ----

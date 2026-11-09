@@ -133,3 +133,7 @@
 ## Node v23 + worker - search that actually finds things
 - Search (worker and node) now cleans the query itself, so it works even from an old cached app; model/version questions also fan out into per-version searches; results that do not match the query are dropped instead of being fed to the model.
 - Prompt tells the model unrecognised versions may be newer than its training. Worker live-patched.
+
+## App - unique designs + fewer truncated builds
+- Builds no longer default to dark glass. A design-direction system (18 styles: Editorial Paper, Neo-Brutalist, Phosphor Terminal, Swiss Grid, Warm Organic, Fintech Clean, Synthwave, Clay Pastel, Industrial HUD, Luxury Noir, Notebook, Bauhaus, Clinical, Sport, Cinema, Topographic, Glass Aurora, Clean Product) is picked from the prompt's theme, plus a random layout archetype, signature features and an advanced-GUI checklist. Follow-up edits keep the existing look; say "different style" to reroll.
+- Build output cap raised to 8192 tokens (balanced 6144) so first drafts are not cut off mid-file.
