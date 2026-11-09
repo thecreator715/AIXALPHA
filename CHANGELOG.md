@@ -111,3 +111,5 @@
 - App: "rebuild / remake / recreate / clone" and classic game names (asteroids, pacman, tetris…) now route to the app/game builder instead of a chat refusal.
 
 - App: on desktop (>=1100px) a reply with code shows the live preview on the right, side by side with the code (sticky, full height).
+
+- Worker: node reply wait raised (stream 20s->110s) so a cold/loading 14B model no longer shows "node offline"; node v20 keeps the main model warm.
