@@ -165,3 +165,7 @@
 ## Cleaner replies
 - Removed the "+1" badge on the WEB button and the generic suggestion buttons under replies.
 - Replies must be specific to the exact message (no generic advice or boilerplate) and follow the selected depth mode (Eco / Balanced / Thorough) and any enabled mode (WEB, EVAL, TARGET, ASK, COUNCIL). Tier style hints now allow headings, bullets and bold.
+
+## Premium website builds
+- New website design rulebook for every website / landing page request (and TARGET = Website): theme-derived colour palette, mesh-gradient background with glowing orbs, glass cards and floating glass nav, gradient text and glowing buttons, distinctive Google font pairs, bullet-proof centering and responsive type (clamp), SVG illustrations, scroll reveal, FAQ, CTA band and footer. Prevents the logo/headline overlap and oversized mobile text.
+- Follow-up edits keep the existing design.
