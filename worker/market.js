@@ -1,5 +1,5 @@
 // AIX Alpha marketplace: cloud-saved apps, publishing, buying with credits, ratings, sales tracking.
-const FEE = 0.15, MAXSIZE = 400000, MAXAPPS = 50, MAXPRICE = 10000;
+const FEE = 0, MAXSIZE = 400000, MAXAPPS = 50, MAXPRICE = 10000;
 const uname = async (env, email) => { const r = await env.DB.prepare('SELECT username FROM users WHERE email=?').bind(email).first(); return (r && r.username) || email.split('@')[0]; };
 const meta = (r, extra) => ({ id: r.id, title: r.title, description: r.description, icon: r.icon, price: r.price, status: r.status, size: r.size, downloads: r.downloads, sales: r.sales, earned: +Number(r.earned).toFixed(2), rating: r.rating_n ? +(r.rating_sum / r.rating_n).toFixed(1) : null, ratings: r.rating_n, updated: r.updated, seller: r.seller || undefined, ...extra });
 export async function market(env, req, path, ctx) {
@@ -72,18 +72,24 @@ export async function market(env, req, path, ctx) {
     if (!r) return json(env, req, { error: 'This app is no longer listed.' }, 404);
     if (r.owner === a.email) return json(env, req, { error: 'This is your own app.' }, 400);
     const ins = await env.DB.prepare('INSERT OR IGNORE INTO app_sales(app_id,buyer,seller,price,fee,at) VALUES(?,?,?,?,?,?)').bind(r.id, a.email, r.owner, 0, 0, now).run();
-    if (!ins.meta.changes) return json(env, req, { ok: true, already: true, credits: +Number(a.credits).toFixed(2) });
+    if (!ins.meta.changes) { const fr = await env.DB.prepare('SELECT credits FROM users WHERE email=?').bind(a.email).first(); return json(env, req, { ok: true, already: true, credits: +Number(fr ? fr.credits : a.credits).toFixed(2) }); }
     let price = r.price, fee = 0, left = a.credits;
     if (isOwner) price = 0;
     if (price > 0) {
       const d = await env.DB.prepare('UPDATE users SET credits=credits-? WHERE email=? AND credits>=?').bind(price, a.email, price).run();
       if (!d.meta.changes) { await env.DB.prepare('DELETE FROM app_sales WHERE app_id=? AND buyer=?').bind(r.id, a.email).run(); return json(env, req, { error: `Not enough credits. This app costs ${price}.`, need: price }, 402); }
       fee = +(price * FEE).toFixed(2);
-      await env.DB.batch([
-        env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(price - fee, r.owner),
-        env.DB.prepare('UPDATE app_sales SET price=?, fee=? WHERE app_id=? AND buyer=?').bind(price, fee, r.id, a.email),
-      ]);
-      left = a.credits - price;
+      try {   // pay the seller and record the sale together; if that fails, give the buyer the credits back
+        await env.DB.batch([
+          env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(price - fee, r.owner),
+          env.DB.prepare('UPDATE app_sales SET price=?, fee=? WHERE app_id=? AND buyer=?').bind(price, fee, r.id, a.email),
+        ]);
+      } catch (e) {
+        await env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(price, a.email).run();
+        await env.DB.prepare('DELETE FROM app_sales WHERE app_id=? AND buyer=?').bind(r.id, a.email).run();
+        return json(env, req, { error: 'The payment could not be completed. You were not charged.' }, 500);
+      }
+      { const fr = await env.DB.prepare('SELECT credits FROM users WHERE email=?').bind(a.email).first(); left = fr ? fr.credits : a.credits - price; }
     }
     await env.DB.prepare('UPDATE apps SET sales=sales+1, downloads=downloads+1, earned=earned+? WHERE id=?').bind(price - fee, r.id).run();
     return json(env, req, { ok: true, paid: price, credits: +Number(left).toFixed(2), files: JSON.parse(r.files || '[]'), app: meta(r) });

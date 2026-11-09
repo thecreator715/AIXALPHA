@@ -151,3 +151,8 @@
 - Free local auto-fix: a file that is complete but missing a closing fence or </body></html> is repaired locally with no model call.
 - If a continue pass restarts the whole file, the new full version replaces the cut-off one instead of being appended (no duplicated code).
 - Every reply that needed repairs ends with a "What the loop did" note in plain language.
+
+## Marketplace - sellers keep 100%
+- Platform fee set to 0: when user B buys user A's app/game/site, A receives the full price in credits, instantly, in the backend (no manual token sending). The app shows "Sellers keep 100%".
+- Payment is now safe: if crediting the seller fails, the buyer is refunded automatically. Buy responses show the true balance.
+- Tested end to end on the live cloud with temporary accounts (buyer 5 -> 4, seller 0 -> 1, repeat click did not charge twice); test data removed. Worker live-patched.
