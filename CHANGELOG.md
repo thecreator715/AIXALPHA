@@ -125,3 +125,7 @@
 ## Node v22 - control panel
 - New "Model tiers & settings" panel: pick eco/balanced/thorough/vision models from installed ones, thinking-mode toggle, one-click downloads of recommended Qwen 3.x models. Saves live; cloud picks up changes within seconds.
 - New /admin/tiers endpoint.
+
+## App fix - web search queries
+- Chat messages are cleaned into a proper search query (filler like "can you explain ... in list comparisons" removed, model names get context), fixing results about the word "can" / Canva.
+- Prompt tells the model that unfamiliar version numbers may be newer than its training and must not be called non-existent.
