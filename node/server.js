@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path'), crypto = require('crypto');
-const VERSION = 22;   // bump on every release: nodes auto-update when GitHub has a higher number
+const VERSION = 23;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -53,7 +53,33 @@ async function searchRSS(url, n) {
 }
 const searchBing = (q) => searchRSS('https://www.bing.com/search?format=rss&q=' + encodeURIComponent(q));
 const searchNews = (q) => searchRSS('https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q=' + encodeURIComponent(q));
-async function webSearch(q) {
+const _STOPW = new Set('the and for with that this from into about what are you can could would please explain tell show give list compare comparison comparisons detail details between versus how why when who which does did have has was were will its their them then than also use using models model llm'.split(' '));
+function cleanQ(q) {
+  q = String(q || '').replace(/\s+/g, ' ').trim();
+  let c = q.replace(/^(?:(?:hey|hi|please|ok|okay|so)[, ]+)?(?:can|could|would|will) (?:you|u) (?:please )?/i, '').replace(/^(?:please )?(?:explain|tell me|show me|give me|list|describe|compare|summari[sz]e|what(?:'s| is| are)|who(?:'s| is)|how (?:do|does|is|are))\b ?(?:me )?(?:about |the |a |an )?/i, '').replace(/\b(?:in|as|with) (?:a )?(?:list )?(?:table|bullet(?:s| points)?|comparisons?|detail|simple terms)\b/ig, '').replace(/\b(?:in|as|with) (?:a )?list\b/ig, '').replace(/\b(?:for me|please|thanks|thank you)\b/ig, '').replace(/[?!.]+$/, '').replace(/\s+/g, ' ').trim();
+  if (c.length < 4) c = q;
+  if (/\bqwen\b/i.test(c) && !/alibaba/i.test(c)) c += ' Alibaba Qwen LLM';
+  return c.slice(0, 180);
+}
+function planQ(q) {
+  const c = cleanQ(q), out = [c], br = /\b(qwen|llama|gemma|mistral|deepseek|phi|gemini|gpt|claude|grok)\b/i.exec(c);
+  if (br) { const nums = [...new Set(c.match(/\b\d+(?:\.\d+)?\b/g) || [])].slice(0, 3); for (const n of nums) out.push(br[1] + ' ' + n + ' model release features'); }
+  return out.slice(0, 4);
+}
+function relevantTo(r, q) {
+  const toks = (String(q).toLowerCase().match(/[a-z0-9.]{3,}/g) || []).filter((t) => !_STOPW.has(t));
+  if (!toks.length) return true;
+  const txt = ((r.title || '') + ' ' + (r.snippet || '')).toLowerCase(), hits = toks.filter((t) => txt.includes(t)).length;
+  return hits >= 2 || hits / toks.length >= 0.4;
+}
+async function multiSearch(q, one) {   // one(query) -> {via,errors,results}; runs the planned queries, drops irrelevant hits, merges
+  const plan = planQ(q), seen = new Set(), results = []; let via = '', errors = [];
+  const outs = await Promise.all(plan.map((p) => one(p).then((r) => ({ p, r })).catch((e) => ({ p, r: { errors: [String(e && e.message || e)], results: [] } }))));
+  for (const { p, r } of outs) { if (r.via && !via.includes(r.via)) via = via ? via + '+' + r.via : r.via; if (r.errors) errors = errors.concat(r.errors); for (const x of r.results || []) { if (!x.url || seen.has(x.url) || !relevantTo(x, p)) continue; seen.add(x.url); results.push(x); } }
+  return { query: plan[0], via, errors: results.length ? undefined : errors.concat(['no relevant results']), results: results.slice(0, 7) };
+}
+async function webSearch(q) { return multiSearch(q, webSearch1); }
+async function webSearch1(q) {
   let res = [], via = '', errs = [];
   const fresh = /\b(news|today|latest|current|now|score|price|weather|recent|this week|tonight|yesterday|202\d)\b/i.test(q);
   const engines = [['bing', searchBing], ['duckduckgo', searchDDG], ['mojeek', searchMojeek], ['google-news', searchNews]];

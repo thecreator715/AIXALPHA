@@ -129,3 +129,7 @@
 ## App fix - web search queries
 - Chat messages are cleaned into a proper search query (filler like "can you explain ... in list comparisons" removed, model names get context), fixing results about the word "can" / Canva.
 - Prompt tells the model that unfamiliar version numbers may be newer than its training and must not be called non-existent.
+
+## Node v23 + worker - search that actually finds things
+- Search (worker and node) now cleans the query itself, so it works even from an old cached app; model/version questions also fan out into per-version searches; results that do not match the query are dropped instead of being fed to the model.
+- Prompt tells the model unrecognised versions may be newer than its training. Worker live-patched.
