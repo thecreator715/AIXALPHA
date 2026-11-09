@@ -172,14 +172,16 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
 #blog{max-height:190px;overflow:auto;border-top:1px solid var(--b);background:#050507;padding:6px 10px;font-size:11px}.bl{margin-bottom:8px}.blh{display:flex;gap:8px;align-items:center;margin-bottom:2px}.bs{display:flex;gap:8px;padding:1px 0;color:#d4d4d8}.bs span{color:#52525b;min-width:34px}.bs.ok{color:#6ee7b7}.bs.bad{color:var(--r)}.bs.warn{color:var(--a)}.bl.done .blh b{color:var(--t)}
 .inpvf{width:100%;height:340px;border:1px solid var(--b);border-radius:10px;background:#fff}.bdet{border:1px solid var(--b);background:var(--p);border-radius:10px;padding:8px 10px;margin:6px 0;font-size:11px;color:#d4d4d8;line-height:1.6}.bdet b{color:var(--ac);letter-spacing:.1em}
 
-/* split view on desktop: the code/answer on the left, the live preview on the right, in the same reply */
+/* split view on desktop: code left, live preview right, same height, each scrolls on its own */
 @media(min-width:1100px){
-.msg:has(>.inpv),.msg:has(>#livepvw iframe){display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);grid-auto-flow:row dense;column-gap:16px;align-items:start}
+.msg:has(>.inpv),.msg:has(>#livepvw iframe){display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-auto-flow:row dense;column-gap:16px;align-items:start}
 .msg:has(>.inpv)>*,.msg:has(>#livepvw iframe)>*{grid-column:1/-1}
 .msg:has(>.inpv)>.body,.msg:has(>#livepvw iframe)>.body{grid-column:1}
-.msg:has(>.inpv)>.inpv,.msg:has(>#livepvw iframe)>#livepvw{grid-column:2;position:sticky;top:8px;align-self:start}
-.msg:has(>.inpv)>.inpv .inpvf,.msg:has(>#livepvw iframe)>#livepvw .inpvf{height:calc(100vh - 150px);min-height:420px}
-.msg:has(>.inpv)>.body .cb pre,.msg:has(>#livepvw iframe)>.body .cb pre{max-height:calc(100vh - 220px);overflow:auto}
+.msg:has(>.inpv)>.inpv,.msg:has(>#livepvw iframe)>#livepvw{grid-column:2;position:sticky;top:8px;align-self:start;height:calc(100vh - 150px);display:flex;flex-direction:column;min-height:420px}
+.msg:has(>.inpv)>.inpv .inpvf,.msg:has(>#livepvw iframe)>#livepvw .inpvf{flex:1;height:auto;min-height:0;overflow:auto}
+.msg:has(>.inpv)>.body .cb,.msg:has(>#livepvw iframe)>.body .cb{height:calc(100vh - 150px);min-height:420px;margin-top:0;display:flex;flex-direction:column;position:sticky;top:8px}
+.msg:has(>.inpv)>.body .cb pre,.msg:has(>#livepvw iframe)>.body .cb pre{flex:1;min-height:0;max-height:none;overflow:auto}
+}
 }
 .difx{max-height:56vh;overflow:auto;background:#000;border:1px solid var(--b);border-radius:8px;font-size:11.5px}.df{display:flex;gap:8px;padding:0 8px;white-space:pre-wrap;word-break:break-all}.df span{width:10px;color:#52525b}.df.\+{background:#06281d;color:#6ee7b7}.df.-{background:#2b0d10;color:#fca5a5}
 /* full-width pages */
@@ -1278,6 +1280,7 @@ function md(src){
   return h.replace(/\u0000(\d+)\u0000/g,(m,i)=>{const b=blocks[i];if(b.l==='chart'){const ch=chartHtml(b.c);if(ch)return ch}const web=/^(html|htm)(:|$)/i.test(b.l)||/^\s*<!doctype html|^\s*<html/i.test(b.c);
     return `<div class="cb"><div class="cbh mono"><span>${esc(b.l)}</span><span class="grow"></span>${web?`<button data-act="canvas" data-i="${i}">◧ Open in canvas</button><button data-act="prev" data-i="${i}">▶ Quick preview</button><button data-act="studiopv" data-i="${i}">Preview in Studio</button>`:(/^(py|python|js|javascript|node|ts|typescript|java|go|rust|rs|c|cpp|cs|csharp|php|rb|ruby|sh|bash|swift|kt|kotlin)$/i.test(b.l)?`<button data-act="gui" data-i="${i}">▶ Build GUI preview</button>`:'')}<button data-act="studio" data-i="${i}">Edit in Studio</button><button data-act="copy" data-i="${i}">Copy</button></div><pre class="mono" data-code="${i}">${esc(b.c)}</pre></div>`});
 }
+let AUTOSC=true,PVHOV=false;try{document.addEventListener('DOMContentLoaded',()=>{const c=document.querySelector('#chat');if(c)c.addEventListener('scroll',()=>{AUTOSC=c.scrollHeight-c.scrollTop-c.clientHeight<140},{passive:true})})}catch{}
 function PVHTML(m,i){const c=curChat();if(!c||m.role!=='assistant'||m.err)return'';const h=extractHtml(m.content);if(!h)return'';let last=-1;c.msgs.forEach((x,j)=>{if(x.role==='assistant'&&!x.err&&extractHtml(x.content))last=j});
   if(i===last||i===SHOWPV)return `<div class="inpv"><div class="row sb mono" style="font-size:10px;color:var(--ac);margin:8px 0 2px"><b>LIVE PREVIEW</b><span><button class="btn2" data-pvpv="${i}">Preview in Studio</button> <button class="btn2" data-pvopen="${i}">Edit in Studio</button></span></div><iframe data-inpv="${i}" sandbox="allow-scripts" class="inpvf"></iframe></div>`;
   return `<button class="btn2" data-pvshow="${i}" style="margin-top:6px">▶ Show preview</button>`}
@@ -1470,15 +1473,15 @@ async function send(text,opts={}){
   if(askOn()&&!opts.clarified&&!imgs.length&&!S.vid&&!S.img&&askWorth(text)&&!VIDINTENT.test(text)&&!IMGINTENT.test(text)){const lv=document.createElement('div');lv.className='msg';lv.id='asklive';lv.innerHTML='<div class="who mono"><b>AIX ALPHA</b><span class="typing"><i></i><i></i><i></i></span></div><div class="mono" style="font-size:11px;color:var(--m)">checking whether I need any details…</div>';$('#msgs').appendChild(lv);$('#chat').scrollTop=1e9;const qs=await clarify(c.msgs.slice(0,-1),text);const lvn=$('#asklive');if(lvn)lvn.remove();if(qs){c.msgs.push({role:'assistant',content:'Questions: '+qs.map(q=>q.q).join(' | '),ask:{qs,ans:{},other:{},orig:text},ts:Date.now()});S.busy=false;uxBusy(false);save();renderThreads();renderMsgs();return}}
   if(S.vid||VIDINTENT.test(text)){const blob=imgs[0]||null;try{await chatVideo(c,text,blob)}finally{S.busy=false;uxBusy(false);save();renderThreads();renderMsgs()}return}
   if((S.img||IMGINTENT.test(text))&&!imgs.length){try{await chatFlux(c,text)}finally{S.busy=false;uxBusy(false);save();renderThreads();renderMsgs()}return}
-  const live=document.createElement('div');live.className='msg';live.innerHTML='<div class="who mono"><b>AIX ALPHA</b><span class="typing"><i></i><i></i><i></i></span></div><div id="livelog"></div><div class="mono" id="livestat" style="font-size:11px;color:var(--m)"></div><div class="body" id="live"></div><div id="livepvw"></div>';$('#msgs').appendChild(live);$('#chat').scrollTop=1e9;
+  AUTOSC=true;PVHOV=false;const live=document.createElement('div');live.className='msg';live.innerHTML='<div class="who mono"><b>AIX ALPHA</b><span class="typing"><i></i><i></i><i></i></span></div><div id="livelog"></div><div class="mono" id="livestat" style="font-size:11px;color:var(--m)"></div><div class="body" id="live"></div><div id="livepvw"></div>';$('#msgs').appendChild(live);$('#chat').scrollTop=1e9;
   try{
     abort=new AbortController();window.__lastTx='';let lastPv=0;const stp=[];const t0=Date.now();let ttl='Planning the answer',openL=true;
     const drawL=()=>{const el=$('#livelog');if(!el)return;const was=el.querySelector('.act2');if(was&&was.classList.contains('closed'))openL=false;el.innerHTML=liveActHtml(stp,ttl,Math.round((Date.now()-t0)/1000));const a2=el.querySelector('.act2');if(!openL)a2.classList.add('closed');el.querySelector('.ah').onclick=()=>{a2.classList.toggle('closed');openL=!a2.classList.contains('closed')};$('#chat').scrollTop=1e9};
     const tick=setInterval(()=>{const e=$('#livelog .el');if(e)e.textContent=Math.round((Date.now()-t0)/1000)+'s'},1000);
     const onStep=(x,k,ms)=>{stp.push([x,k,ms]);ttl=friendly(x);drawL();if($('#prog').classList.contains('on'))renderProg()};drawL();
     const onText=x=>{const tx=x.text||'';window.__lastTx=tx;const e=$('#live');if(e)e.innerHTML=md(tx);const st=$('#livestat');if(st)st.textContent=`writing… ${tx.length.toLocaleString()} chars · ${(tx.match(/\n/g)||[]).length+1} lines`;if(ttl.indexOf('Writing')!==0||tx.length%7===0){ttl='Writing… '+tx.length.toLocaleString()+' chars';const h2=$('#livelog .ah span:nth-child(2)');if(h2)h2.textContent=ttl}
-      const h=extractHtml(tx);if(h&&Date.now()-lastPv>800){lastPv=Date.now();let fr=$('#livepv');if(!fr){$('#livepvw').innerHTML='<div class="mono" style="font-size:10px;color:var(--ac);margin:6px 0 2px">LIVE PREVIEW — updates as it is written</div><iframe id="livepv" sandbox="allow-scripts" class="inpvf"></iframe>';fr=$('#livepv')}fr.srcdoc=h}
-      $('#chat').scrollTop=1e9};
+      const h=extractHtml(tx);if(h&&Date.now()-lastPv>2500&&!PVHOV){lastPv=Date.now();let fr=$('#livepv');if(!fr){$('#livepvw').innerHTML='<div class="mono" style="font-size:10px;color:var(--ac);margin:6px 0 2px">LIVE PREVIEW — updates as it is written</div><iframe id="livepv" sandbox="allow-scripts" class="inpvf"></iframe>';fr=$('#livepv');const w=$('#livepvw');w.onmouseenter=()=>{PVHOV=true};w.onmouseleave=()=>{PVHOV=false}}fr.srcdoc=h}
+      if(AUTOSC)$('#chat').scrollTop=1e9};
     const rc=ctxPlus(recallCtx(text,c.id),c);const um=c.msgs[c.msgs.length-1];const orig=um.content;if(rc.n){um.content=orig+rc.ctx;onStep('Recalled '+rc.n+' snippet'+(rc.n>1?'s':'')+' from other chats: '+rc.titles.join(', '),'ok')}let r;try{r=await runLoop(c,rc.n?orig+rc.ctx:text,onText,onStep)}finally{um.content=orig}clearInterval(tick);const dur=Date.now()-t0;
     c.msgs.push({role:'assistant',content:r.text,t:r.t,pid:S.pid,mdl:uxModel(r.t),mesh:r.mesh,ui:r.ui,doc:r.doc,ts:Date.now(),dur});try{if(extractHtml(r.text))importChat(r.text,{silent:true,label:'Synced from chat'})}catch(e){}
     c.cost=(c.cost||0)+r.t.cost;c.calls=(c.calls||0)+r.t.calls;S.ledger[today()]=daySpend()+r.t.cost;trackUsage(r.t);if((V.auto||S.talk)&&!r.t.blocked)speak(r.text);
