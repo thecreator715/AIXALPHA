@@ -109,3 +109,5 @@
 - App: web search is always allowed on the Mac node / own-key path (no AIX credits are used there); Mac search path adds the "ignore earlier refusals" reminder and a "Searching the web…" toast.
 
 - App: "rebuild / remake / recreate / clone" and classic game names (asteroids, pacman, tetris…) now route to the app/game builder instead of a chat refusal.
+
+- App: on desktop (>=1100px) a reply with code shows the live preview on the right, side by side with the code (sticky, full height).
