@@ -161,3 +161,7 @@
 - New markdown renderer for every reply: headings in different sizes (# to ####), bold, italic, bold-italic, inline code, links and auto-links, bullet and numbered lists with nesting and task boxes, block quotes, horizontal rules and tables.
 - Claude-style typography for assistant messages (larger line height, accent-coloured bullets and numbers, table and quote styling).
 - The chat rule now asks the model to structure longer answers with headings, bold lead-ins, bullets, steps and tables; short replies stay short.
+
+## Cleaner replies
+- Removed the "+1" badge on the WEB button and the generic suggestion buttons under replies.
+- Replies must be specific to the exact message (no generic advice or boilerplate) and follow the selected depth mode (Eco / Balanced / Thorough) and any enabled mode (WEB, EVAL, TARGET, ASK, COUNCIL). Tier style hints now allow headings, bullets and bold.
