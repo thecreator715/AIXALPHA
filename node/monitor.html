@@ -64,7 +64,8 @@ table tr:hover td{background:rgba(255,255,255,.03)}th{border-bottom:1px solid va
  <div class="panel"><h2 class="mono">LOADED IN MEMORY</h2><div id="loaded"></div><h2 class="mono" style="margin-top:14px">MACHINE</h2><div id="mach"></div></div>
  <div class="panel"><h2 class="mono">TRY THE MODEL</h2><div class="row"><select id="cm" class="grow"></select></div><div class="row" style="margin-top:8px"><input id="cp" class="grow" placeholder="Say something…" value="Write a haiku about Mac Studios."><button id="cs">Send</button></div><div id="chatout" class="mono"></div></div>
 </div>
-<div class="panel"><h2 class="mono">MODELS</h2><div class="row" style="margin-bottom:10px"><input id="pn" class="grow" placeholder="Model to download, e.g. qwen2.5-coder:32b or llama3.3:70b"><button id="pb">Download</button></div><div id="pg"></div><div id="models" style="overflow:auto"></div></div>
+<div class="panel"><h2 class="mono">MODEL TIERS &amp; SETTINGS</h2><div id="tiers" class="mono" style="font-size:12px">Loading...</div><div class="row" style="margin:10px 0 4px;flex-wrap:wrap;gap:6px"><span class="mono" style="opacity:.7;width:100%">Recommended (Qwen 3.x) - click to download:</span><button class="rec" data-m="qwen3.8:27b">qwen3.8:27b</button><button class="rec" data-m="qwen3.6:35b-a3b">qwen3.6:35b-a3b</button><button class="rec" data-m="qwen3-coder:30b">qwen3-coder:30b</button><button class="rec" data-m="qwen3.5:9b">qwen3.5:9b</button><button class="rec" data-m="qwen3.5:4b">qwen3.5:4b</button><button class="rec" data-m="qwen3-vl:8b">qwen3-vl:8b</button></div></div>
+<div class="panel"><h2 class="mono">MODELS</h2><div class="row" style="margin-bottom:10px"><input id="pn" class="grow" placeholder="Model to download, e.g. qwen3.8:27b or llama3.3:70b"><button id="pb">Download</button></div><div id="pg"></div><div id="models" style="overflow:auto"></div></div>
 <div class="panel"><h2 class="mono">RECENT REQUESTS</h2><div id="log" style="overflow:auto"></div></div>
 </div></div></div>
 <script>
@@ -475,4 +476,12 @@ let P2=null;
 window.do2fa=function(){if(P2)return P2;P2=(async()=>{const c=prompt('Enter the 6-digit code from your authenticator app');if(!c)throw new Error('Code needed');const r=await fetch(URL0.replace(/\/+$/,'')+'/admin/2fa/login',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+TOK},body:JSON.stringify({code:c})});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Wrong code');TOK=j.session;LS('aixnode_tok',TOK);return true})().finally(()=>setTimeout(()=>{P2=null},500));return P2};
 })();
 
+
+async function loadTiers(){try{const j=await api('/admin/tiers');const names=((await api('/admin/models')).models||[]).map(x=>x.name);const opt=(v)=>'<option value="">(none)</option>'+names.map(n=>`<option ${n===v?'selected':''}>${E(n)}</option>`).join('')+(v&&!names.includes(v)?`<option selected>${E(v)}</option>`:'');
+const row=(k,l)=>`<div class="row" style="margin:4px 0"><span style="width:90px">${l}</span><select id="t_${k}" class="grow">${opt(j.tiers[k])}</select></div>`;
+$('#tiers').innerHTML=row('eco','Eco')+row('balanced','Balanced')+row('thorough','Thorough')+row('vision','Vision').replace('opt','')+`<div class="row" style="margin:8px 0"><label><input type="checkbox" id="t_think" ${j.think?'checked':''}> Thinking mode (slower, deeper answers on Qwen3)</label></div><button id="t_save">Save tiers</button> <span id="t_msg" style="opacity:.7"></span>`;
+$('#t_vision').innerHTML=opt(j.vision);
+$('#t_save').onclick=async()=>{const b={eco:$('#t_eco').value,balanced:$('#t_balanced').value,thorough:$('#t_thorough').value,vision:$('#t_vision').value,think:$('#t_think').checked};await api('/admin/tiers',{method:'POST',body:JSON.stringify(b)});$('#t_msg').textContent='Saved - cloud updates within seconds';setTimeout(()=>{$('#t_msg').textContent=''},4000)};
+document.querySelectorAll('.rec').forEach(b=>b.onclick=()=>{$('#pn').value=b.dataset.m;$('#pb').click()})}catch(e){$('#tiers').textContent='Could not load tiers: '+e.message}}
+loadTiers();setInterval(loadTiers,60000);
 </script></body></html>

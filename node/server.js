@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path'), crypto = require('crypto');
-const VERSION = 21;   // bump on every release: nodes auto-update when GitHub has a higher number
+const VERSION = 22;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -65,6 +65,7 @@ async function webSearch(q) {
   return { query: q, via, errors: res.length ? undefined : errs, results: res.slice(0, 6) };
 }
 async function body(req) { const c = []; for await (const x of req) c.push(x); return Buffer.concat(c); }
+const thinkOn = () => { try { return fs.readFileSync(path.join(__dirname, '.aix-think'), 'utf8').trim() === '1'; } catch { return process.env.AIX_THINK === '1'; } };
 async function oll(p, opt) { const r = await fetch(OLLAMA + p, opt); return r; }
 
 let VIS_C = { t: 0, m: '' }, VIS_PULL = 0;
@@ -302,8 +303,15 @@ const SRV = http.createServer(async (req, res) => {
       res.writeHead(up.status, { ...h, 'content-type': 'application/x-ndjson' }); for await (const c of up.body) res.write(c); return res.end();
     }
     if (u === '/admin/unload' && req.method === 'POST') { const b = JSON.parse((await body(req)).toString() || '{}'); await oll('/api/generate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: b.name, keep_alive: 0 }) }); return J(res, h, 200, { ok: true }); }
+    if (u === '/admin/tiers') {
+      const tf = path.join(__dirname, '.aix-models');
+      if (req.method === 'POST') { const b = JSON.parse((await body(req)).toString() || '{}'); const o = {}; for (const k of ['eco', 'balanced', 'thorough']) if (b[k]) o[k] = String(b[k]).slice(0, 120); fs.writeFileSync(tf, JSON.stringify(o)); if (b.vision !== undefined) { const vf = path.join(__dirname, '.aix-vision-model'); if (b.vision) fs.writeFileSync(vf, String(b.vision)); VIS_C.t = 0; } if (b.think !== undefined) fs.writeFileSync(path.join(__dirname, '.aix-think'), b.think ? '1' : '0'); try { global.__REGNOW && global.__REGNOW(); } catch {} }
+      let t = {}; try { t = JSON.parse(fs.readFileSync(tf, 'utf8')); } catch {}
+      let vis = ''; try { vis = fs.readFileSync(path.join(__dirname, '.aix-vision-model'), 'utf8').trim(); } catch {}
+      return J(res, h, 200, { tiers: { eco: t.eco || '', balanced: t.balanced || '', thorough: t.thorough || process.env.MODEL || '' }, vision: process.env.VISION_MODEL || vis, think: thinkOn(), main: process.env.MODEL || '', note: 'Tier changes are sent to the cloud within seconds. Vision changes apply immediately.' });
+    }
     if (u.startsWith('/v1/') || u === '/api/tags') {
-      const t0 = Date.now(); let buf = req.method === 'GET' ? undefined : await body(req); let model = '', pj = null; try { pj = JSON.parse(buf.toString()); if (/qwen3|qwq|deepseek-r1/i.test(pj.model || '') && pj.reasoning_effort == null && pj.think == null && process.env.AIX_THINK !== '1' && !req.headers['x-aix-think']) { pj.reasoning_effort = 'none'; pj.think = false; buf = Buffer.from(JSON.stringify(pj)); } model = pj.model || ''; const hasImg = pj.messages && pj.messages.some((m) => Array.isArray(m.content) && m.content.some((c) => c && c.type === 'image_url')); if (hasImg) { const vm = await visionModel(); if (vm) { pj.model = model = vm; } else { pj.messages = pj.messages.map((m) => (Array.isArray(m.content) ? { ...m, content: m.content.filter((c) => !(c && c.type === 'image_url')).map((c) => (c.type === 'text' ? c.text : '')).join('\n') + '\n\n(Note for the assistant: the user attached an image but the vision model is still being installed on this host. Tell them in one short sentence that image reading will be ready in a few minutes and to try again, then answer any text part of the question.)' } : m)); } buf = Buffer.from(JSON.stringify(pj)); } } catch (e) { console.log('vision route error', e && e.message); }
+      const t0 = Date.now(); let buf = req.method === 'GET' ? undefined : await body(req); let model = '', pj = null; try { pj = JSON.parse(buf.toString()); if (/qwen3|qwq|deepseek-r1/i.test(pj.model || '') && pj.reasoning_effort == null && pj.think == null && !thinkOn() && !req.headers['x-aix-think']) { pj.reasoning_effort = 'none'; pj.think = false; buf = Buffer.from(JSON.stringify(pj)); } model = pj.model || ''; const hasImg = pj.messages && pj.messages.some((m) => Array.isArray(m.content) && m.content.some((c) => c && c.type === 'image_url')); if (hasImg) { const vm = await visionModel(); if (vm) { pj.model = model = vm; } else { pj.messages = pj.messages.map((m) => (Array.isArray(m.content) ? { ...m, content: m.content.filter((c) => !(c && c.type === 'image_url')).map((c) => (c.type === 'text' ? c.text : '')).join('\n') + '\n\n(Note for the assistant: the user attached an image but the vision model is still being installed on this host. Tell them in one short sentence that image reading will be ready in a few minutes and to try again, then answer any text part of the question.)' } : m)); } buf = Buffer.from(JSON.stringify(pj)); } } catch (e) { console.log('vision route error', e && e.message); }
       ST.req++; const ent = { t: new Date().toISOString(), path: u, model, status: 0, ms: 0, tokens: 0, user: clip(req.headers['x-aix-user'], 80), src: clip(req.headers['x-aix-src'], 12) || 'direct', stream: !!(pj && pj.stream), msgs: pj && pj.messages ? pj.messages.length : 0, inChars: pj && pj.messages ? JSON.stringify(pj.messages).length : 0, prompt: LOGTEXT && pj ? clip(lastUser(pj.messages), 400) : '', reply: '' };
       let acc = '', rawAcc = '';
       const up = await fetch(OLLAMA + req.url, { method: req.method, headers: { 'content-type': 'application/json' }, body: buf });
@@ -336,6 +344,6 @@ const SRV = http.createServer(async (req, res) => {
     const NODEPRIO = () => { try { return Math.max(1, Math.min(9, parseInt(fs.readFileSync(path.join(__dirname, '.aix-priority'), 'utf8')) || +process.env.NODE_PRIO || 1)); } catch { return Math.max(1, Math.min(9, +process.env.NODE_PRIO || 1)); } };
     const readTiers = () => { try { const t = JSON.parse(fs.readFileSync(path.join(__dirname, '.aix-models'), 'utf8')); const o = {}; for (const k of ['eco', 'balanced', 'thorough']) if (t[k]) o[k] = String(t[k]); return o; } catch { return {}; } };
     const reg = async () => { const PU = getPU(); if (!PU) return; try { const r = await fetch(W.replace(/\/+$/, '') + '/api/node/register', { method: 'POST', headers: { 'content-type': 'application/json', 'x-node-secret': NS }, body: JSON.stringify({ url: PU, token: TOKEN, model: MODEL, models: readTiers(), id: NODEID(), prio: NODEPRIO(), name: os.hostname().slice(0, 30) }) }); REGOK = r.ok; LASTREG = Date.now(); if (!reg.ok) { reg.ok = r.ok; console.log(r.ok ? 'Registered with AIX cloud: apps will use this node automatically' : 'Register failed: HTTP ' + r.status); } } catch (e) { console.log('Register error: ' + e.message); reg.ok = false; } };
-    REGNOW = reg; reg(); setInterval(reg, 60000);
+    REGNOW = reg; global.__REGNOW = reg; reg(); setInterval(reg, 60000);
   } else console.log('Cloud registration off (needs AIX_WORKER, AIX_NODE_SECRET, MODEL)');
 });

@@ -121,3 +121,7 @@
 ## Node v21 - Qwen 3.x
 - Models moved from Qwen 2.5 to Qwen 3.x: 32 GB Macs run qwen3.8:27b (thorough), qwen3.5:9b (balanced), qwen3.5:4b (eco); vision is qwen3-vl:8b. Falls back to qwen3.6:27b when Ollama is too old for 3.8.
 - Thinking is off by default on Qwen3 models (fast chat); opt in with header x-aix-think or AIX_THINK=1.
+
+## Node v22 - control panel
+- New "Model tiers & settings" panel: pick eco/balanced/thorough/vision models from installed ones, thinking-mode toggle, one-click downloads of recommended Qwen 3.x models. Saves live; cloud picks up changes within seconds.
+- New /admin/tiers endpoint.
