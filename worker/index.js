@@ -141,7 +141,7 @@ const MODE_SYS = {
   thorough: 'You are AIX Alpha. Think the problem through step by step before answering. Be complete, structured and precise, check facts, edge cases and any code or math, and state uncertainty honestly.',
   turbo: 'You are AIX Alpha in build mode. Produce complete, working code and files the first time, with no placeholders and no commentary beyond what is needed.',
 };
-const MODE_TOK = { eco: 1500, balanced: 6144, thorough: 8192, turbo: 8192 };
+const MODE_TOK = { eco: 4500, balanced: 12288, thorough: 24576, turbo: 24576 };
 const modeOf = (m) => (m === 'auto' ? 'thorough' : (MODE_SYS[m] ? m : 'balanced'));
 function tierModel(nd, mode) { const m = nd.models || {}; const k = mode === 'eco' ? 'eco' : mode === 'balanced' ? 'balanced' : 'thorough'; return m[k] || nd.model; }
 // ---- live web search from the cloud edge (works even when the Mac node's own search is blocked or old) ----
@@ -191,7 +191,7 @@ async function edgeSearch1(q) {
   return { via, errors: res.length ? undefined : errs, results: res.slice(0, 7) };
 }
 async function viaNode1(env, req, a, nd, prompt, stream, maxTok, mode, images) {
-  mode = modeOf(mode); maxTok = /BUILD RULE/.test(String(prompt)) ? Math.max(Math.min(maxTok || 4096, 8192), mode === 'eco' ? 6144 : 8192) : Math.min(maxTok || 4096, MODE_TOK[mode] || 4096);
+  mode = modeOf(mode); maxTok = /BUILD RULE/.test(String(prompt)) ? Math.max(Math.min(maxTok || 4096, 24576), mode === 'eco' ? 18432 : 24576) : Math.min(maxTok || 4096, MODE_TOK[mode] || 4096);
   const imgs = (Array.isArray(images) ? images : []).slice(0, 4).filter((i) => i && i.data);
   const userContent = imgs.length ? [{ type: 'text', text: prompt }, ...imgs.map((i) => ({ type: 'image_url', image_url: { url: 'data:' + String(i.media_type || 'image/png') + ';base64,' + i.data } }))] : prompt;
   let up;

@@ -143,3 +143,6 @@
 
 ## Worker - build replies never capped at 4096
 - The worker raises the output cap to 8192 (6144 in Eco) whenever the prompt carries the build rulebook, so older cached pages no longer get cut-off drafts. Live-patched.
+
+## Output limits x3 (node v24)
+- Max reply tokens: Eco 4,500, Balanced 12,288, Thorough/Turbo 24,576; builds up to 24,576 (Eco 18,432). Mac context window 32K on 32 GB+ Macs with flash attention and a q8 KV cache so long replies fit.

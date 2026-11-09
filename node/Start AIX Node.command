@@ -26,7 +26,7 @@ if [ -x /Applications/Ollama.app/Contents/Resources/ollama ]; then OLLAMA=/Appli
 # 2) start Ollama server if not running
 if ! curl -fs http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
   say "Starting Ollama"
-  OLLAMA_KEEP_ALIVE=30m nohup "$OLLAMA" serve >/tmp/aix-ollama.log 2>&1 &
+  OLLAMA_KEEP_ALIVE=30m OLLAMA_FLASH_ATTENTION=1 OLLAMA_KV_CACHE_TYPE=q8_0 nohup "$OLLAMA" serve >/tmp/aix-ollama.log 2>&1 &
   for i in $(seq 1 40); do curl -fs http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break; sleep 1; done
   curl -fs http://127.0.0.1:11434/api/tags >/dev/null 2>&1 || die "Ollama did not start (see /tmp/aix-ollama.log)"
 fi
@@ -77,7 +77,7 @@ sleep 1
 say "Checking the model: $MODEL"
 "$OLLAMA" pull "$MODEL" || { FB="${MODEL%%:*}"; [ "$FB" = "qwen3.8" ] && { echo "  $MODEL needs a newer Ollama - falling back to qwen3.6:27b (update Ollama to get 3.8)"; MODEL="qwen3.6:27b"; "$OLLAMA" pull "$MODEL"; } ; } || echo "Model download failed - the panel is already running; the node will retry when you start it again."
 # bigger context window (Ollama defaults to a small one, which cuts off long chats and web results)
-CTX=8192; [ "$GB" -ge 24 ] && CTX=16384
+CTX=8192; [ "$GB" -ge 24 ] && CTX=16384; [ "$GB" -ge 32 ] && CTX=32768   # room for 16K-token replies plus the prompt
 mkdir -p runtime; printf 'FROM %s\nPARAMETER num_ctx %s\n' "$MODEL" "$CTX" > runtime/Modelfile.aix
 BASE="$MODEL"; AIXM="aix-alpha-$(printf %s "$MODEL" | tr ':/' '--')"
 "$OLLAMA" create "$AIXM" -f runtime/Modelfile.aix >/dev/null 2>&1 && MODEL="$AIXM" && echo "  Using $AIXM (context $CTX)"
