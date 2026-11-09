@@ -1095,7 +1095,7 @@ function openKey(force){if(!force)return openAccount();
   $('#aclr').onclick=()=>{store.set(KEYK,'');if(sampleFn&&!window.claude)sampleFn=null;setStatus();d.close()};
 }
 function searchQuery(q){q=String(q||'').replace(/\s+/g,' ').trim();if(!q)return q;
-  let c=q.replace(/^(?:(?:hey|hi|please|ok|okay|so)[, ]+)?(?:can|could|would|will) (?:you|u) (?:please )?/i,'').replace(/^(?:please )?(?:explain|tell me|show me|give me|list|describe|compare|summari[sz]e|what(?:'s| is| are)|who(?:'s| is)|how (?:do|does|is|are))\b ?(?:me )?(?:about |the |a |an )?/i,'').replace(/\b(?:in|as|with) (?:a )?(?:list|table|bullet(?:s| points)?|comparisons?|detail|simple terms)\b/ig,'').replace(/\b(?:for me|please|thanks|thank you)\b/ig,'').replace(/[?!.]+$/,'').replace(/\s+/g,' ').trim();
+  let c=q.replace(/^(?:(?:hey|hi|please|ok|okay|so)[, ]+)?(?:can|could|would|will) (?:you|u) (?:please )?/i,'').replace(/^(?:please )?(?:explain|tell me|show me|give me|list|describe|compare|summari[sz]e|what(?:'s| is| are)|who(?:'s| is)|how (?:do|does|is|are))\b ?(?:me )?(?:about |the |a |an )?/i,'').replace(/\b(?:in|as|with) (?:a )?(?:list )?(?:table|bullet(?:s| points)?|comparisons?|detail|simple terms)\b/ig,'').replace(/\b(?:for me|please|thanks|thank you)\b/ig,'').replace(/[?!.]+$/,'').replace(/\s+/g,' ').trim();
   if(c.length<4)c=q;
   if(/\bqwen\b/i.test(c)&&!/alibaba|model|llm/i.test(c))c+=' Alibaba Qwen LLM models';
   else if(/\b(llama|gemma|mistral|deepseek|gpt-?\d|claude)\b/i.test(c)&&!/\b(model|llm)\b/i.test(c))c+=' AI model';
