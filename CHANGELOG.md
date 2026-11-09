@@ -140,3 +140,6 @@
 
 ## Web search now 1 credit
 - Live web search billed at about 1 credit per search (was 3.5); minimum balance to allow it is 2. App labels and worker (live-patched) updated.
+
+## Worker - build replies never capped at 4096
+- The worker raises the output cap to 8192 (6144 in Eco) whenever the prompt carries the build rulebook, so older cached pages no longer get cut-off drafts. Live-patched.

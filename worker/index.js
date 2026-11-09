@@ -191,7 +191,7 @@ async function edgeSearch1(q) {
   return { via, errors: res.length ? undefined : errs, results: res.slice(0, 7) };
 }
 async function viaNode1(env, req, a, nd, prompt, stream, maxTok, mode, images) {
-  mode = modeOf(mode); maxTok = Math.min(maxTok || 4096, MODE_TOK[mode] || 4096);
+  mode = modeOf(mode); maxTok = /BUILD RULE/.test(String(prompt)) ? Math.max(Math.min(maxTok || 4096, 8192), mode === 'eco' ? 6144 : 8192) : Math.min(maxTok || 4096, MODE_TOK[mode] || 4096);
   const imgs = (Array.isArray(images) ? images : []).slice(0, 4).filter((i) => i && i.data);
   const userContent = imgs.length ? [{ type: 'text', text: prompt }, ...imgs.map((i) => ({ type: 'image_url', image_url: { url: 'data:' + String(i.media_type || 'image/png') + ';base64,' + i.data } }))] : prompt;
   let up;
