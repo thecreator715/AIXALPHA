@@ -77,6 +77,24 @@ body{background:radial-gradient(1200px 600px at 70% -10%,#0d1f1a55,transparent),
 .fill{background:linear-gradient(90deg,var(--ac),#60a5fa)}.lp{color:var(--ac)}
 .tg.on{border-color:var(--ac)}
 #inp form{transition:box-shadow .2s,border-color .2s}#inp form:focus-within{border-color:var(--ac);box-shadow:0 0 0 3px #34d39922}
+/* ---- rich message formatting (Claude-style) ---- */
+.msg:not(.u) .body{font-size:15px;line-height:1.7;color:#e4e4e7}
+.body h2,.body h3,.body h4,.body h5{color:#fafafa;font-weight:700;letter-spacing:-.01em;line-height:1.25;margin:1.3em 0 .45em}
+.body h2{font-size:1.55em;font-weight:800;padding-bottom:.25em;border-bottom:1px solid var(--b)}
+.body h3{font-size:1.28em}.body h4{font-size:1.1em}.body h5{font-size:.82em;text-transform:uppercase;letter-spacing:.09em;color:var(--ac);font-family:ui-monospace,Menlo,monospace}
+.body>:first-child{margin-top:0}
+.body p{margin:.65em 0}
+.body b,.body strong{color:#fff;font-weight:700}.body i,.body em{color:#d4d4d8}
+.body ul,.body ol{margin:.55em 0;padding-left:1.35em}.body li{margin:.3em 0;padding-left:.2em}.body li>ul,.body li>ol{margin:.25em 0}
+.body ul>li::marker{color:var(--ac);font-size:1.1em}.body ol>li::marker{color:var(--ac);font-weight:700;font-family:ui-monospace,Menlo,monospace;font-size:.92em}
+.body ul ul>li::marker{color:#71717a}
+.body blockquote{margin:.8em 0;padding:.35em 1em;border-left:3px solid var(--ac);background:#ffffff08;border-radius:0 8px 8px 0;color:#d4d4d8}.body blockquote p{margin:.35em 0}
+.body hr{border:0;border-top:1px solid var(--b);margin:1.2em 0}
+.body a{color:var(--ac);text-decoration:underline;text-underline-offset:2px}.body a:hover{filter:brightness(1.25)}
+.body .tbw{overflow-x:auto;margin:.8em 0;border:1px solid var(--b);border-radius:10px}
+.body table{border-collapse:collapse;width:100%;font-size:.92em}.body th,.body td{padding:.5em .8em;text-align:left;border-bottom:1px solid var(--b);vertical-align:top}
+.body th{background:#ffffff0d;color:#fff;font-weight:700;white-space:nowrap}.body tbody tr:last-child td{border-bottom:0}.body tbody tr:hover td{background:#ffffff05}
+.body code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.88em;color:#a7f3d0}
 .msg.u .body{background:#0f0f12;border:1px solid var(--b);border-radius:12px;padding:8px 12px}
 .act{display:flex;gap:6px;margin-top:6px;opacity:.0;transition:opacity .15s}.msg:hover .act{opacity:1}.act button{background:#18181b;border:1px solid var(--b);border-radius:6px;padding:1px 8px;font-size:10px;color:var(--m)}.act button:hover{color:var(--t)}
 .flow{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:8px 0}
@@ -903,7 +921,7 @@ function intentOf(p,r){
   try{const ms=(typeof curChat==='function'&&curChat()?.msgs)||[];const la=[...ms].reverse().find(m=>m.role==='assistant');if(la&&/```/.test(la.content)&&t.split(/\s+/).length<=30&&/\b(change|make it|add|remove|update|fix|rename|use|instead|also|bigger|smaller|color|colour|again|try)\b/i.test(t))return'code'}catch{}
   return'chat';
 }
-const CHATRULE='INTENT: the user is chatting or asking a question, NOT asking for code or an app. Reply in plain, natural language (usually 1 to 6 sentences). Do not write code, scripts, HTML or file contents, and do not offer to build anything, unless the user asks for it.';
+const CHATRULE='INTENT: the user is chatting or asking a question, NOT asking for code or an app. Reply in clear, natural language and format answers like a polished assistant: short paragraphs; for anything longer than two or three sentences use a ## heading or bold lead-ins, bullet lists for options or features, numbered lists for steps, **bold** for key terms, tables for comparisons, and one-line takeaways. Small talk and simple questions stay short and unformatted. Do not write code, scripts, HTML or file contents, and do not offer to build anything, unless the user asks for it.';
 const todayLine=()=>'Today is '+new Date().toLocaleDateString([],{weekday:'long',year:'numeric',month:'long',day:'numeric'})+' ('+Intl.DateTimeFormat().resolvedOptions().timeZone+'). Use this when the user asks about the date or anything time-relative.';
 function route(p,att){const r=route0(p,att);
   {const gk=(!r.command&&!r.reflex&&!r.m3&&!S.noBuild)?gameKey(p):null;if(gk){r.reflex='__GAME__'+gk;r.tier='NANO'}}
@@ -1335,12 +1353,36 @@ function chartHtml(src){let j;try{j=JSON.parse(src)}catch{return''}const L=(j.la
     if(t==='bar'){const bw=Math.min(46,(W-2*P)/L.length*.62);V.forEach((v,i)=>{const cx=P+(i+.5)*((W-2*P)/L.length),y=Y(Math.max(v,0)),y0=Y(0);g+=`<rect x="${cx-bw/2}" y="${Math.min(y,y0)}" width="${bw}" height="${Math.abs(y0-y)||1}" rx="5" fill="#34d399"/><text x="${cx}" y="${Math.min(y,y0)-5}" fill="#a1a1aa" font-size="10" text-anchor="middle">${V[i]}</text><text x="${cx}" y="${H-12}" fill="#a1a1aa" font-size="10" text-anchor="middle">${esc(L[i]).slice(0,10)}</text>`})}
     else{g+=`<polyline fill="none" stroke="#34d399" stroke-width="2.5" points="${V.map((v,i)=>X(i)+','+Y(v)).join(' ')}"/>`+V.map((v,i)=>`<circle cx="${X(i)}" cy="${Y(v)}" r="3.5" fill="#34d399"/><text x="${X(i)}" y="${H-12}" fill="#a1a1aa" font-size="10" text-anchor="middle">${esc(L[i]).slice(0,10)}</text>`).join('')}}
   return `<div class="chartbox" style="margin:10px 0;padding:12px 14px;border:1px solid #27272a;border-radius:14px;background:#0d0d10"><div class="mono" style="font-size:11px;letter-spacing:.06em;color:#a1a1aa;margin-bottom:6px">${esc(j.title||'CHART')}</div><svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" role="img" aria-label="${esc(j.title||'chart')}">${g}</svg></div>`}
+function mdInline(s){return s.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>').replace(/`([^`\n]+)`/g,'<code>$1</code>').replace(/\*\*\*([^*\n]+)\*\*\*/g,'<b><i>$1</i></b>').replace(/\*\*([^*\n]+)\*\*/g,'<b>$1</b>').replace(/(^|[^*\w])\*([^*\s][^*\n]*?)\*(?![*\w])/g,'$1<i>$2</i>').replace(/(^|[^\w])_([^_\s][^_\n]*?)_(?![_\w])/g,'$1<i>$2</i>').replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g,'$1<a href="$2" target="_blank" rel="noopener">$2</a>')}
+function mdBlocks(t){
+  const L=t.split('\n'),out=[];let i=0;const isSp=s=>/^\s*(#{1,6}\s|(?:[-*+•]|\d+[.)])\s|&gt;|\u0000\d+\u0000\s*$|(?:-{3,}|\*{3,}|_{3,})\s*$)/.test(s)||/^\s*\|.*\|\s*$/.test(s);
+  while(i<L.length){const ln=L[i];
+    if(!ln.trim()){i++;continue}
+    let m=/^\s*\u0000(\d+)\u0000\s*$/.exec(ln);if(m){out.push(ln.trim());i++;continue}
+    if(m=/^\s*(#{1,6})\s+(.*?)\s*#*\s*$/.exec(ln)){const lv=Math.min(m[1].length,4)+1;out.push(`<h${lv}>${mdInline(m[2])}</h${lv}>`);i++;continue}
+    if(/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(ln)){out.push('<hr>');i++;continue}
+    if(/^\s*&gt;/.test(ln)){const q=[];while(i<L.length&&/^\s*&gt;/.test(L[i])){q.push(L[i].replace(/^\s*&gt;\s?/,''));i++}out.push('<blockquote>'+mdBlocks(q.join('\n'))+'</blockquote>');continue}
+    if(/^\s*\|.*\|\s*$/.test(ln)&&i+1<L.length&&/^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(L[i+1])){
+      const cells=r=>r.trim().replace(/^\||\|$/g,'').split('|').map(c=>c.trim());const hd=cells(ln);i+=2;const rows=[];while(i<L.length&&/^\s*\|.*\|\s*$/.test(L[i])){rows.push(cells(L[i]));i++}
+      out.push('<div class="tbw"><table><thead><tr>'+hd.map(c=>'<th>'+mdInline(c)+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+hd.map((_,k)=>'<td>'+mdInline(r[k]||'')+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>');continue}
+    if(m=/^(\s*)([-*+•]|\d+[.)])\s+(.*)$/.exec(ln)){
+      const st=[];let html='';
+      while(i<L.length&&(m=/^(\s*)([-*+•]|\d+[.)])\s+(.*)$/.exec(L[i]))){
+        const ind=m[1].replace(/\t/g,'    ').length,ord=/\d/.test(m[2]),tag=ord?'ol':'ul';
+        while(st.length&&ind<st[st.length-1].ind){html+='</li></'+st.pop().tag+'>'}
+        if(!st.length||ind>st[st.length-1].ind){html+=(st.length?'':'')+'<'+tag+(ord&&!st.length&&+m[2].replace(/\D/g,'')>1?' start="'+m[2].replace(/\D/g,'')+'"':'')+'><li>';st.push({ind,tag})}
+        else{html+='</li><li>'}
+        let body=m[3];const tk=/^\[( |x|X)\]\s+(.*)$/.exec(body);if(tk)body=(tk[1]===' '?'☐ ':'☑ ')+tk[2];
+        html+=mdInline(body);i++;
+        while(i<L.length&&L[i].trim()===''&&i+1<L.length&&/^(\s*)([-*+•]|\d+[.)])\s+/.test(L[i+1]))i++;
+      }
+      while(st.length)html+='</li></'+st.pop().tag+'>';out.push(html);continue}
+    const p=[];while(i<L.length&&L[i].trim()&&!(p.length&&isSp(L[i]))){p.push(L[i]);i++}
+    out.push('<p>'+mdInline(p.join('\n')).replace(/\n/g,'<br>')+'</p>')}
+  return out.join('')}
 function md(src){
   const blocks=[];src=src.replace(/```([\w+.:\/-]*)\n([\s\S]*?)(```|$)/g,(m,l,c)=>{blocks.push({l:l||'code',c:c.replace(/\n$/,'')});return `\u0000${blocks.length-1}\u0000`});
-  let h=esc(src).replace(/^### (.*)$/gm,'<h4>$1</h4>').replace(/^## (.*)$/gm,'<h3>$1</h3>').replace(/^# (.*)$/gm,'<h3>$1</h3>')
-   .replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').replace(/`([^`\n]+)`/g,'<code>$1</code>');
-  h=h.replace(/(?:^|\n)((?:[-*] .*(?:\n|$))+)/g,(m,l)=>'<ul>'+l.trim().split('\n').map(x=>'<li>'+x.replace(/^[-*] /,'')+'</li>').join('')+'</ul>');
-  h=h.split(/\n{2,}/).map(p=>/^<(ul|h3|h4)/.test(p.trim())||!p.trim()?p:'<p>'+p.replace(/\n/g,'<br>')+'</p>').join('');
+  let h=mdBlocks(esc(src));
   return h.replace(/\u0000(\d+)\u0000/g,(m,i)=>{const b=blocks[i];if(b.l==='chart'){const ch=chartHtml(b.c);if(ch)return ch}const web=/^(html|htm)(:|$)/i.test(b.l)||/^\s*<!doctype html|^\s*<html/i.test(b.c);
     return `<div class="cb"><div class="cbh mono"><span>${esc(b.l)}</span><span class="grow"></span>${web?`<button data-act="canvas" data-i="${i}">◧ Open in canvas</button><button data-act="prev" data-i="${i}">▶ Quick preview</button><button data-act="studiopv" data-i="${i}">Preview in Studio</button>`:(/^(py|python|js|javascript|node|ts|typescript|java|go|rust|rs|c|cpp|cs|csharp|php|rb|ruby|sh|bash|swift|kt|kotlin)$/i.test(b.l)?`<button data-act="gui" data-i="${i}">▶ Build GUI preview</button>`:'')}<button data-act="studio" data-i="${i}">Edit in Studio</button><button data-act="copy" data-i="${i}">Copy</button></div><pre class="mono" data-code="${i}">${esc(b.c)}</pre></div>`});
 }

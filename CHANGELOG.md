@@ -156,3 +156,8 @@
 - Platform fee set to 0: when user B buys user A's app/game/site, A receives the full price in credits, instantly, in the backend (no manual token sending). The app shows "Sellers keep 100%".
 - Payment is now safe: if crediting the seller fails, the buyer is refunded automatically. Buy responses show the true balance.
 - Tested end to end on the live cloud with temporary accounts (buyer 5 -> 4, seller 0 -> 1, repeat click did not charge twice); test data removed. Worker live-patched.
+
+## Rich message formatting
+- New markdown renderer for every reply: headings in different sizes (# to ####), bold, italic, bold-italic, inline code, links and auto-links, bullet and numbered lists with nesting and task boxes, block quotes, horizontal rules and tables.
+- Claude-style typography for assistant messages (larger line height, accent-coloured bullets and numbers, table and quote styling).
+- The chat rule now asks the model to structure longer answers with headings, bold lead-ins, bullets, steps and tables; short replies stay short.
