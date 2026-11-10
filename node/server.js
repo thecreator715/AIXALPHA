@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path'), crypto = require('crypto');
-const VERSION = 26;   // bump on every release: nodes auto-update when GitHub has a higher number
+const VERSION = 27;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -162,6 +162,9 @@ async function checkUpdate() {
     const me = path.join(__dirname, 'server.js'); try { fs.copyFileSync(me, me + '.bak'); } catch {}
     fs.writeFileSync(me + '.new', src); fs.renameSync(me + '.new', me); UPDST.applied = true;
     try { fs.writeFileSync(path.join(__dirname, 'monitor.html'), await getRemote('monitor.html', 8000)); } catch {}
+    for (const f of ['Start AIX Node.command', 'AIX MASTER.command', 'Update Qwen.command', 'Install AutoStart.command']) {   // launchers refresh too (rename keeps a running script safe)
+      try { const t = await getRemote(f.replace(/ /g, '%20'), 8000); if (t.startsWith('#!/bin/bash') && t.length > 400) { const fp = path.join(__dirname, f); fs.writeFileSync(fp + '.new', t, { mode: 0o755 }); fs.renameSync(fp + '.new', fp); } } catch {}
+    }
     console.log('Updated node to v' + m[1] + ' — restarting'); setTimeout(() => process.exit(0), 800);
   } catch (e) { UPDST.error = e.message; }
 }

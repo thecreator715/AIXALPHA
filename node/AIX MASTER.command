@@ -52,6 +52,9 @@ else bad "no secret, so cloud registration and the cloud panel tabs stay off"; f
 
 step "4/7  Files"
 for f in "Start AIX Node.command" server.js monitor.html; do [ -f "$f" ] && ok "$f" || bad "$f is missing; re-extract the zip"; done
+for f in ./*.command; do bash -n "$f" 2>/dev/null || bad "$f has a syntax problem; run Update Qwen.command to refresh it"; done
+command -v node >/dev/null 2>&1 && ! node --check server.js 2>/dev/null && bad "server.js has a syntax problem; run Update Qwen.command"
+FREEGB=$(df -g / 2>/dev/null | awk 'NR==2{print $4}'); [ -n "$FREEGB" ] && [ "$FREEGB" -lt 25 ] && warn "only ${FREEGB} GB of disk free; the models need about 25 GB" || ok "disk space ${FREEGB:-?} GB free"
 chmod +x ./*.command 2>/dev/null; xattr -dr com.apple.quarantine . 2>/dev/null
 command -v node >/dev/null 2>&1 && ok "Node.js $(node -v)" || warn "Node.js will be set up automatically"
 

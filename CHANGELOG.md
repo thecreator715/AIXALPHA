@@ -177,3 +177,8 @@
 - Follow-up edits keep the existing design.
 - ALPHA XQ costs 2.5x output credits (covers hidden thinking tokens); app estimate updated.
 - Billing audit: API calls with an XQ model id now get the 49K cap, thinking and the 2.5x output rate on node and stream paths; the browser-to-node charge route applies it too.
+
+## Launchers hardened + XQ button (node v27)
+- New XQ button next to ECO / BALANCED / THOROUGH: one tap selects ALPHA XQ on the Thorough tier; tapping another mode returns to your previous persona.
+- Start AIX Node: keeps the Mac awake (caffeinate), auto-updates an old Ollama, checks free disk, retries downloads, proves the model loads and steps the context down if memory is short.
+- Update Qwen / AIX MASTER: syntax-check every file before use, back up old copies, retry downloads, disk warning. The node now also refreshes its launchers when it self-updates.

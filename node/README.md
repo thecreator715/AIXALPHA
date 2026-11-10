@@ -8,3 +8,10 @@
 
 ## Hosted images and site files
 Users' images and site files are stored in `hosted/<id>/` next to `server.js` (one folder per account, created automatically). The cloud enforces each account's quota; this folder is the actual storage, so keep the Mac awake and the node running. Back up the `hosted/` folder if you care about it. The Storage tab in the control panel shows usage per account.
+
+## Commands
+- **AIX MASTER.command**: one double-click. Stops old processes, checks cloud link, secret, files and disk space, then starts everything.
+- **Update Qwen.command**: re-downloads every launcher (syntax-checked, with a backup) and the node, rebuilds the model list, starts everything. Run this once after receiving a new zip.
+- **Start AIX Node.command**: installs/updates Ollama, downloads models, keeps the Mac awake, proves the model loads (steps the context down if memory is short), runs the node and tunnel. ALPHA XQ switches to Qwen 4 automatically once Ollama has it.
+- **Install AutoStart.command**: start at every login.
+- **Open Node Panel.command**: open the control panel.

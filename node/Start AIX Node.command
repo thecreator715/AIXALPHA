@@ -10,18 +10,29 @@ HEADLESS=0; [ "$1" = "--headless" ] && HEADLESS=1
 die() { printf "\n\033[1;31mERROR: %s\033[0m\n" "$1"; [ "$HEADLESS" = 1 ] || read -n 1 -s -r -p "Press any key to close"; exit 1; }
 
 [ "$(uname)" = "Darwin" ] || die "This launcher is for macOS."
+# keep the Mac awake while the node runs (a sleeping Mac is why the app shows "node offline")
+command -v caffeinate >/dev/null 2>&1 && { caffeinate -dimsu -w $$ >/dev/null 2>&1 & }
 
 # 1) Ollama (latest). Uses the official prebuilt app, never Homebrew (brew tries to compile it on older macOS and fails)
 say "Checking Ollama"
-if [ ! -x /Applications/Ollama.app/Contents/Resources/ollama ] && ! command -v ollama >/dev/null 2>&1; then
+install_ollama() {
   say "Downloading Ollama.app (official build)"
-  curl -fL --progress-bar -o /tmp/Ollama-darwin.zip https://ollama.com/download/Ollama-darwin.zip || die "Could not download Ollama"
+  for t in 1 2 3; do curl -fL --progress-bar -o /tmp/Ollama-darwin.zip https://ollama.com/download/Ollama-darwin.zip && break; [ $t = 3 ] && die "Could not download Ollama (check your internet)"; sleep 3; done
   rm -rf /tmp/ollama-unz && mkdir -p /tmp/ollama-unz && ditto -xk /tmp/Ollama-darwin.zip /tmp/ollama-unz || die "Unzip failed"
+  osascript -e 'quit app "Ollama"' >/dev/null 2>&1; pkill -f "ollama serve" 2>/dev/null; sleep 2
   rm -rf /Applications/Ollama.app && mv /tmp/ollama-unz/Ollama.app /Applications/ || die "Could not move Ollama to Applications"
   xattr -dr com.apple.quarantine /Applications/Ollama.app 2>/dev/null
-fi
+}
+if [ ! -x /Applications/Ollama.app/Contents/Resources/ollama ] && ! command -v ollama >/dev/null 2>&1; then install_ollama; fi
 if [ -x /Applications/Ollama.app/Contents/Resources/ollama ]; then OLLAMA=/Applications/Ollama.app/Contents/Resources/ollama; else OLLAMA="$(command -v ollama)"; fi
 [ -x "$OLLAMA" ] || die "Ollama binary not found"
+# Qwen 3.8 / Qwen 4 need a recent Ollama: upgrade the app automatically when it is too old
+OV=$("$OLLAMA" --version 2>/dev/null | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+ver_lt() { [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -1)" = "$1" ] && [ "$1" != "$2" ]; }
+if [ -n "$OV" ] && ver_lt "$OV" "0.32.12" && [ -d /Applications/Ollama.app ]; then
+  say "Ollama $OV is too old for the newest Qwen models, updating it"; install_ollama
+  OLLAMA=/Applications/Ollama.app/Contents/Resources/ollama
+fi
 
 # 2) start Ollama server if not running
 if ! curl -fs http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
@@ -77,12 +88,23 @@ sleep 1
 say "Checking the model: $MODEL"
 # ALPHA XQ: use Qwen 4 the moment Ollama ships it (32GB+ Macs), otherwise stay on the current best
 if [ "$GB" -ge 32 ]; then for Q4 in qwen4:27b qwen4.0:27b; do "$OLLAMA" show "$Q4" >/dev/null 2>&1 || "$OLLAMA" pull "$Q4" >/dev/null 2>&1; "$OLLAMA" show "$Q4" >/dev/null 2>&1 && { echo "  Qwen 4 found: $Q4 -> ALPHA XQ"; MODEL="$Q4"; break; }; done; fi
+FREE=$(df -g / 2>/dev/null | awk 'NR==2{print $4}'); "$OLLAMA" show "$MODEL" >/dev/null 2>&1 || { [ -n "$FREE" ] && [ "$FREE" -lt 25 ] && echo "  WARNING: only ${FREE} GB free on this Mac; the model needs about 20 GB. Free some space if the download fails."; }
+for t in 1 2 3; do "$OLLAMA" pull "$MODEL" >/dev/null 2>&1 && break; echo "  download attempt $t did not finish, retrying (progress is kept)..."; sleep 4; done
 "$OLLAMA" pull "$MODEL" || { FB="${MODEL%%:*}"; [ "$FB" = "qwen3.8" ] && { echo "  $MODEL needs a newer Ollama - falling back to qwen3.6:27b (update Ollama to get 3.8)"; MODEL="qwen3.6:27b"; "$OLLAMA" pull "$MODEL"; } ; } || echo "Model download failed - the panel is already running; the node will retry when you start it again."
 # bigger context window (Ollama defaults to a small one, which cuts off long chats and web results)
 CTX=8192; [ "$GB" -ge 24 ] && CTX=16384; [ "$GB" -ge 32 ] && CTX=65536   # room for 16K-token replies plus the prompt
 mkdir -p runtime; printf 'FROM %s\nPARAMETER num_ctx %s\n' "$MODEL" "$CTX" > runtime/Modelfile.aix
 BASE="$MODEL"; AIXM="aix-alpha-$(printf %s "$MODEL" | tr ':/' '--')"
 "$OLLAMA" create "$AIXM" -f runtime/Modelfile.aix >/dev/null 2>&1 && MODEL="$AIXM" && echo "  Using $AIXM (context $CTX)"
+# prove the model really loads at this context; if not (memory), step the context down automatically
+loads() { curl -fs -m 300 http://127.0.0.1:11434/api/generate -d "{\"model\":\"$1\",\"prompt\":\"hi\",\"stream\":false,\"options\":{\"num_predict\":4}}" >/dev/null 2>&1; }
+if [ "$MODEL" = "$AIXM" ] && ! loads "$MODEL"; then
+  for C in 32768 16384 8192; do [ "$C" -ge "$CTX" ] && continue
+    echo "  Model did not load at context $CTX - trying $C"; CTX=$C
+    printf 'FROM %s\nPARAMETER num_ctx %s\n' "$BASE" "$CTX" > runtime/Modelfile.aix
+    "$OLLAMA" create "$AIXM" -f runtime/Modelfile.aix >/dev/null 2>&1; loads "$AIXM" && { echo "  Running at context $CTX"; break; }
+  done
+fi
 # model ladder: higher mode = bigger model (eco < balanced < thorough/auto/turbo). Smaller tiers download in the background.
 if   [ "$GB" -ge 64 ]; then T_BAL="qwen3.6:35b-a3b"; T_ECO="qwen3.5:9b"
 elif [ "$GB" -ge 32 ]; then T_BAL="qwen3.5:9b";      T_ECO="qwen3.5:4b"
