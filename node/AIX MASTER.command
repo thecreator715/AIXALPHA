@@ -58,6 +58,19 @@ FREEGB=$(df -g / 2>/dev/null | awk 'NR==2{print $4}'); [ -n "$FREEGB" ] && [ "$F
 chmod +x ./*.command 2>/dev/null; xattr -dr com.apple.quarantine . 2>/dev/null
 command -v node >/dev/null 2>&1 && ok "Node.js $(node -v)" || warn "Node.js will be set up automatically"
 
+step "4a  Latest node from GitHub (image progress meter, video fixes)"
+RAWU="https://raw.githubusercontent.com/thecreator715/AIXALPHA/main/node"
+CUR=$(grep -o 'VERSION = [0-9]*' server.js | head -1 | grep -o '[0-9]*$')
+if curl -fs -m 25 -o /tmp/aix-server-new.js "$RAWU/server.js" 2>/dev/null && [ -s /tmp/aix-server-new.js ]; then
+  NEW=$(grep -o 'VERSION = [0-9]*' /tmp/aix-server-new.js | head -1 | grep -o '[0-9]*$')
+  if [ -n "$NEW" ] && [ "${NEW:-0}" -gt "${CUR:-0}" ]; then
+    if command -v node >/dev/null 2>&1 && ! node --check /tmp/aix-server-new.js 2>/dev/null; then warn "the new server.js did not pass its syntax check; keeping v$CUR"
+    else cp server.js server.js.bak 2>/dev/null; cp /tmp/aix-server-new.js server.js && ok "updated server.js v$CUR -> v$NEW (old copy kept as server.js.bak)"
+      curl -fs -m 25 -o /tmp/aix-monitor.new "$RAWU/monitor.html" 2>/dev/null && [ -s /tmp/aix-monitor.new ] && cp /tmp/aix-monitor.new monitor.html; fi
+  else ok "server.js is up to date (v${CUR:-?})"; fi
+  rm -f /tmp/aix-server-new.js /tmp/aix-monitor.new
+else warn "could not reach GitHub, staying on v${CUR:-?}"; fi
+
 step "4b  Image and video engines (Qwen-Image 2.1 and LTX-2.5)"
 media_one(){   # $1 label  $2 config file  $3 skip file  $4 installer  $5 disk GB  $6 log
   if [ -s "$2" ] && grep -q '"ok": *true' "$2" 2>/dev/null; then ok "$1 is ready"
