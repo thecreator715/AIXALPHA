@@ -203,7 +203,7 @@ async function viaNode1(env, req, a, nd, prompt, stream, maxTok, mode, images) {
   const inTok = Math.ceil(prompt.length / 4);
   if (!stream) {
     const j = await up.json().catch(() => null); if (!j) return null; const ch = (j.choices || [])[0] || {}; const text = (ch.message && ch.message.content) || '';
-    const bill = await charge(env, a, { input: j.usage?.prompt_tokens || inTok, output: j.usage?.completion_tokens || Math.ceil(text.length / 4), mode });
+    const bill = await charge(env, a, { input: j.usage?.prompt_tokens || inTok, output: Math.ceil((j.usage?.completion_tokens || Math.ceil(text.length / 4)) * (XQ ? 2.5 : 1)), mode });
     return json(env, req, { text, truncated: ch.finish_reason === 'length', engine: 'node', ...bill });
   }
   let buf = '', outChars = 0; const dec = new TextDecoder();
@@ -212,7 +212,7 @@ async function viaNode1(env, req, a, nd, prompt, stream, maxTok, mode, images) {
       buf += dec.decode(chunk, { stream: true }); const lines = buf.split('\n'); buf = lines.pop();
       for (const ln of lines) if (ln.startsWith('data:') && !ln.includes('[DONE]')) { try { const e = JSON.parse(ln.slice(5)); const t = e.choices?.[0]?.delta?.content; if (t) { outChars += t.length; ctl.enqueue(enc.encode('data: ' + JSON.stringify({ type: 'content_block_delta', delta: { type: 'text_delta', text: t } }) + '\n\n')); } } catch {} }
     },
-    async flush(ctl) { const bill = await charge(env, a, { input: inTok, output: Math.ceil(outChars / 4), mode }); ctl.enqueue(enc.encode('data: ' + JSON.stringify({ type: 'aix_balance', engine: 'node', ...bill }) + '\n\n')); },
+    async flush(ctl) { const bill = await charge(env, a, { input: inTok, output: Math.ceil(outChars / 4 * (XQ ? 2.5 : 1)), mode }); ctl.enqueue(enc.encode('data: ' + JSON.stringify({ type: 'aix_balance', engine: 'node', ...bill }) + '\n\n')); },
   });
   return new Response(up.body.pipeThrough(ts), { headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', ...cors(env, req) } });
 }
