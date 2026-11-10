@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path'), crypto = require('crypto');
-const VERSION = 27;   // bump on every release: nodes auto-update when GitHub has a higher number
+const VERSION = 28;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -343,10 +343,41 @@ const SRV = http.createServer(async (req, res) => {
       const t0 = Date.now(); let buf = req.method === 'GET' ? undefined : await body(req); let model = '', pj = null; try { pj = JSON.parse(buf.toString()); if (/qwen3|qwq|deepseek-r1/i.test(pj.model || '') && pj.reasoning_effort == null && pj.think == null && !thinkOn() && !req.headers['x-aix-think']) { pj.reasoning_effort = 'none'; pj.think = false; buf = Buffer.from(JSON.stringify(pj)); } model = pj.model || ''; const hasImg = pj.messages && pj.messages.some((m) => Array.isArray(m.content) && m.content.some((c) => c && c.type === 'image_url')); if (hasImg) { const vm = await visionModel(); if (vm) { pj.model = model = vm; } else { pj.messages = pj.messages.map((m) => (Array.isArray(m.content) ? { ...m, content: m.content.filter((c) => !(c && c.type === 'image_url')).map((c) => (c.type === 'text' ? c.text : '')).join('\n') + '\n\n(Note for the assistant: the user attached an image but the vision model is still being installed on this host. Tell them in one short sentence that image reading will be ready in a few minutes and to try again, then answer any text part of the question.)' } : m)); } buf = Buffer.from(JSON.stringify(pj)); } } catch (e) { console.log('vision route error', e && e.message); }
       ST.req++; const ent = { t: new Date().toISOString(), path: u, model, status: 0, ms: 0, tokens: 0, user: clip(req.headers['x-aix-user'], 80), src: clip(req.headers['x-aix-src'], 12) || 'direct', stream: !!(pj && pj.stream), msgs: pj && pj.messages ? pj.messages.length : 0, inChars: pj && pj.messages ? JSON.stringify(pj.messages).length : 0, prompt: LOGTEXT && pj ? clip(lastUser(pj.messages), 400) : '', reply: '' };
       let acc = '', rawAcc = '';
-      const up = await fetch(OLLAMA + req.url, { method: req.method, headers: { 'content-type': 'application/json' }, body: buf });
+      const wantThink = !!(pj && pj.stream && (req.headers['x-aix-think'] || thinkOn()) && /qwen3|qwq|deepseek-r1/i.test(pj.model || ''));
+      const isChat = u.includes('chat/completions'), isStream = !!(pj && pj.stream);
+      const ctls = new Set(); res.on('close', () => { for (const c of ctls) { try { c.abort(); } catch {} } if (res.__ka) clearInterval(res.__ka); });   // a closed browser/worker connection stops the generation, so the next request never waits behind it
+      let headSent = false; const head = (st, ct) => { if (!headSent) { headSent = true; res.writeHead(st, { ...h, 'content-type': ct, 'cache-control': 'no-cache', 'x-accel-buffering': 'no' }); } };
+      if (isChat && isStream) { head(200, 'text/event-stream'); res.write(': start\n\n'); res.__ka = setInterval(() => { try { res.write(': ping\n\n'); } catch {} }, 8000); }   // headers + heartbeat go out at once: long prompt processing or thinking can no longer look like a dead connection
+      const attempt = async (b) => { const c = new AbortController(); ctls.add(c); const r = await fetch(OLLAMA + req.url, { method: req.method, headers: { 'content-type': 'application/json' }, body: b, signal: c.signal }); return { r, c }; };
+      const BUDGET = +process.env.AIX_THINK_MAX || 24000;   // characters of hidden reasoning allowed before the answer must start
+      let rch = 0, cch = 0, lb = '';
+      const pump = async (r, c, allowCut) => {
+        let cut = false;
+        try {
+          for await (const ch of r.body) {
+            const cs = Buffer.from(ch).toString('utf8');
+            if (isStream) { lb += cs; const ls = lb.split('\n'); lb = ls.pop(); for (const ln of ls) if (ln.startsWith('data:') && !ln.includes('[DONE]')) { try { const d = (JSON.parse(ln.slice(5)).choices || [{}])[0].delta || {}; if (d.content) cch += d.content.length; const rs = d.reasoning || d.reasoning_content; if (rs) rch += rs.length; } catch {} } }
+            if (allowCut && !cch && rch > BUDGET) { cut = true; c.abort(); break; }
+            if (!res.writableEnded) res.write(ch);
+            const n = (cs.match(/"content":"/g) || []).length; ent.tokens += n; ST.chunks += n; if (rawAcc.length < 60000) rawAcc += cs;
+          }
+        } catch (e) { if (!cut && !res.writableEnded && !res.destroyed) throw e; }
+        return cut;
+      };
+      let up, c1;
+      try { ({ r: up, c: c1 } = await attempt(buf)); } catch (e) { if (res.destroyed) return; throw e; }
       ent.status = up.status; if (!up.ok) ST.err++;
-      res.writeHead(up.status, { ...h, 'content-type': up.headers.get('content-type') || 'application/json', 'cache-control': 'no-cache' });
-      if (up.body) for await (const c of up.body) { res.write(c); const cs = Buffer.from(c).toString('utf8'); const n = (cs.match(/"content":"/g) || []).length; ent.tokens += n; ST.chunks += n; if (rawAcc.length < 60000) rawAcc += cs; }
+      if (!up.ok && headSent) { res.write('data: ' + JSON.stringify({ error: { message: 'Ollama returned HTTP ' + up.status } }) + '\n\n'); }
+      else { head(up.status, up.headers.get('content-type') || 'application/json'); }
+      if (up.body && (up.ok || !headSent || true)) {
+        const cut = await pump(up, c1, wantThink);
+        if (cut) {   // reasoning ran too long: restart once with thinking off so the build is always delivered
+          console.log('XQ reasoning budget hit (' + rch + ' chars) - restarting without thinking');
+          const pj2 = { ...pj, think: false, reasoning_effort: 'none' }; try { const ms = pj2.messages.slice(); const li = ms.length - 1; if (ms[li] && typeof ms[li].content === 'string') ms[li] = { ...ms[li], content: ms[li].content + '\n\nAnswer directly now with the complete result.' }; pj2.messages = ms; } catch {}
+          const r2 = await attempt(Buffer.from(JSON.stringify(pj2))); await pump(r2.r, r2.c, false);
+        }
+      }
+      if (res.__ka) clearInterval(res.__ka);
       try {
         if (ent.stream) { for (const ln of rawAcc.split('\n')) if (ln.startsWith('data:') && !ln.includes('[DONE]')) { try { const e = JSON.parse(ln.slice(5)); const t = e.choices && e.choices[0] && e.choices[0].delta && e.choices[0].delta.content; if (t) acc += t; } catch {} } }
         else { const j = JSON.parse(rawAcc); acc = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || ''; if (j.usage && j.usage.completion_tokens) ent.tokens = j.usage.completion_tokens; }
@@ -357,7 +388,7 @@ const SRV = http.createServer(async (req, res) => {
       return res.end();
     }
     res.writeHead(404, h); res.end('not found');
-  } catch (e) { ST.err++; try { J(res, h, 502, { error: 'Ollama not reachable: ' + e.message }); } catch {} }
+  } catch (e) { ST.err++; try { if (res.__ka) clearInterval(res.__ka); if (res.headersSent) { try { res.write('data: ' + JSON.stringify({ error: { message: 'Ollama not reachable: ' + e.message } }) + '\n\n'); } catch {} res.end(); } else J(res, h, 502, { error: 'Ollama not reachable: ' + e.message }); } catch {} }
 }).on('error', (e) => {   // an old node may still be shutting down: wait for the port instead of crashing
   if (e && e.code === 'EADDRINUSE' && LISTEN_TRY < 40) { LISTEN_TRY++; if (LISTEN_TRY === 1) console.log(`Port ${PORT} is busy (an older AIX node is still closing). Waiting for it...`); setTimeout(() => { try { SRV.listen(PORT); } catch {} }, 1500); return; }
   console.error('AIX node could not start:', e && e.message); process.exit(1);

@@ -1071,11 +1071,13 @@ function backendSample(){
     if(!res.ok){let m='',j0={};try{j0=await res.json();m=j0.error}catch{}if(res.status===403&&j0.banned){try{showBanned(j0)}catch{}throw new Error(m||'Account suspended')}if(res.status===422&&j0.moderation){try{toast('Message blocked · strike '+j0.strikes+' of '+j0.max,3500)}catch{}throw new Error(m)}if(res.status===401){store.set(TOKK,'');store.set('aix3_user','');UNAME='';sampleFn=null;setStatus();setTimeout(()=>openAccount(true),60);throw new Error('Your session expired. Please sign in again.')}if(res.status===402){BAL=0;setStatus();setTimeout(()=>openCredits('out'),60);throw new Error('You are out of credits. Add credits to keep going (a window just opened).')}throw new Error(m||('Server '+res.status))}
     try{const ss=res.headers.get('x-aix-search');if(ss){if(ss==='none')toast('Web search ran but found nothing. Answering from general knowledge.',3500);else{const p=ss.split(':');toast('Web search found '+p[2]+' results'+(p[1]?' via '+p[1].replace(/^node:/,'Mac node '):''),2500)}}}catch{}
     if(!o.onText){const j=await res.json();if(j.credits!=null){BAL=j.credits;setStatus()}return{text:j.text||'',truncated:!!j.truncated,searches:j.searches||0,spentCr:j.spentCredits||0,node:j.engine==='node'}}
-    const rd=res.body.getReader(),dec=new TextDecoder();const lst={};let buf='',text='',trunc=false,sr=0,spc=0;
-    for(;;){const{done,value}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});const lines=buf.split('\n');buf=lines.pop();
-      for(const ln of lines){if(!ln.startsWith('data:'))continue;try{const e=JSON.parse(ln.slice(5));liveEv(e,lst);if(e.type==='content_block_delta'&&e.delta&&e.delta.text){text+=e.delta.text;o.onText({text})}else if(e.type==='message_delta'&&e.delta&&e.delta.stop_reason==='max_tokens')trunc=true;else if(e.type==='aix_balance'){if(e.engine==='node')viaNodeFlag=true;BAL=e.credits;sr=e.searches||0;spc=e.spentCredits||0;setStatus();if(sr)toast('Searched the web '+sr+'x · this reply cost '+spc+' credits')}}catch{}}}
-    const nf=viaNodeFlag;viaNodeFlag=false;return{text,truncated:trunc,searches:sr,spentCr:spc,node:nf}};
+    const rd=res.body.getReader(),dec=new TextDecoder(),rst={};const lst={};let buf='',text='',trunc=false,sr=0,spc=0;
+    for(;;){const{done,value}=await rdSafe(rd,rst);if(done)break;buf+=dec.decode(value,{stream:true});const lines=buf.split('\n');buf=lines.pop();
+      for(const ln of lines){if(!ln.startsWith('data:'))continue;try{const e=JSON.parse(ln.slice(5));liveEv(e,lst);if(e.type==='content_block_delta'&&e.delta&&e.delta.text){text+=e.delta.text;o.onText({text})}else if(e.type==='message_delta'&&e.delta&&e.delta.stop_reason==='max_tokens')trunc=true;else if(e.type==='thinking'){if(!rst.th){rst.th=1;try{toast('Thinking deeply before writing…',2500)}catch{}}}else if(e.type==='aix_balance'){if(e.engine==='node')viaNodeFlag=true;BAL=e.credits;sr=e.searches||0;spc=e.spentCredits||0;setStatus();if(sr)toast('Searched the web '+sr+'x · this reply cost '+spc+' credits')}}catch{}}}
+    if(rst.broke&&!text)throw new Error('The connection to the engine dropped before any reply arrived. Please try again.');const nf=viaNodeFlag;viaNodeFlag=false;return{text,truncated:trunc||(rst.broke&&text.length>300),searches:sr,spentCr:spc,node:nf}};
   f.limits=async()=>({images:true});return f}
+/* reads one stream chunk; a dead or silent (2 min, no heartbeat) connection ends the stream cleanly so the loop can continue the build instead of hanging */
+function rdSafe(rd,st){return new Promise(res=>{const to=setTimeout(()=>{st.broke=1;try{rd.cancel()}catch{}res({done:true})},120000);rd.read().then(r=>{clearTimeout(to);res(r)},()=>{clearTimeout(to);st.broke=1;res({done:true})})})}
 function embKey(){const m=document.querySelector('meta[name=aix-embedded-key]');return m&&/^sk-ant-/.test(m.content)?m.content:''}
 function pickEngine(){if(embKey()){store.set(KEYK,embKey());return directSample()}if(BACKEND()&&store.get(TOKK,''))return withTools(backendSample());if(store.get(KEYK,''))return directSample();return nodeOn()?nodeSample():null}
 
@@ -1091,10 +1093,11 @@ function nodeSample(){
     const res=await fetch(base+'/v1/chat/completions',{method:'POST',signal:o.signal,headers:{'content-type':'application/json',...(c.token?{authorization:'Bearer '+c.token}:{})},body:JSON.stringify({model:c.model,stream:!!o.onText,messages:[{role:'user',content:prompt}]})}).catch(e=>{const er=new Error('Cannot reach your node at '+base+' ('+e.message+'). Is the Mac awake, Ollama running and server.js started?');er.nodeDown=1;throw er});
     if(res.status===401){const er=new Error('Node token rejected. Open the launcher pairing link again (aix-pair-link.txt).');er.nodeDown=1;throw er}if(!res.ok){let m='';try{m=(await res.json()).error}catch{}throw new Error('Node '+res.status+(m?': '+(m.message||m):''))}
     if(!o.onText){const j=await res.json();const ch=(j.choices||[])[0]||{};return{text:(ch.message&&ch.message.content)||'',truncated:ch.finish_reason==='length'}}
-    const rd=res.body.getReader(),dec=new TextDecoder();let buf='',text='',trunc=false;
-    for(;;){const{done,value}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});const lines=buf.split('\n');buf=lines.pop();
+    const rd=res.body.getReader(),dec=new TextDecoder(),rst={};let buf='',text='',trunc=false;
+    for(;;){const{done,value}=await rdSafe(rd,rst);if(done)break;buf+=dec.decode(value,{stream:true});const lines=buf.split('\n');buf=lines.pop();
       for(const ln of lines){if(!ln.startsWith('data:')||ln.includes('[DONE]'))continue;try{const e=JSON.parse(ln.slice(5)),ch=(e.choices||[])[0]||{};const t=ch.delta&&ch.delta.content;if(t){text+=t;o.onText({text})}if(ch.finish_reason==='length')trunc=true}catch{}}}
-    return{text,truncated:trunc}};
+    if(rst.broke&&!text)throw new Error('The connection to the engine dropped before any reply arrived. Please try again.');
+    return{text,truncated:trunc||(rst.broke&&text.length>300)}};
   f.limits=async()=>({images:false});f.node=true;return f}
 const nodeWrap=()=>{if(!NODEFN){const f=withTools(nodeSample());NODEFN=async(a,b)=>{let r;try{r=await f(a,b)}catch(e){if(e.nodeDown){NODEDOWN=Date.now();let cloud=sampleFn||pickEngine();if(cloud&&!cloud.node){if(ISOWNER)try{toast('Mac node unreachable: using the cloud engine for now')}catch{}return cloud(a,b)}}throw e}
 r.node=true;try{const tok=store.get(TOKK,'');if(tok&&BACKEND()){const j=await fetch(BACKEND()+'/api/node/charge',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+tok},body:JSON.stringify({input:est(a),output:est(r.text||''),xq:S.pid==='aix-alpha-xq'})}).then(x=>x.json());if(j&&j.credits!=null){BAL=j.credits;setStatus()}}}catch{}return r};NODEFN.limits=f.limits}return NODEFN};
@@ -1161,10 +1164,11 @@ function directSample(){
     const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:o.signal,headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:MODELK,max_tokens:4096,stream:!!o.onText,...(o.search?{tools:[{type:'web_search_20250305',name:'web_search',max_uses:3}]}:{}),messages:[{role:'user',content}]})});
     if(!res.ok){let m='';try{m=(await res.json()).error.message}catch{}if(res.status===401){store.set(KEYK,'');sampleFn=null;setStatus();throw new Error('Anthropic rejected this API key (401). Create a fresh key at console.anthropic.com > API Keys, make sure billing is active, and paste it again.')}throw new Error('API '+res.status+': '+(m||'request failed'))}
     if(!o.onText){const j=await res.json();return{text:(j.content||[]).map(c=>c.text||'').join(''),truncated:j.stop_reason==='max_tokens'}}
-    const rd=res.body.getReader(),dec=new TextDecoder();const lst={};let buf='',text='',trunc=false;
-    for(;;){const{done,value}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});const lines=buf.split('\n');buf=lines.pop();
+    const rd=res.body.getReader(),dec=new TextDecoder(),rst={};const lst={};let buf='',text='',trunc=false;
+    for(;;){const{done,value}=await rdSafe(rd,rst);if(done)break;buf+=dec.decode(value,{stream:true});const lines=buf.split('\n');buf=lines.pop();
       for(const ln of lines){if(!ln.startsWith('data:'))continue;try{const e=JSON.parse(ln.slice(5));liveEv(e,lst);if(e.type==='content_block_delta'&&e.delta&&e.delta.text){text+=e.delta.text;o.onText({text})}else if(e.type==='message_delta'&&e.delta&&e.delta.stop_reason==='max_tokens')trunc=true}catch{}}}
-    return{text,truncated:trunc}};
+    if(rst.broke&&!text)throw new Error('The connection to the engine dropped before any reply arrived. Please try again.');
+    return{text,truncated:trunc||(rst.broke&&text.length>300)}};
   f.limits=async()=>({images:true});return f}
 function openKey(force){if(!force)return openAccount();
   const d=dialog(`<h3 style="margin:0 0 8px">Bring AIX online</h3><p style="font-size:12.5px;color:var(--m);margin:0 0 8px">This page runs outside claude.ai, so it connects straight to the model with your own Anthropic API key. The key is saved only in this browser and sent only to api.anthropic.com.</p><label>Anthropic API key</label><input id="akey" type="password" placeholder="sk-ant-..." value="${esc(store.get(KEYK,''))}"><div style="display:flex;gap:8px;justify-content:space-between"><button class="btn2" id="aclr">Remove key</button><span><button class="btn2" data-close>Cancel</button> <button class="btn" id="asave">Save and connect</button></span></div>`);
@@ -1288,7 +1292,7 @@ async function runLoop0(chat,prompt,onText,onStep){
 
   let spent=0;
   const call=async(label,p)=>{
-    if(spent>=S.caps.req){step(`Stop: request budget (${label})`,'bad');return null}
+    if(spent>=S.caps.req*(S.pid==='aix-alpha-xq'?4:1)){step(`Stop: request budget (${label})`,'bad');return null}
     const imgs=label==='gen'?(S.curImages||[]):[];step(label==='gen'?`Sending to the model · ~${est(p).toLocaleString()} tokens in`:`${label} pass · sending ~${est(p).toLocaleString()} tokens`);const res=await ask(p,label==='gen'?onText:null,null,imgs,label==='gen'?S.curTools:null);if(imgs.length)t.inTok+=1500*imgs.length;
     if(res&&res.searches){t.web=(t.web||0)+res.searches;t.webCr=+((t.webCr||0)+(res.spentCr||0)).toFixed(1)}
     const i=est(p),o=est(res.text||'');t.inTok+=i;t.outTok+=o;const c=cost(i,o);spent+=c;t.cost+=c;t.calls++;if(res.node){t.node=true;if(ISOWNER)step('Ran on your Mac node (same credit scaling)','ok')}

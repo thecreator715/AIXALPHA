@@ -197,7 +197,7 @@ async function viaNode1(env, req, a, nd, prompt, stream, maxTok, mode, images) {
   const userContent = imgs.length ? [{ type: 'text', text: prompt }, ...imgs.map((i) => ({ type: 'image_url', image_url: { url: 'data:' + String(i.media_type || 'image/png') + ';base64,' + i.data } }))] : prompt;
   let up;
   try {
-    up = await nfetch(nd.url.replace(/\/+$/, '') + '/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + nd.token, 'x-aix-user': a.email, 'x-aix-src': 'chat', ...(XQ ? { 'x-aix-think': '1' } : {}) }, body: JSON.stringify({ model: tierModel(nd, mode), stream, max_tokens: maxTok, temperature: XQ ? 0.5 : mode === 'eco' ? 0.3 : mode === 'turbo' ? 0.2 : 0.6, messages: [{ role: 'system', content: MODE_SYS[mode] }, { role: 'user', content: userContent }] }) }, stream ? 110000 : 120000);
+    up = await nfetch(nd.url.replace(/\/+$/, '') + '/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + nd.token, 'x-aix-user': a.email, 'x-aix-src': 'chat', ...(XQ && !/<partial_answer>|\[Revision required|\[Reviewer found/.test(String(prompt)) ? { 'x-aix-think': '1' } : {}) }, body: JSON.stringify({ model: tierModel(nd, mode), stream, max_tokens: maxTok, temperature: XQ ? 0.5 : mode === 'eco' ? 0.3 : mode === 'turbo' ? 0.2 : 0.6, messages: [{ role: 'system', content: MODE_SYS[mode] }, { role: 'user', content: userContent }] }) }, stream ? 110000 : 120000);
   } catch { return null; }
   if (!up.ok) return null;
   const inTok = Math.ceil(prompt.length / 4);
@@ -206,11 +206,21 @@ async function viaNode1(env, req, a, nd, prompt, stream, maxTok, mode, images) {
     const bill = await charge(env, a, { input: j.usage?.prompt_tokens || inTok, output: Math.ceil((j.usage?.completion_tokens || Math.ceil(text.length / 4)) * (XQ ? 2.5 : 1)), mode });
     return json(env, req, { text, truncated: ch.finish_reason === 'length', engine: 'node', ...bill });
   }
-  let buf = '', outChars = 0; const dec = new TextDecoder();
+  let buf = '', outChars = 0, thN = 0, thAt = 0; const dec = new TextDecoder();
   const ts = new TransformStream({
     transform(chunk, ctl) {
       buf += dec.decode(chunk, { stream: true }); const lines = buf.split('\n'); buf = lines.pop();
-      for (const ln of lines) if (ln.startsWith('data:') && !ln.includes('[DONE]')) { try { const e = JSON.parse(ln.slice(5)); const t = e.choices?.[0]?.delta?.content; if (t) { outChars += t.length; ctl.enqueue(enc.encode('data: ' + JSON.stringify({ type: 'content_block_delta', delta: { type: 'text_delta', text: t } }) + '\n\n')); } } catch {} }
+      for (const ln of lines) {
+        if (ln.startsWith(':')) { ctl.enqueue(enc.encode(': ping\n\n')); continue; }   // node heartbeat: keeps the browser connection alive while the model thinks
+        if (!ln.startsWith('data:') || ln.includes('[DONE]')) continue;
+        try {
+          const e = JSON.parse(ln.slice(5)), ch0 = e.choices?.[0], d = ch0?.delta || {}, t = d.content, rs = d.reasoning || d.reasoning_content;
+          if (t) { outChars += t.length; ctl.enqueue(enc.encode('data: ' + JSON.stringify({ type: 'content_block_delta', delta: { type: 'text_delta', text: t } }) + '\n\n')); }
+          else if (rs) { thN += rs.length; if (Date.now() - thAt > 2500) { thAt = Date.now(); ctl.enqueue(enc.encode('data: ' + JSON.stringify({ type: 'thinking', n: thN }) + '\n\n')); } }
+          if (ch0 && ch0.finish_reason === 'length') ctl.enqueue(enc.encode('data: ' + JSON.stringify({ type: 'message_delta', delta: { stop_reason: 'max_tokens' } }) + '\n\n'));   // tell the app the reply was cut so it continues instead of calling it done
+          if (e.error) ctl.enqueue(enc.encode('data: ' + JSON.stringify({ type: 'content_block_delta', delta: { type: 'text_delta', text: '\n\n(The Alpha node reported an error: ' + String(e.error.message || e.error).slice(0, 160) + '. Please send that again.)' } }) + '\n\n'));
+        } catch {}
+      }
     },
     async flush(ctl) { const bill = await charge(env, a, { input: inTok, output: Math.ceil(outChars / 4 * (XQ ? 2.5 : 1)), mode }); ctl.enqueue(enc.encode('data: ' + JSON.stringify({ type: 'aix_balance', engine: 'node', ...bill }) + '\n\n')); },
   });

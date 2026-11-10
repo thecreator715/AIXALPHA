@@ -185,3 +185,8 @@
 
 ## Fix: cloud 500 / "Register failed: HTTP 500"
 - A live worker update dropped the D1 database binding (DB), so every database call returned HTTP 500 (control panel tabs, node registration, balances). Binding, AI binding and variables restored from wrangler.toml. Always deploy with `wrangler deploy` (it re-applies bindings) or re-apply bindings after a live content patch.
+
+## Build reliability, ALPHA XQ (node v28)
+- Node: stream headers and a heartbeat are sent immediately (long prompt processing or thinking can no longer look like a dead connection); closing the browser or worker connection now cancels the model run so the next request never queues behind it; hidden reasoning is budgeted (24,000 chars, AIX_THINK_MAX) and, if exceeded, the run restarts once with thinking off so the build is always delivered.
+- Worker: forwards heartbeats and "thinking" progress, reports max_tokens truncation on the node path (the app now continues cut-off builds instead of calling them complete), surfaces node errors, no thinking on continue/refine passes.
+- App: stalled or dropped streams (2 min of silence) end cleanly and are continued instead of hanging; partial builds are kept; XQ per-request credit budget raised 4x so long builds are not stopped mid-way.
