@@ -197,7 +197,7 @@ async function viaNode1(env, req, a, nd, prompt, stream, maxTok, mode, images) {
   const userContent = imgs.length ? [{ type: 'text', text: prompt }, ...imgs.map((i) => ({ type: 'image_url', image_url: { url: 'data:' + String(i.media_type || 'image/png') + ';base64,' + i.data } }))] : prompt;
   let up;
   try {
-    up = await nfetch(nd.url.replace(/\/+$/, '') + '/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + nd.token, ...(nd.cloud ? {} : { 'x-aix-user': a.email, 'x-aix-src': 'chat' }), ...(XQ && !nd.cloud && !/<partial_answer>|\[Revision required|\[Reviewer found/.test(String(prompt)) ? { 'x-aix-think': '1' } : {}) }, body: JSON.stringify({ model: tierModel(nd, mode), stream, max_tokens: maxTok, temperature: XQ ? 0.5 : mode === 'eco' ? 0.3 : mode === 'turbo' ? 0.2 : 0.6, messages: [{ role: 'system', content: MODE_SYS[mode] }, { role: 'user', content: userContent }] }) }, stream ? 110000 : 120000);
+    up = await nfetch(nd.url.replace(/\/+$/, '') + '/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + nd.token, ...(nd.cloud ? {} : { 'x-aix-user': a.email, 'x-aix-src': 'chat' }), ...(XQ && !nd.cloud && !/BUILD RULE|<partial_answer>|\[Revision required|\[Reviewer found/.test(String(prompt)) ? { 'x-aix-think': '1' } : {}) }, body: JSON.stringify({ model: tierModel(nd, mode), stream, max_tokens: maxTok, temperature: XQ ? 0.5 : mode === 'eco' ? 0.3 : mode === 'turbo' ? 0.2 : 0.6, messages: [{ role: 'system', content: MODE_SYS[mode] }, { role: 'user', content: userContent }] }) }, stream ? 110000 : 120000);
   } catch { return null; }
   if (!up.ok) return null;
   const inTok = Math.ceil(prompt.length / 4);
@@ -259,11 +259,7 @@ async function sample(env, req) {
       } catch (e) { np = '(Live web search was unavailable just now. Do not claim to have browsed. Say live search was unavailable and answer from general knowledge, flagging it may be out of date.)\n\n' + prompt; }
     }
     const mx = Math.min(Number(b.max_tokens) || 4096, 8192), md = String(b.mode || '');
-    let r = null;
-    if (env.DASHSCOPE_API_KEY && /ALPHA XQ, the flagship AIX engine/.test(np) && !(Array.isArray(b.images) && b.images.length)) {   // XQ -> Qwen3.8-Max (Alibaba Cloud) when the owner has added a key; node is the fallback
-      try { r = await viaNode1(env, req, a, { url: String(env.DASHSCOPE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode'), token: env.DASHSCOPE_API_KEY, model: 'qwen3.8-max', models: { thorough: 'qwen3.8-max' }, cloud: true }, np, stream, mx, md, []); } catch (e) { r = null; }
-    }
-    if (!r && nd) r = await viaNode(env, req, a, nd, np, stream, mx, md, b.images);
+    let r = nd ? await viaNode(env, req, a, nd, np, stream, mx, md, b.images) : null;
     if (!r && nd && Array.isArray(b.images) && b.images.length) r = await viaNode(env, req, a, nd, '(The user attached an image, but this node has no vision model installed, so only the text can be read. Say so briefly.)\n\n' + np, stream, mx, md, []);
     if (r && srch) { try { r.headers.set('x-aix-search', srch); r.headers.set('access-control-expose-headers', 'x-aix-search'); } catch (e) { /* header is optional */ } }
     return r || json(env, req, { error: 'The Alpha node is offline right now (the Mac is asleep or the node stopped). Try again in a minute.', nodeOffline: true }, 503);

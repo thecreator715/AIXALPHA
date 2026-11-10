@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path'), crypto = require('crypto');
-const VERSION = 29;   // bump on every release: nodes auto-update when GitHub has a higher number
+const VERSION = 30;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -378,7 +378,7 @@ const SRV = http.createServer(async (req, res) => {
       let headSent = false; const head = (st, ct) => { if (!headSent) { headSent = true; res.writeHead(st, { ...h, 'content-type': ct, 'cache-control': 'no-cache', 'x-accel-buffering': 'no' }); } };
       if (isChat && isStream) { head(200, 'text/event-stream'); res.write(': start\n\n'); res.__ka = setInterval(() => { try { res.write(': ping\n\n'); } catch {} }, 8000); }   // headers + heartbeat go out at once: long prompt processing or thinking can no longer look like a dead connection
       const attempt = async (b) => { const c = new AbortController(); ctls.add(c); const r = await fetch(OLLAMA + req.url, { method: req.method, headers: { 'content-type': 'application/json' }, body: b, signal: c.signal }); return { r, c }; };
-      const BUDGET = +process.env.AIX_THINK_MAX || 24000;   // characters of hidden reasoning allowed before the answer must start
+      const BUDGET = +process.env.AIX_THINK_MAX || 6000;   // characters of hidden reasoning allowed before the answer must start
       let rch = 0, cch = 0, lb = '';
       const pump = async (r, c, allowCut) => {
         let cut = false;

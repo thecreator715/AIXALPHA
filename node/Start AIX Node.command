@@ -42,6 +42,8 @@ if ! curl -fs http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
   curl -fs http://127.0.0.1:11434/api/tags >/dev/null 2>&1 || die "Ollama did not start (see /tmp/aix-ollama.log)"
 fi
 
+# a wrapped name left in the environment by an earlier run must not be wrapped again (aix-alpha-aix-alpha-...)
+case "$MODEL" in aix-alpha-*) MODEL="";; esac
 # 3) pick a model for this Mac's memory (override: MODEL=name ./Start...)
 GB=$(( $(sysctl -n hw.memsize) / 1073741824 ))
 if [ -z "$MODEL" ]; then

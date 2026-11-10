@@ -1,5 +1,11 @@
 # AIX Alpha v3.0 - revision 8
 
+## Hang fix, Max removed (node v30)
+- XQ no longer routes to Qwen3.8-Max: XQ runs on the Mac node again, as before (the cloud route and DASHSCOPE key support were removed).
+- Hang: hidden "thinking" could run up to 24,000 characters (several minutes) before the first word appeared. Budget is now 6,000 characters, and XQ build/code requests skip thinking (the build method is already in the prompt), so output starts in seconds.
+- Launcher no longer double-wraps the model name (aix-alpha-aix-alpha-...) when a wrapped name is left in the environment.
+- Qwen-Image 2.1 changes (default image model, 1 cr / 2.5 cr) are unchanged.
+
 ## Qwen-Image 2.1 default + XQ on Qwen3.8-Max (node v29)
 - **Qwen-Image 2.1** (7B, via mflux on the Mac node) is now the default image model: **1 credit** per image, **2.5 credits** (40 steps instead of 20, higher quality) in Thorough and XQ. FLUX.1 (1 cr) and FLUX.2 (3 cr) stay selectable. If no node has the model or a run fails, the same price buys FLUX on Workers AI, so image requests never fail.
 - `Install Qwen Image.command` installs uv + mflux, downloads the weights once (about 33 GB), self-tests and writes `.aix-image`. `Start AIX Node.command` runs it in the background the first time; `Update Qwen.command` refreshes it. Switch off with a `.aix-image-skip` file.
