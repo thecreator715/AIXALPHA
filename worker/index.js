@@ -2053,7 +2053,7 @@ export default {
     try { a2Log(env, ctx, req, res, Date.now() - t0, path, login); } catch (e) { /* logging never breaks a reply */ }
     return res;
   },
-  async _h(req, env) {
+  async _h(req, env, ctx) {
     const url = new URL(req.url), path = url.pathname;
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(env, req) });
     if (path.startsWith('/api/enterprise/')) return entApi(env, req, path);
@@ -2164,7 +2164,7 @@ export default {
       const f = await getUser(env, a.email);
       return json(env, req, { ok: true, charged: owner ? 0 : HOST_CR, credits: +Number(f.credits).toFixed(2) });
     }
-    if (path === '/api/image' && req.method === 'POST') return image(env, req);
+    if (path === '/api/image' && req.method === 'POST') return image(env, req, ctx);
     if (path === '/api/video' && req.method === 'POST') return video(env, req);
     if (path === '/api/sample' && req.method === 'POST') return sample(env, req);
     if (path === '/api/stripe/webhook' && req.method === 'POST') return stripe(env, req);
@@ -2221,14 +2221,23 @@ const IMG_MODELS = {
   flux2: { cr: 3, label: 'FLUX.2' },
 };
 // Qwen-Image 2.1 runs on the owner's Mac node (mflux); if no node has it, or it fails, the same price buys FLUX on Workers AI
-async function qwenImage(env, kind, prompt, w, h) {
+async function qwenImage(env, kind, prompt, w, h, onP) {
   const nd = await nodeGet(env); const cands = nd ? [nd, ...(nd.alts || [])].filter((n) => n && n.img) : [];
   for (const n of cands) {
+    const ac = new AbortController(); let stall = null; const arm = () => { clearTimeout(stall); stall = setTimeout(() => ac.abort(), 60000); }; const cap = setTimeout(() => ac.abort(), kind === 'qwen-hq' ? 660000 : 480000);
     try {
-      const r = await nfetch(n.url.replace(/\/+$/, '') + '/v1/images/generate', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + n.token }, body: JSON.stringify({ prompt, hq: kind === 'qwen-hq', w, h }) }, kind === 'qwen-hq' ? 280000 : 170000);
-      const j = r.ok ? await r.json().catch(() => null) : null; if (j && j.image) return { image: j.image, via: 'qwen' };
-    } catch (e) { /* try next node, then FLUX */ }
+      arm();
+      const r = await fetch(n.url.replace(/\/+$/, '') + '/v1/images/generate', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + n.token }, body: JSON.stringify({ prompt, hq: kind === 'qwen-hq', w, h, prog: true }), signal: ac.signal });
+      if (!r.ok) continue;
+      // the node sends progress lines ({"p":{...}}) and then one final JSON line; an older node sends one JSON object at the end
+      const rd = r.body.getReader(), dec = new TextDecoder(); let buf = '', last = null;
+      const eat = (ln) => { ln = ln.trim(); if (!ln) return; try { const o = JSON.parse(ln); if (o && o.p) { if (onP) onP(o.p); } else last = o; } catch (e) { /* partial */ } };
+      for (;;) { const { done, value } = await rd.read(); if (done) break; arm(); buf += dec.decode(value, { stream: true }); let i; while ((i = buf.indexOf('\n')) >= 0) { eat(buf.slice(0, i)); buf = buf.slice(i + 1); } }
+      eat(buf);
+      if (last && last.image) return { image: last.image, via: 'qwen' };
+    } catch (e) { /* try next node, then FLUX */ } finally { clearTimeout(stall); clearTimeout(cap); }
   }
+  if (onP) onP({ stage: 'Using the cloud image engine', pct: 30, cloud: 1 });
   return { image: await genImage(env, kind === 'qwen-hq' ? 'flux2' : 'flux', prompt, 4, w, h), via: kind === 'qwen-hq' ? 'flux2' : 'flux' };
 }
 async function genImage(env, kind, prompt, steps, w, h) {
@@ -2243,7 +2252,7 @@ async function genImage(env, kind, prompt, steps, w, h) {
   if (!out || !out.image) throw new Error('no image returned');
   return 'data:image/jpeg;base64,' + out.image;
 }
-async function image(env, req) {
+async function image(env, req, ctx) {
   const a = await authed(env, req);
   if (!a) return json(env, req, { error: 'Sign in to generate images.' }, 401);
   if (!env.AI) return json(env, req, { error: 'Image generation is not enabled on this server' }, 501);
@@ -2257,17 +2266,30 @@ async function image(env, req) {
     if (!(up.meta && up.meta.changes > 0)) return json(env, req, { error: 'Out of credits. ' + IMG_MODELS[kind].label + ' costs ' + cost + ' credit' + (cost > 1 ? 's' : '') + '.' }, 402);
   }
   const dm = (v) => Math.max(512, Math.min(1536, Math.round((+v || 1024) / 64) * 64)), DW = dm(b.w), DH = dm(b.h);
-  try {
-    let image, via = kind;
-    if (kind === 'qwen' || kind === 'qwen-hq') { const q = await qwenImage(env, kind, prompt, DW, DH); image = q.image; via = q.via; }
-    else image = await genImage(env, kind, prompt, Math.min(8, Math.max(1, +b.steps || 4)), DW, DH);
-    if (!owner) await env.DB.prepare('INSERT INTO usage(email,at,input,output,credits) VALUES(?,?,0,0,?)').bind(a.email, new Date().toISOString(), cost).run();
-    const f = await getUser(env, a.email);
-    return json(env, req, { image, model: kind, via, credits: +Number(f.credits).toFixed(2), spentCredits: owner ? 0 : cost });
-  } catch (e) {
-    if (!owner) await env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(cost, a.email).run();
-    return json(env, req, { error: 'Image model error: ' + (e.message || e) }, 502);
-  }
+  // answer at once, send a heartbeat every 8 s and (for apps that ask: b.prog) progress lines, then the final JSON. A phone that sits on a silent connection for minutes drops it ("Load failed").
+  const { readable, writable } = new TransformStream(), w = writable.getWriter(), enc = new TextEncoder();
+  let gone = false; const put = (str) => w.write(enc.encode(str)).catch(() => { gone = true; });
+  const hb = setInterval(() => put(b.prog ? JSON.stringify({ p: { hb: 1 } }) + '\n' : ' '), 8000);
+  const emit = b.prog ? (p) => { if (!gone) put(JSON.stringify({ p }) + '\n'); } : null;
+  const work = (async () => {
+    let out;
+    try {
+      let image, via = kind;
+      if (kind === 'qwen' || kind === 'qwen-hq') { const q = await qwenImage(env, kind, prompt, DW, DH, emit); image = q.image; via = q.via; }
+      else { if (emit) emit({ stage: 'Rendering the picture', pct: 20, cloud: 1 }); image = await genImage(env, kind, prompt, Math.min(8, Math.max(1, +b.steps || 4)), DW, DH); }
+      const f = await getUser(env, a.email);
+      out = { image, model: kind, via, credits: +Number(f.credits).toFixed(2), spentCredits: owner ? 0 : cost };
+    } catch (e) { out = { error: 'Image model error: ' + (e.message || e) }; }
+    clearInterval(hb);
+    let sent = false;
+    try { await w.write(enc.encode((b.prog ? '' : '\n') + JSON.stringify(out) + '\n')); await w.close(); sent = true; } catch (e) { /* the phone left */ }
+    if (!owner) {
+      if (out.image && sent) await env.DB.prepare('INSERT INTO usage(email,at,input,output,credits) VALUES(?,?,0,0,?)').bind(a.email, new Date().toISOString(), cost).run();
+      else await env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(cost, a.email).run();   // failed or never delivered: refunded
+    }
+  })();
+  if (ctx && ctx.waitUntil) ctx.waitUntil(work);
+  const hd = json(env, req, {}).headers; return new Response(readable, { status: 200, headers: hd });
 }
 
 // ---- AI video (beta): free Hugging Face ZeroGPU Space (Lightricks LTX-Video distilled), image -> short clip ----

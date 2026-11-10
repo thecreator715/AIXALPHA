@@ -1,5 +1,14 @@
 # AIX Alpha v3.0 - revision 8
 
+## Fix: "Load failed" on image mode, and a real progress meter (node v44)
+- Cause: the image route sent nothing back until the picture was finished, which can take minutes with Qwen-Image on the Mac. Mobile Safari drops a silent connection after a while and reports "Load failed". Video never had this because it streams progress.
+- The Mac node (v44) now streams image progress: engine step n of N, percent and time left, with a line every 2 s. The server relays it with a heartbeat every 8 s, so the connection stays alive however long the render takes.
+- The image card in chat shows the real stage ("Loading the image model", "Rendering step 6 of 16"), a live percent, time left from the measured step rate, and a warning if no update arrives for 12 s. Without node progress (cloud engine) it falls back to an estimate from your last five renders.
+- The server stops waiting on the Mac after 60 s of silence (was a fixed 170 s) and falls back to the cloud engine; it waits as long as the Mac keeps reporting progress, up to 8 minutes (11 in Thorough/XQ).
+- Credits are only kept if the picture is delivered. If the phone drops the connection, the credit is refunded automatically.
+- If the connection does drop, the message now says so plainly instead of "Load failed".
+- Update the Mac node (Update Qwen or restart Start AIX Node) to get step-by-step progress; an older node still works, with the estimate meter.
+
 ## Fix: sign-in and sign-up blocked by CORS (x-device header)
 - The device id header added for the free-credit check was not on the server's allowed-headers list, so browsers refused every sign-in/sign-up request before it was sent. `x-device` and `x-aix-device` are now allowed. No app update needed.
 

@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path'), crypto = require('crypto');
-const VERSION = 43;   // bump on every release: nodes auto-update when GitHub has a higher number
+const VERSION = 44;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -307,19 +307,30 @@ function genVid(prompt, imgBuf, w, hgt, sec, up, q, job) {
   const run = async () => { try { return await run1(false); } catch (e) { if (job.fast && !job.cancelled && !job.stalled && !job.timedOut) { job.stage = 'Retrying in low-memory mode'; job.parsed = null; job.stageIdx = 0; job.pctMax = 0; return await run1(true); } throw e; } };   // fast mode failed (usually memory): one automatic retry with --low-ram
   const p = IMGBUSY.then(run, run); IMGBUSY = p.catch(() => {}); return p.finally(() => { if (!job.rel) VIDQ = Math.max(0, VIDQ - 1); job.done = true; const i = VIDJOBS.indexOf(job); if (i >= 0) VIDJOBS.splice(i, 1); });
 }
-function genImg(prompt, hq, w, hgt) {
+function imgSnap(j) {
+  const now = Date.now(), el = (now - j.t0) / 1000; let pct = 0, eta = null, stage = j.stage;
+  if (j.step > 0) { pct = 12 + 84 * j.step / j.steps; const per = (now - j.s1) / 1000 / Math.max(1, j.step - (j.step1 || 0) + 1); eta = Math.max(0, per * (j.steps - j.step)); stage = 'Rendering step ' + j.step + ' of ' + j.steps; }
+  else if (j.run) pct = 6; else pct = 1;
+  if (j.done) { pct = 100; eta = 0; stage = 'Done'; }
+  return { stage, pct: Math.round(pct * 10) / 10, step: j.step || 0, steps: j.steps, eta, elapsed: Math.round(el), w: j.w, h: j.h, run: j.run ? 1 : 0, alive: !!j.cp && !j.done, silent: Math.round((now - (j.lastOut || j.t0)) / 1000), last: j.last || '' };
+}
+function genImg(prompt, hq, w, hgt, job) {
+  job = job || {}; job.t0 = Date.now(); job.w = w; job.h = hgt; job.step = 0; job.stage = 'Waiting for the image engine'; job.lastOut = job.t0;
   const c = imgCfg(); if (!c || !c.cmd) return Promise.reject(Object.assign(new Error('image model not installed'), { code: 501 }));
+  job.steps = hq ? (c.stepsHq || 30) : (c.steps || 16);
   if (IMGQ >= 3) return Promise.reject(Object.assign(new Error('image queue full'), { code: 429 }));
   IMGQ++;
-  const run = async () => { await unloadLLM(); return new Promise((resolve, reject) => {
+  const run = async () => { if (job.cancel) throw new Error('cancelled'); job.stage = 'Freeing memory for the image model'; job.run = 1; await unloadLLM(); if (job.cancel) throw new Error('cancelled'); job.stage = 'Loading the image model'; return new Promise((resolve, reject) => {
     const out = path.join(IMGDIR, 'i' + Date.now() + crypto.randomBytes(3).toString('hex') + '.png');
     const steps = String(hq ? (c.stepsHq || 30) : (c.steps || 16));
     const args = (c.args || []).concat(['--prompt', prompt, '--steps', steps, '--width', String(w), '--height', String(hgt), '--seed', String(Math.floor(Math.random() * 2e9)), '--output', out]);
     const cp = require('child_process').spawn(c.cmd, args, { detached: os.platform() !== 'win32', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PATH: process.env.PATH + ':' + os.homedir() + '/.local/bin:/opt/homebrew/bin:/usr/local/bin' } });
-    let err = ''; cp.stderr.on('data', (d) => { err = (err + d).slice(-1500); }); cp.stdout.on('data', () => {});
+    job.cp = cp; let err = '';
+    const sniff = (d) => { const t = String(d); job.lastOut = Date.now(); const ln = t.split(/[\r\n]+/).filter(Boolean).pop(); if (ln) job.last = ln.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').trim().slice(0, 160); const re = /(\d{1,3})\s*\/\s*(\d{1,3})(?!\d)/g; let m, best = 0; while ((m = re.exec(t))) { if (+m[2] === +steps && +m[1] >= 1 && +m[1] <= +steps) best = Math.max(best, +m[1]); } if (best > job.step) { if (!job.step) { job.s1 = Date.now(); job.step1 = best; } job.step = best; } };
+    cp.stderr.on('data', (d) => { err = (err + d).slice(-1500); sniff(d); }); cp.stdout.on('data', (d) => { sniff(d); });
     const to = setTimeout(() => { killTree(cp); }, hq ? 600000 : 420000);
     cp.on('error', (e) => { clearTimeout(to); reject(e); });
-    cp.on('close', (code) => { clearTimeout(to); try { const b = fs.readFileSync(out); fs.unlinkSync(out); if (b.length > 1000) return resolve(b); } catch {} reject(new Error('image run failed (' + code + '): ' + err.split('\n').slice(-3).join(' ').slice(0, 300))); });
+    cp.on('close', (code) => { clearTimeout(to); job.cp = null; try { const b = fs.readFileSync(out); fs.unlinkSync(out); if (b.length > 1000) return resolve(b); } catch {} reject(new Error('image run failed (' + code + '): ' + err.split('\n').slice(-3).join(' ').slice(0, 300))); });
   }); };
   const p = IMGBUSY.then(run, run); IMGBUSY = p.catch(() => {}); return p.finally(() => { IMGQ--; });
 }
@@ -502,11 +513,20 @@ const SRV = http.createServer(async (req, res) => {
       return;
     }
     if (u === '/v1/images/generate' && req.method === 'POST') {
+      let b, pr; try { b = JSON.parse((await body(req)).toString() || '{}'); pr = String(b.prompt || '').slice(0, 1000).trim(); } catch { return J(res, h, 400, { error: 'bad json' }); }
+      if (!pr) return J(res, h, 400, { error: 'prompt required' });
+      const dm = (v) => Math.max(512, Math.min(1536, Math.round((+v || +b.size || 1024) / 64) * 64)), W = dm(b.w), H = dm(b.h), job = {};
+      // headers go out at once; progress lines ({"p":{...}}) every 2 s, then one final JSON line. A client that leaves stops the render.
+      res.writeHead(200, { ...h, 'content-type': 'application/x-ndjson', 'cache-control': 'no-cache', 'x-accel-buffering': 'no' });
+      const send = (o) => { try { res.write(JSON.stringify(o) + '\n'); } catch {} };
+      let hb = null;
+      res.on('close', () => { if (hb) clearInterval(hb); if (!res.writableEnded) { job.cancel = true; if (job.cp) killTree(job.cp); } });
       try {
-        const b = JSON.parse((await body(req)).toString() || '{}'), pr = String(b.prompt || '').slice(0, 1000).trim(); if (!pr) return J(res, h, 400, { error: 'prompt required' });
-        const dm = (v) => Math.max(512, Math.min(1536, Math.round((+v || +b.size || 1024) / 64) * 64)), W = dm(b.w), H = dm(b.h);
-        const png = await genImg(pr, !!b.hq, W, H); return J(res, h, 200, { image: 'data:image/png;base64,' + png.toString('base64'), model: 'qwen-image-2.1', hq: !!b.hq });
-      } catch (e) { return J(res, h, e.code || 502, { error: String(e.message || e).slice(0, 300) }); }
+        const pm = genImg(pr, !!b.hq, W, H, job); send({ p: imgSnap(job) }); hb = setInterval(() => send({ p: imgSnap(job) }), 2000);
+        const png = await pm; clearInterval(hb); job.done = true; send({ p: imgSnap(job) });
+        res.end(JSON.stringify({ image: 'data:image/png;base64,' + png.toString('base64'), model: 'qwen-image-2.1', hq: !!b.hq, secs: Math.round((Date.now() - job.t0) / 1000) }));
+      } catch (e) { if (hb) clearInterval(hb); try { res.end(JSON.stringify({ error: String(e.message || e).slice(0, 300), code: e.code || 502 })); } catch {} }
+      return;
     }
     if (u.startsWith('/v1/') || u === '/api/tags') {
       const t0 = Date.now(); let buf = req.method === 'GET' ? undefined : await body(req); let model = '', pj = null; try { pj = JSON.parse(buf.toString()); if (/qwen3|qwq|deepseek-r1/i.test(pj.model || '') && pj.reasoning_effort == null && pj.think == null && !thinkOn() && !req.headers['x-aix-think']) { pj.reasoning_effort = 'none'; pj.think = false; buf = Buffer.from(JSON.stringify(pj)); } model = pj.model || ''; const hasImg = pj.messages && pj.messages.some((m) => Array.isArray(m.content) && m.content.some((c) => c && c.type === 'image_url')); if (hasImg) { const vm = await visionModel(); if (vm) { pj.model = model = vm; } else { pj.messages = pj.messages.map((m) => (Array.isArray(m.content) ? { ...m, content: m.content.filter((c) => !(c && c.type === 'image_url')).map((c) => (c.type === 'text' ? c.text : '')).join('\n') + '\n\n(Note for the assistant: the user attached an image but the vision model is still being installed on this host. Tell them in one short sentence that image reading will be ready in a few minutes and to try again, then answer any text part of the question.)' } : m)); } buf = Buffer.from(JSON.stringify(pj)); } } catch (e) { console.log('vision route error', e && e.message); }

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head><meta http-equiv="Cache-Control" content="no-cache, must-revalidate"><script>/* freshness guard: if GitHub Pages / the browser served an old copy, reload the newest one once */
-window.APP_BUILD='2026-11-09-v44';
+window.APP_BUILD='2026-11-10-v45';
 (function(){try{if(!/^https?:$/.test(location.protocol)||/claude\.(ai|com)|claudeusercontent/.test(location.hostname))return;
 var K='aix_fresh_try',t=+sessionStorage.getItem(K)||0;if(t>1)return;
 fetch(location.pathname+'?_fresh='+Date.now(),{cache:'no-store'}).then(function(r){return r.text()}).then(function(x){var m=x.match(/APP_BUILD='([^']+)'/);if(m&&m[1]!==window.APP_BUILD&&m[1]>window.APP_BUILD){sessionStorage.setItem(K,String(t+1));location.replace(location.pathname+'?v='+encodeURIComponent(m[1])+'&t='+Date.now()+location.hash)}else sessionStorage.removeItem(K)}).catch(function(){})}catch(e){}})();
@@ -4622,15 +4622,22 @@ setTimeout(function(){const b=$('#fanim');if(b)b.onclick=openAnimate},0);
 const IMGINTENT=/^\s*(please\s+)?(can you\s+|could you\s+)?(create|generate|make|draw|paint|render|design|show me)\s+(me\s+)?(an?\s+|the\s+|some\s+)?(\w+\s+)?(image|picture|photo|photograph|illustration|artwork|painting|portrait|wallpaper)s?\b/i;
 function ipEst(key){const H=(store.get('aix3_imgdur',{})||{})[key]||[];if(H.length)return H.reduce((a,b)=>a+b,0)/H.length;return /\|/.test(key)&&/qwen/.test(key)?30000:12000}
 function ipLearn(key,ms){try{const d=store.get('aix3_imgdur',{})||{};d[key]=((d[key]||[]).concat(ms)).slice(-5);store.set('aix3_imgdur',d)}catch{}}
-function ipInner(m){const p=m.iprog,now=Date.now(),el=now-p.t0,est=p.est,stale=el>600000;
-  if(stale)return '<div class="mono" style="font-size:12px;color:#fbbf24">This render was interrupted. Send the prompt again.</div>';
-  const pct=Math.min(95,el/est*100),left=est-el,over=left<0;
-  const stage=el<1500?'Sending your prompt…':el<est*0.9?'Rendering the picture…':'Finishing up…';
-  const tl=over?'Taking longer than usual, still working…':'About '+Math.max(1,Math.ceil(left/1000))+' s left (estimate)';
+function ipInner(m){const p=m.iprog,now=Date.now(),el=now-p.t0,sn=p.snap;
+  if(el>900000)return '<div class="mono" style="font-size:12px;color:#fbbf24">This render was interrupted. Send the prompt again.</div>';
+  let pct,stage,tl,live='',hc='#6ee7b7';const est=p.est;
+  if(sn&&sn.pct!=null){pct=Math.min(99.5,sn.pct);stage=sn.stage||'Rendering the picture';
+    let left=null;if(sn.eta!=null)left=Math.max(0,sn.eta-(now-sn.at)/1000);
+    tl=left!=null&&sn.step>0?'About '+fmtClk(left)+' left':(sn.cloud?'Cloud engine, usually under a minute':(sn.step>0?'Almost done…':'Loading the model, the time left appears after the first step'));
+    if(sn.step>0)p.steps=sn.steps;
+    const age=(now-sn.at)/1000;
+    if(age>12){live='No update from the server for '+Math.round(age)+' s: the connection or the Mac may have dropped';hc='#f87171'}
+    else if(sn.alive&&sn.last&&!sn.cloud)live='Engine running'+(sn.silent>20?' · last output '+sn.silent+' s ago':'')}
+  else{const over=el>est;pct=Math.min(95,el/est*100);stage=el<1500?'Sending your prompt…':el<est*0.9?'Rendering the picture…':'Finishing up…';tl=over?'Taking longer than usual, still working…':'About '+Math.max(1,Math.ceil((est-el)/1000))+' s left (estimate)'}
+  const liveHtml=live?`<div style="margin-top:8px;font:11.5px var(--mono,monospace);color:${hc};display:flex;gap:7px;align-items:center"><span style="width:8px;height:8px;border-radius:50%;background:${hc};flex:none;${hc==='#6ee7b7'?'animation:vpb 1s ease-in-out infinite;':''}"></span>${esc(live)}</div>`:'';
   return `<div style="display:flex;justify-content:space-between;gap:8px;font:600 12px var(--mono,monospace);color:#6ee7b7"><span>🖼 ${esc(stage)}</span><span>${Math.floor(pct)}%</span></div>
-  <div style="height:10px;border-radius:99px;background:#0b1f17;border:1px solid #065f46;margin:8px 0;overflow:hidden"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#059669,#34d399);border-radius:99px;transition:width .5s ease"></div></div>
-  <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;font:11.5px var(--mono,monospace);color:var(--m)"><span>Elapsed ${Math.floor(el/1000)} s</span><span>${tl}</span></div>
-  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><span style="font:10.5px var(--mono,monospace);color:#a7f3d0;border:1px solid #065f46;border-radius:99px;padding:2px 8px">${esc(p.label)}</span><span style="font:10.5px var(--mono,monospace);color:#a7f3d0;border:1px solid #065f46;border-radius:99px;padding:2px 8px">${esc(p.size)}</span></div>`}
+  <div style="height:10px;border-radius:99px;background:#0b1f17;border:1px solid #065f46;margin:8px 0;overflow:hidden"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#059669,#34d399);border-radius:99px;transition:width .6s ease"></div></div>
+  <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;font:11.5px var(--mono,monospace);color:var(--m)"><span>Elapsed ${fmtClk(el/1000)}</span><span>${tl}</span></div>${liveHtml}
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><span style="font:10.5px var(--mono,monospace);color:#a7f3d0;border:1px solid #065f46;border-radius:99px;padding:2px 8px">${esc(p.label)}</span><span style="font:10.5px var(--mono,monospace);color:#a7f3d0;border:1px solid #065f46;border-radius:99px;padding:2px 8px">${esc(p.size)}</span>${sn&&sn.step>0?`<span style="font:10.5px var(--mono,monospace);color:#a7f3d0;border:1px solid #065f46;border-radius:99px;padding:2px 8px">step ${sn.step}/${sn.steps}</span>`:''}</div>`}
 function ipHtml(m){return `<div data-ip="${m.iprog.id}" style="margin:8px 0;padding:12px;border:1px solid #065f46;border-radius:12px;background:#06281d">${ipInner(m)}</div>`}
 function ipPaint(m){document.querySelectorAll('[data-ip="'+m.iprog.id+'"]').forEach(el=>{el.innerHTML=ipInner(m)})}
 async function chatFlux(c,text){
@@ -4638,9 +4645,9 @@ async function chatFlux(c,text){
   const prompt=subj+(/\b(photo|realistic|painting|illustration|cartoon|anime|pixel|sketch|3d|render)\b/i.test(subj)?'':', highly detailed, beautiful lighting');
   const t0=Date.now(),model=pickImgModel(text),szId=sizeFromText(text)||S.imgsz,SZ=imgSize(szId),GD=genDims(SZ.w,SZ.h),key=model+'|'+GD[0]+'x'+GD[1];
   const ph={role:'assistant',content:'',ts:t0,iprog:{id:'ip'+t0,t0,est:ipEst(key),key,label:IMG_LBL[model]||'Image',size:SZ.w+'×'+SZ.h}};
-  c.msgs.push(ph);renderMsgs();const tk=setInterval(()=>{try{ipPaint(ph)}catch{}},500);
+  c.msgs.push(ph);renderMsgs();const tk=setInterval(()=>{try{ipPaint(ph)}catch{}},500);const onP=p=>{ph.iprog.snap=Object.assign({},p,{at:Date.now()});try{ipPaint(ph)}catch{}};
   const at=()=>c.msgs.indexOf(ph);
-  try{const j=await imgCall(prompt.replace(/\b(with|using|in)\s+(flux\s*\.?\s*2)\b/ig,'').trim(),model,szId);
+  try{const j=await imgCall(prompt.replace(/\b(with|using|in)\s+(flux\s*\.?\s*2)\b/ig,'').trim(),model,szId,onP);
     clearInterval(tk);ipLearn(key,Date.now()-t0);
     const id='a'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);ASSET[id]=j.image;aput(id,j.image);
     const msg={role:'assistant',content:`Here's your image: **${subj}**\n\n${IMG_LBL[j.model||model]||'Image'}${j.via&&j.via!==(j.model||model)?' (backup engine: '+IMG_LBL[j.via]+')':''} · ${j.spentCredits?j.spentCredits+' credit'+(j.spentCredits>1?'s':'')+' used':'admin, 0 credits'}${j.credits!=null?' · balance '+j.credits+' cr':''} · stored on this device`,ts:Date.now(),dur:Date.now()-t0,aid:id};
@@ -4873,11 +4880,15 @@ async function saveJpeg(src,name){try{const j=await toJpeg(src,0,0,.95);dl((name
 document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data-sj]');if(!b)return;e.preventDefault();const k=b.dataset.sj,src=ASSET[k]||k;if(src)saveJpeg(src,b.dataset.nm||'aix-image')});
 const IMG_LBL={qwen:'Qwen-Image 2.1','qwen-hq':'Qwen-Image 2.1 HQ',flux:'FLUX',flux2:'FLUX.2'};
 function pickImgModel(t){return /flux\s*\.?\s*2/i.test(t)?'flux2':(S.imgm==='nano'?'qwen':(S.imgm||'qwen'))}
-async function imgCall(prompt,model,sizeId){model=model||S.imgm||'qwen';const SZ=imgSize(sizeId||S.imgsz),GD=genDims(SZ.w,SZ.h);
+async function imgCall(prompt,model,sizeId,onP){model=model||S.imgm||'qwen';const SZ=imgSize(sizeId||S.imgsz),GD=genDims(SZ.w,SZ.h);
   if(!BACKEND())throw new Error('Image generation needs the AIX server (use the GitHub site).');
   const tok=store.get(TOKK,'');if(!tok){setTimeout(()=>{try{openAccount('Sign in to generate images. Qwen-Image costs 1 credit (2.5 in Thorough/XQ).')}catch{}},200);throw new Error('Sign in to generate images (1 credit Qwen-Image or FLUX, 2.5 in Thorough/XQ, 3 credits FLUX.2).')}
-  const r=await fetch(BACKEND()+'/api/image',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+tok},body:JSON.stringify({prompt,model,w:GD[0],h:GD[1],mode:(S.pid==='aix-alpha-xq'?'xq':S.mode)})});
-  const j=await r.json().catch(()=>({}));
+  let r;try{r=await fetch(BACKEND()+'/api/image',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+tok},body:JSON.stringify({prompt,model,w:GD[0],h:GD[1],mode:(S.pid==='aix-alpha-xq'?'xq':S.mode),prog:true})})}catch(e){throw new Error('Could not reach the AIX server ('+(e&&e.message||e)+'). Check your connection and try again.')}
+  let j;
+  if(r.ok&&r.body&&r.body.getReader){const rd=r.body.getReader(),dec=new TextDecoder();let buf='',last=null;const eat=ln=>{ln=ln.trim();if(!ln)return;try{const o=JSON.parse(ln);if(o&&o.p){if(onP&&!o.p.hb)onP(o.p)}else last=o}catch{}};
+    try{for(;;){const {done,value}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;while((i=buf.indexOf('\n'))>=0){eat(buf.slice(0,i));buf=buf.slice(i+1)}}eat(buf)}catch(e){if(!last||!last.image)throw new Error('The connection dropped while the picture was rendering ('+(e&&e.message||e)+'). Nothing was charged. Try again, and keep this page open.')}
+    j=last||{}}
+  else j=await r.json().catch(()=>({}));
   if(r.status===402){BAL=0;try{setStatus()}catch{}setTimeout(()=>{try{openCredits('Not enough credits for this image. Add credits to continue.')}catch{}},200);throw new Error(j.error||'Out of credits. An image costs 1 credit.')}
   if(r.status===401){setTimeout(()=>{try{openAccount('Your session expired. Sign in again.')}catch{}},200);throw new Error('Please sign in again.')}
   if(!r.ok||!j.image)throw new Error(j.error||('Image failed ('+r.status+')'));
