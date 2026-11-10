@@ -1,5 +1,10 @@
 # AIX Alpha v3.0 - revision 8
 
+## Mobile touch fixes
+- Taps always register on phones: pointer cursor on touch devices (iOS ignores taps on plain elements otherwise), touch-action on buttons, hidden side panels no longer take part in hit-testing.
+- Inputs use 16px text on phones so iOS no longer zooms the page when you tap a field (a zoomed page made icons look dead).
+- Tapping the dim area behind any pop-up closes it, and a pop-up that is open but empty or off-screen is closed automatically so it can never freeze the page.
+
 ## Image sizes + JPEG downloads (node v31)
 - Every image download (gallery pop-up and chat "Save image") now produces a real JPEG. The old button guessed the type by searching the image data for "svg", which could wrongly save an .svg.
 - Image size/shape: Settings -> Images sets the default; a size menu sits next to the image-model menu; or just ask ("4K ultra wide", "iPhone screen", "portrait", "wide angle landscape"). Presets: square, landscape, wide 16:9, 4K UHD, ultra wide 21:9, 4K ultra wide (5120x2160), portrait, tall 9:16, iPhone screen, phone wallpaper 4K, fast draft.
