@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head><meta http-equiv="Cache-Control" content="no-cache, must-revalidate"><script>/* freshness guard: if GitHub Pages / the browser served an old copy, reload the newest one once */
-window.APP_BUILD='2026-11-10-v46';
+window.APP_BUILD='2026-11-10-v47';
 (function(){try{if(!/^https?:$/.test(location.protocol)||/claude\.(ai|com)|claudeusercontent/.test(location.hostname))return;
 var K='aix_fresh_try',t=+sessionStorage.getItem(K)||0;if(t>1)return;
 fetch(location.pathname+'?_fresh='+Date.now(),{cache:'no-store'}).then(function(r){return r.text()}).then(function(x){var m=x.match(/APP_BUILD='([^']+)'/);if(m&&m[1]!==window.APP_BUILD&&m[1]>window.APP_BUILD){sessionStorage.setItem(K,String(t+1));location.replace(location.pathname+'?v='+encodeURIComponent(m[1])+'&t='+Date.now()+location.hash)}else sessionStorage.removeItem(K)}).catch(function(){})}catch(e){}})();
@@ -523,6 +523,7 @@ html{scroll-behavior:smooth}
 #top>*:not(#tabs){flex-shrink:0}#tabs{overflow-x:auto!important;justify-content:flex-start!important;scrollbar-width:none}#tabs::-webkit-scrollbar{display:none}#tabs button{flex:0 0 auto!important;text-overflow:clip!important;overflow:visible!important;padding:6px clamp(8px,.9vw,13px)!important;white-space:nowrap}
 .fvd{padding:0!important;overflow:hidden;display:flex;flex-direction:column;max-width:min(860px,96vw)}.fvd>.fvh{padding:16px 22px 12px;border-bottom:1px solid var(--b);display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:linear-gradient(180deg,#121216,transparent)}.fvh h3{margin:0;font-size:16px;word-break:break-all;flex:1;min-width:0}.fvh .tb{font:10.5px var(--mono,monospace)}.fvd>.fvb{padding:6px 24px 18px;overflow:auto;max-height:64vh;min-height:120px}.fvd>.fvf{display:flex;gap:8px;justify-content:flex-end;padding:12px 22px;border-top:1px solid var(--b);background:#0b0b0e}
 .rep>*:first-child{margin-top:12px!important}.rep h2{font-size:22px;letter-spacing:-.01em}.rep .ck{display:inline-block;width:14px;height:14px;border:1.5px solid #52525b;border-radius:4px;vertical-align:-2px;margin-right:6px}.rep .ck.on{background:#34d399;border-color:#34d399;color:#000;font-size:10px;line-height:11px;text-align:center}.pp2{font:700 10px var(--mono,monospace);border-radius:999px;padding:1px 7px;margin-right:2px;border:1px solid}.pp2.P0{color:#f87171;background:#f8717118;border-color:#f8717155}.pp2.P1{color:#fbbf24;background:#fbbf2418;border-color:#fbbf2455}.pp2.P2{color:#60a5fa;background:#60a5fa18;border-color:#60a5fa55}.pp2.P3{color:#a1a1aa;background:#a1a1aa18;border-color:#a1a1aa55}.men{color:#c4b5fd;background:#c4b5fd16;border-radius:6px;padding:0 5px;font-weight:600}.rep li{padding-left:2px}.rep ul{list-style:none;padding-left:4px}.rep li:has(.ck):before{display:none}.rep li:before{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;background:#34d399;margin:0 9px 2px -2px}
+@media(min-width:901px) and (max-width:1500px){#loop .bar{flex-wrap:wrap!important;row-gap:6px}#loop #modes{flex:0 0 auto!important;min-width:max-content!important}}
 @media(max-width:1300px) and (min-width:901px){#toprt>#pm{font-size:0!important;padding:0!important;width:10px!important;height:10px!important;min-width:10px!important;border-radius:50%!important;border:0!important;flex:none!important;margin:0 8px!important;background:#34d399!important;box-shadow:0 0 0 3px #34d39933}}
 
 .gl-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0 14px}.gl-bar input{flex:1;min-width:140px}
@@ -4643,7 +4644,7 @@ function ipPaint(m){document.querySelectorAll('[data-ip="'+m.iprog.id+'"]').forE
 async function chatFlux(c,text){
   const subj=text.replace(IMGINTENT,'').replace(/^\s*(of|for|showing|with|that shows)\s+/i,'').replace(/\s*\b(with|using|in)\s+(flux\s*\.?\s*2)\b/ig,'').trim()||text;
   const prompt=subj+(/\b(photo|realistic|painting|illustration|cartoon|anime|pixel|sketch|3d|render)\b/i.test(subj)?'':', highly detailed, beautiful lighting');
-  const t0=Date.now(),model=pickImgModel(text),szId=sizeFromText(text)||S.imgsz,SZ=imgSize(szId),GD=genDims(SZ.w,SZ.h),key=model+'|'+GD[0]+'x'+GD[1];
+  const t0=Date.now(),model=pickImgModel(text),szId=(store.get('aix3_imgsz',null)?S.imgsz:(sizeFromText(text)||S.imgsz)),SZ=imgSize(szId),GD=genDims(SZ.w,SZ.h),key=model+'|'+GD[0]+'x'+GD[1];
   const ph={role:'assistant',content:'',ts:t0,iprog:{id:'ip'+t0,t0,est:ipEst(key),key,label:IMG_LBL[model]||'Image',size:SZ.w+'×'+SZ.h}};
   c.msgs.push(ph);renderMsgs();const tk=setInterval(()=>{try{ipPaint(ph)}catch{}},500);const onP=p=>{ph.iprog.snap=Object.assign({},p,{at:Date.now()});try{ipPaint(ph)}catch{}};
   const at=()=>c.msgs.indexOf(ph);

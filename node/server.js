@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path'), crypto = require('crypto');
-const VERSION = 45;   // bump on every release: nodes auto-update when GitHub has a higher number
+const VERSION = 46;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -515,7 +515,8 @@ const SRV = http.createServer(async (req, res) => {
     if (u === '/v1/images/generate' && req.method === 'POST') {
       let b, pr; try { b = JSON.parse((await body(req)).toString() || '{}'); pr = String(b.prompt || '').slice(0, 1000).trim(); } catch { return J(res, h, 400, { error: 'bad json' }); }
       if (!pr) return J(res, h, 400, { error: 'prompt required' });
-      const dm = (v) => Math.max(512, Math.min(b.fast ? 768 : 1536, Math.round((+v || +b.size || 1024) / 64) * 64)), W = dm(b.w), H = dm(b.h), job = {};
+      const dm = (v, lo) => Math.max(lo || 512, Math.min(1536, Math.round((+v || +b.size || 1024) / 64) * 64)); let W = dm(b.w), H = dm(b.h); const job = {};
+      if (b.fast && W * H > 500000) { const k = Math.sqrt(500000 / (W * H)); W = dm(W * k, 384); H = dm(H * k, 384); }   // fast draft: about half a megapixel, same shape as the request
       // headers go out at once; progress lines ({"p":{...}}) every 2 s, then one final JSON line. A client that leaves stops the render.
       res.writeHead(200, { ...h, 'content-type': 'application/x-ndjson', 'cache-control': 'no-cache', 'x-accel-buffering': 'no' });
       const send = (o) => { try { res.write(JSON.stringify(o) + '\n'); } catch {} };

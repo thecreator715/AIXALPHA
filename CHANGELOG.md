@@ -302,3 +302,8 @@
 - Worker: forwards heartbeats and "thinking" progress, reports max_tokens truncation on the node path (the app now continues cut-off builds instead of calling them complete), surfaces node errors, no thinking on continue/refine passes.
 - App: stalled or dropped streams (2 min of silence) end cleanly and are continued instead of hanging; partial builds are kept; XQ per-request credit budget raised 4x so long builds are not stopped mid-way.
 - PDF dossier updated to revision 8 (ALPHA XQ, Qwen 3.8 / Qwen 4 plan, limits, billing, reliability, launchers).
+
+## v47 — Qwen Fast size + toolbar fix
+- Qwen Fast keeps the chosen aspect ratio (no more 3840×2160 / 4k-in-prompt overriding the size dropdown).
+- Explicit size dropdown choice now beats size words in the prompt.
+- Mode toolbar no longer squeezes on 900–1500 px desktop windows (wraps instead).
