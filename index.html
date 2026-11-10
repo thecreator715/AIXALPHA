@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head><meta http-equiv="Cache-Control" content="no-cache, must-revalidate"><script>/* freshness guard: if GitHub Pages / the browser served an old copy, reload the newest one once */
-window.APP_BUILD='2026-11-09-v36';
+window.APP_BUILD='2026-11-09-v38';
 (function(){try{if(!/^https?:$/.test(location.protocol)||/claude\.(ai|com)|claudeusercontent/.test(location.hostname))return;
 var K='aix_fresh_try',t=+sessionStorage.getItem(K)||0;if(t>1)return;
 fetch(location.pathname+'?_fresh='+Date.now(),{cache:'no-store'}).then(function(r){return r.text()}).then(function(x){var m=x.match(/APP_BUILD='([^']+)'/);if(m&&m[1]!==window.APP_BUILD&&m[1]>window.APP_BUILD){sessionStorage.setItem(K,String(t+1));location.replace(location.pathname+'?v='+encodeURIComponent(m[1])+'&t='+Date.now()+location.hash)}else sessionStorage.removeItem(K)}).catch(function(){})}catch(e){}})();
@@ -1168,6 +1168,7 @@ async function openCredits(reason){
   $('#ckey').onclick=()=>{d.close();openKey(true)}}
 function openAccount(welcome){
   const be=BACKEND();
+  if(typeof claude!=='undefined'&&claude&&typeof claude.use==='function'&&!/github\.io$/.test(location.hostname)&&!(UNAME&&store.get(TOKK,''))){dialog(`<h3 style="margin:0 0 8px">Sign in on the live site</h3><p style="font-size:13px;line-height:1.55;margin:0 0 10px">This claude.ai preview blocks all network requests to the AIX server, so accounts, credits, images and video cannot work here. Your admin account signs in normally on the live site.</p><p style="margin:0 0 12px"><a href="https://thecreator715.github.io/AIXALPHA/" target="_blank" rel="noopener" style="color:#6ee7b7;font-weight:700">https://thecreator715.github.io/AIXALPHA/</a></p><p style="font-size:11.5px;color:var(--m);margin:0 0 10px">If the link does not open from this preview, copy it into your browser. After a hard refresh (Cmd+Shift+R) the live site always loads the newest build.</p><div style="display:flex;justify-content:flex-end"><button class="btn2" data-close>Close</button></div>`);return}
   if(!be){const d0=dialog(`<h3 style="margin:0 0 8px">AIX account</h3><p style="font-size:12.5px;color:var(--m)">Set the AIX server address to sign in, or use your own API key.</p><label>Server address</label><input id="beu" placeholder="https://your-aix-server.example.com"><div style="display:flex;gap:8px;justify-content:space-between;margin-top:8px"><button class="btn2" id="bkey">Use my own API key</button><span><button class="btn2" data-close>Cancel</button> <button class="btn" id="bset">Connect</button></span></div>`);
     $('#bkey').onclick=()=>{d0.close();openKey(true)};$('#bset').onclick=()=>{const u=$('#beu').value.trim().replace(/\/+$/,'');if(!u)return toast('Enter the server address');store.set(BEK,u);d0.close();location.reload()};return}
   const signed=!!UNAME&&!!store.get(TOKK,'');

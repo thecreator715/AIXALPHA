@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path'), crypto = require('crypto');
-const VERSION = 37;   // bump on every release: nodes auto-update when GitHub has a higher number
+const VERSION = 38;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -378,6 +378,31 @@ const SRV = http.createServer(async (req, res) => {
       let tun = ''; try { tun = (fs.readFileSync(path.join(__dirname, 'tunnel.log'), 'utf8').match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/g) || []).pop() || ''; } catch {}
       const nm = process.memoryUsage();
       return J(res, h, 200, { platform: os.platform() + ' ' + os.release(), arch: os.arch(), host: os.hostname(), node: process.version, pid: process.pid, load: os.loadavg(), cores: os.cpus().length, mem: { total: os.totalmem(), free: os.freemem() }, disk: { total: +df[1] * 1024 || 0, used: +df[2] * 1024 || 0, free: +df[3] * 1024 || 0 }, nodeMem: { rss: nm.rss, heap: nm.heapUsed }, procs, tunnel: tun, tunnelTail: (() => { try { return fs.readFileSync(path.join(__dirname, 'tunnel.log'), 'utf8').trim().split('\n').slice(-4).join('\n').slice(-400); } catch { return ''; } })(), files: { requestsLog: du(LOGFILE), tunnelLog: du(path.join(__dirname, 'tunnel.log')) }, env: { worker: !!process.env.AIX_WORKER, secret: !!process.env.AIX_NODE_SECRET, publicUrl: (() => { try { return fs.readFileSync(path.join(__dirname, '.aix-public-url'), 'utf8').trim(); } catch { return process.env.AIX_PUBLIC_URL || ''; } })(), model: process.env.MODEL || '', logPrompts: LOGTEXT }, registered: REGOK, lastRegister: LASTREG, errors: LOG.filter((e) => e.status >= 400).slice(0, 10).map((e) => ({ t: e.t, status: e.status, path: e.path, model: e.model })) });
+    }
+    if (u === '/admin/media') {   // media engines panel: status, install/repair, video settings
+      const tail = (f) => { try { return fs.readFileSync(path.join(__dirname, 'runtime', f), 'utf8').split('\n').slice(-25).join('\n'); } catch { return ''; } };
+      const rd = (f) => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, f), 'utf8')); } catch { return null; } };
+      const wr = (f, o) => fs.writeFileSync(path.join(__dirname, f), JSON.stringify(o) + '\n');
+      global.__INST = global.__INST || {};
+      if (req.method === 'POST') {
+        const b = JSON.parse((await body(req)).toString() || '{}');
+        if (b.act === 'install' && (b.what === 'image' || b.what === 'video')) {
+          const live = global.__INST[b.what]; if (live && live.exitCode === null) return J(res, h, 409, { error: 'already running' });
+          const file = b.what === 'image' ? 'Install Qwen Image.command' : 'Install Local Video.command';
+          try { fs.unlinkSync(path.join(__dirname, b.what === 'image' ? '.aix-image-skip' : '.aix-video-skip')); } catch {}
+          const outf = fs.openSync(path.join(__dirname, 'runtime', b.what + '-install-console.log'), 'w');
+          const cp = require('child_process').spawn('bash', [path.join(__dirname, file)], { cwd: __dirname, stdio: ['ignore', outf, outf], detached: true }); cp.unref(); global.__INST[b.what] = cp;
+          return J(res, h, 200, { started: b.what });
+        }
+        if (b.act === 'toggle' && (b.what === 'image' || b.what === 'video')) { const f = b.what === 'image' ? '.aix-image' : '.aix-video', c = rd(f); if (!c) return J(res, h, 404, { error: 'not installed' }); c.ok = !!b.on; wr(f, c); return J(res, h, 200, { ok: c.ok }); }
+        if (b.act === 'video') { const c = rd('.aix-video'); if (!c) return J(res, h, 404, { error: 'video not installed' }); const n = Math.round((+b.nframes || 49 - 1) / 8) * 8 + 1; c.nframes = Math.max(25, Math.min(241, n)); wr('.aix-video', c); return J(res, h, 200, { nframes: c.nframes }); }
+        return J(res, h, 400, { error: 'unknown action' });
+      }
+      const ic = rd('.aix-image'), vc = rd('.aix-video'), run = (k) => !!(global.__INST[k] && global.__INST[k].exitCode === null);
+      let freeGb = null; try { const d = require('child_process').execSync('df -k /', { encoding: 'utf8', timeout: 3000 }).trim().split('\n').pop().split(/\s+/); freeGb = Math.round(+d[3] / 1048576); } catch {}
+      return J(res, h, 200, { version: VERSION, freeGb, unload: process.env.AIX_UNLOAD !== '0', queue: { image: IMGQ, video: VIDQ },
+        image: { ready: imgReady(), cmd: ic && ic.cmd, label: ic && (ic.label || ic.model) || null, steps: ic && ic.steps, stepsHq: ic && ic.stepsHq, installing: run('image'), log: tail('image-install.log') || tail('image-install-console.log') },
+        video: { ready: vidReady(), label: vc && vc.label || null, modes: vc && vc.modes || {}, nframes: vc && vc.nframes, fps: vc && vc.fps, imageFlag: !!(vc && vc.flags && vc.flags.img), installing: run('video'), log: tail('video-install.log') || tail('video-install-console.log') } });
     }
     if (u === '/admin/backups') return J(res, h, 200, { dir: BKDIR, files: bkList(), last: LASTBK, auto: 'every 24 hours' });
     if (u === '/admin/backups/now' && req.method === 'POST') { const r = await runBackup('manual'); return J(res, h, r.ok ? 200 : 502, r); }

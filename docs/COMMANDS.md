@@ -10,9 +10,12 @@ Unzip the package, open the `node` folder, and double-click:
 | `AIX MASTER.command` | One double-click fix-everything: stops old AIX processes, checks the cloud link, repairs problems, starts a fresh node. Use this first if anything acts odd. |
 | `Start AIX Node.command` | Starts the node, pulls the models (main, the Eco/Balanced ladder, and the vision model for images on Macs with 16 GB+). |
 | `Open Node Panel.command` | Opens the node control panel at http://localhost:8787 (replaces any old node still running). |
+| `Install Qwen Image.command` | Installs Qwen-Image 2.1 (local images, 1 credit; 2.5 in Thorough/XQ), tests it and switches the node over. About 45 GB. |
+| `Install Local Video.command` | Installs LTX-2.5 (local video with sound, 1 credit per second, 5 minimum; falls back to LTX-2.3), tests it and switches the node over. About 70 GB. Log: `runtime/video-install.log`. |
+| `Update Qwen.command` | Refreshes the node files and both installers from GitHub without touching your data. |
 | `Install AutoStart.command` | Makes the node start at every login and restart if it stops. Run once. |
 
-The node updates itself from GitHub whenever the repo has a higher `VERSION` in `node/server.js` (now 18). To force it: quit the node window and double-click `AIX MASTER.command`.
+The node updates itself from GitHub whenever the repo has a higher `VERSION` in `node/server.js` (now 37). To force it: quit the node window and double-click `AIX MASTER.command`.
 
 Terminal equivalents:
 ```bash
@@ -21,6 +24,8 @@ bash "AIX MASTER.command"        # repair + restart
 bash "Start AIX Node.command"    # start only
 node server.js                   # run the server directly (needs Ollama running)
 ```
+
+The control panel (http://localhost:8787) has a **Media** tab: status of the image and video engines, install or repair buttons with a live log, turn-off switches and the clip frame count. In the chat, turning on Video mode shows a green VIDEO row (length 2 s to 1 min, shape, quality Fast/Better/Best, AI prompt enhance, sharpen + upscale to 1080p).
 
 ## Cloud backend (Cloudflare worker)
 ```bash

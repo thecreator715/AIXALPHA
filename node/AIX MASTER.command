@@ -50,13 +50,32 @@ if [ -s .aix-node-secret ]; then
   esac
 else bad "no secret, so cloud registration and the cloud panel tabs stay off"; fi
 
-step "4/7  Files"
+step "4/7  Files and media engines"
 for f in "Start AIX Node.command" server.js monitor.html; do [ -f "$f" ] && ok "$f" || bad "$f is missing; re-extract the zip"; done
 for f in ./*.command; do bash -n "$f" 2>/dev/null || bad "$f has a syntax problem; run Update Qwen.command to refresh it"; done
 command -v node >/dev/null 2>&1 && ! node --check server.js 2>/dev/null && bad "server.js has a syntax problem; run Update Qwen.command"
 FREEGB=$(df -g / 2>/dev/null | awk 'NR==2{print $4}'); [ -n "$FREEGB" ] && [ "$FREEGB" -lt 25 ] && warn "only ${FREEGB} GB of disk free; the models need about 25 GB" || ok "disk space ${FREEGB:-?} GB free"
 chmod +x ./*.command 2>/dev/null; xattr -dr com.apple.quarantine . 2>/dev/null
 command -v node >/dev/null 2>&1 && ok "Node.js $(node -v)" || warn "Node.js will be set up automatically"
+
+step "4b  Image and video engines (Qwen-Image 2.1 and LTX-2.5)"
+media_one(){   # $1 label  $2 config file  $3 skip file  $4 installer  $5 disk GB  $6 log
+  if [ -s "$2" ] && grep -q '"ok": *true' "$2" 2>/dev/null; then ok "$1 is ready"
+  elif [ -f "$3" ]; then warn "$1 is switched off (delete $3 to enable)"
+  else
+    warn "$1 is not installed yet (the cloud falls back to its free queue)"
+    FG=$(df -g . 2>/dev/null | awk 'NR==2{print $4}')
+    if [ -n "$FG" ] && [ "$FG" -lt "$5" ]; then echo "     needs about $5 GB free, you have ${FG} GB. Free some space, then run this again."
+    else printf "     Install it now? Needs about %s GB and a long first download. [y/N] " "$5"; read -r -n 1 A; echo
+      [ "$A" = "y" ] || [ "$A" = "Y" ] && { bash "./$4" </dev/null; [ -s "$2" ] && ok "$1 installed" || { bad "$1 install did not pass its test; details in $6"; tail -8 "$6" 2>/dev/null | sed 's/^/     /'; }; }
+    fi
+  fi
+}
+media_one "Image engine (Qwen-Image 2.1)" .aix-image .aix-image-skip "Install Qwen Image.command" 45 runtime/image-install.log
+media_one "Video engine (LTX-2.5)" .aix-video .aix-video-skip "Install Local Video.command" 70 runtime/video-install.log
+[ -s .aix-video ] && ok "video: $(grep -o '"label": *"[^"]*"' .aix-video | head -1 | cut -d'"' -f4) | 1 credit per second, 5 minimum | length and quality are set in the app's VIDEO row"
+echo "     Control panel: open the Media tab to repair, turn on or off, and watch installs."
+
 
 step "5/7  Auto-start at login (optional)"
 if [ -f "$PLIST" ]; then ok "auto-start is installed (it will be restarted fresh)"; else

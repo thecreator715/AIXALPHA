@@ -1,5 +1,11 @@
 # AIX Alpha v3.0 - revision 8
 
+## Node control Media tab, MASTER update, artifact sign-in note (node v38)
+- New **Media (image + video)** tab in the node control panel: status of Qwen-Image 2.1 and LTX-2.5, install/repair buttons with live log, turn on/off, quality tiers found, image-to-video support, clip frame count, queue, disk free, prices and limits. Backed by new `/admin/media` endpoints on the node. `node-control.html` is refreshed to the same panel.
+- `AIX MASTER.command` gains a media step: reports both engines, offers to install a missing one (checks free disk first), prints the failing log lines if a test does not pass.
+- The claude.ai artifact preview cannot reach the AIX server (the sandbox blocks all outside network requests), so sign-in there can never work. The account button now says so and links to the live site.
+- `docs/COMMANDS.md` lists every command, including the two installers, Update Qwen and the Media tab.
+
 ## Video length and shape options (node v34)
 - Turning on Video mode shows two menus in the chat toolbar: length (2, 4, 6, 8, 10, 15, 20, 30, 45 s, 1 min) and shape (Landscape 768x512, Wide 1024x576, Portrait, Tall, Square). Choices are remembered.
 - Pricing: 1 credit per second, 5 credits minimum (2 s to 5 s = 5, 10 s = 10, 1 min = 60). Charged up front, refunded on failure, free for admin. Constants: `VIDEO_CR` / `vidCost()` in the worker and app.
