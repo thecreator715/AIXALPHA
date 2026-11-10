@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head><meta http-equiv="Cache-Control" content="no-cache, must-revalidate"><script>/* freshness guard: if GitHub Pages / the browser served an old copy, reload the newest one once */
-window.APP_BUILD='2026-11-10-v48';
+window.APP_BUILD='2026-11-10-v49';
 (function(){try{if(!/^https?:$/.test(location.protocol)||/claude\.(ai|com)|claudeusercontent/.test(location.hostname))return;
 var K='aix_fresh_try',t=+sessionStorage.getItem(K)||0;if(t>1)return;
 fetch(location.pathname+'?_fresh='+Date.now(),{cache:'no-store'}).then(function(r){return r.text()}).then(function(x){var m=x.match(/APP_BUILD='([^']+)'/);if(m&&m[1]!==window.APP_BUILD&&m[1]>window.APP_BUILD){sessionStorage.setItem(K,String(t+1));location.replace(location.pathname+'?v='+encodeURIComponent(m[1])+'&t='+Date.now()+location.hash)}else sessionStorage.removeItem(K)}).catch(function(){})}catch(e){}})();
@@ -21,6 +21,7 @@ button{font:inherit;cursor:pointer;color:inherit}
 #side{border-right:1px solid var(--b);background:var(--p);display:flex;flex-direction:column;min-height:0}
 .brand{padding:14px;border-bottom:1px solid var(--b)}.brand b{font-size:17px}.brand small{display:block;color:var(--m);font-size:10px;letter-spacing:.1em}
 .btn{background:#fff;color:#000;border:0;border-radius:10px;padding:8px 12px;font-weight:700;font-size:12px}
+a.btn2{color:var(--t);text-decoration:none;display:inline-block}
 .btn2{background:var(--p2);border:1px solid var(--b);border-radius:10px;padding:7px 10px;font-size:12px}
 .btn2:hover{border-color:#52525b}
 .sec{padding:10px 12px;display:flex;flex-direction:column;gap:8px}

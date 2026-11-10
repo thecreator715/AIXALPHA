@@ -310,3 +310,6 @@
 
 ## v48
 - Message action icons no longer flicker on desktop: removed fade/blur transition that replayed whenever the chat re-rendered.
+
+## v49
+- "Save image (JPEG)" link styled as a proper button (was default blue underlined link).
