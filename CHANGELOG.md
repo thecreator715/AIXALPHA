@@ -1,5 +1,8 @@
 # AIX Alpha v3.0 - revision 8
 
+## Admin sign-in with email
+- Sign in now accepts the account email as well as the username, so the owner can sign in on the live site with divercityrecords@gmail.com (the `admin` username still works). The sign-in box is a plain text field again so usernames are not rejected.
+
 ## Sign-up: 3 free credits, real email required, no duplicates or piggybacking
 - Every new account gets 3 free credits (was 1, set by a server setting). Creating an account now requires a valid email address; usernames still work to sign in for existing accounts.
 - No duplicates: emails are compared in canonical form, so `Name+tag@gmail.com`, `n.a.m.e@gmail.com` and `googlemail.com` count as the same address as `name@gmail.com`; an email that already has an account is refused.

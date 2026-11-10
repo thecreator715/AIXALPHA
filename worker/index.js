@@ -2096,7 +2096,7 @@ export default {
     }
     if (path === '/api/account/login' && req.method === 'POST') {
       const b = await req.json().catch(() => ({})); const un = normId(b.username);
-      const u = await env.DB.prepare('SELECT * FROM users WHERE username=?').bind(un).first();
+      const u = await env.DB.prepare('SELECT * FROM users WHERE username=? OR lower(email)=?').bind(un, un).first();
       const ok = u && u.pw_hash && (await pbk(String(b.password || ''), u.pw_salt)) === u.pw_hash;
       if (!ok) return json(env, req, { error: 'Wrong username or password' }, 401);
       try { await ensureRef(env); await logDev(env, req, u.email); } catch (e) {}
