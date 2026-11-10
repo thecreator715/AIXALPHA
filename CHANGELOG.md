@@ -1,5 +1,13 @@
 # AIX Alpha v3.0 - revision 8
 
+## Local video with LTX-2.3 (node v32)
+- Video now runs on the Mac node first: Lightricks LTX-2.3 (4-bit, Apple MLX through ltx-2-mlx). Text-to-video, or image-to-video with a start image, with sound. 3 credits per clip (free for admin, refunded on failure). If the node is offline, busy or the clip fails and an image was given, the free cloud queue is the backup.
+- `Install Local Video.command` installs uv, ffmpeg and the engine, downloads the model once (about 30 GB), self-tests, and writes `.aix-video`. `Start AIX Node.command` runs the image and video installers one after the other in the background on first start; `Update Qwen.command` refreshes both. Switch off with `.aix-video-skip`.
+- The node unloads the chat model before an image or video render (it reloads on the next chat) because the engines need most of a 32 GB Mac. Set `AIX_UNLOAD=0` to disable.
+- Long renders keep the connection alive (a space every 15-20 s), then return the clip. Chat video requests without a picture now try text-to-video first, and only make a start image if the node has no local video.
+- PDF dossier updated with revision 8 images, sizes, video and fixes.
+- Expect minutes per clip on an M2 Max with 32 GB; command flags were not verified on real hardware, so the installer self-tests.
+
 ## Mobile touch fixes
 - Taps always register on phones: pointer cursor on touch devices (iOS ignores taps on plain elements otherwise), touch-action on buttons, hidden side panels no longer take part in hit-testing.
 - Inputs use 16px text on phones so iOS no longer zooms the page when you tap a field (a zoomed page made icons look dead).

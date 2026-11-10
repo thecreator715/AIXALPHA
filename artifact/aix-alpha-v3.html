@@ -4633,13 +4633,13 @@ async function videoCall(imgDataUrl,prompt){
   const j=await r.json().catch(()=>({}));
   if(r.status===402){BAL=0;try{setStatus()}catch{}setTimeout(()=>{try{openCredits('A video clip costs 3 credits. Add credits to continue.')}catch{}},200);throw new Error(j.error||'Out of credits.')}
   if(r.status===401){setTimeout(()=>{try{openAccount('Your session expired. Sign in again.')}catch{}},200);throw new Error('Please sign in again.')}
-  if(!r.ok||!j.video)throw new Error(j.error||('Video failed ('+r.status+')'));
+  if(!r.ok||!j.video){const e=new Error(j.error||('Video failed ('+r.status+')'));e.needImage=!!j.needImage;throw e}
   if(j.credits!=null){BAL=j.credits;try{setStatus()}catch{}}
   return j}
 const fitJpeg=src=>new Promise((ok,no)=>{const im=new Image();im.onload=()=>{const c=document.createElement('canvas');c.width=704;c.height=512;const x=c.getContext('2d'),ir=im.width/im.height,cr=704/512;let sw=im.width,sh=im.height,sx=0,sy=0;if(ir>cr){sw=im.height*cr;sx=(im.width-sw)/2}else{sh=im.width/cr;sy=(im.height-sh)/2}x.drawImage(im,sx,sy,sw,sh,0,0,704,512);ok(c.toDataURL('image/jpeg',.85))};im.onerror=()=>no(new Error('Could not read that image'));im.src=src});
 function openVideoBeta(){
   ensureProj();const imgs=P.files.filter(f=>f.bin&&/\.(png|jpe?g|webp|gif)$/i.test(f.name));
-  const d=dialog(`<h3 style="margin:0 0 4px">AI video <span class="chip" style="font-size:10px">BETA</span></h3><div class="mono" style="font-size:11px;color:var(--m);margin-bottom:10px">Turns an image into a ~2 second clip using a free shared GPU queue (LTX-Video). 3 credits per clip, free for admin, refunded if it fails. It can be slow or busy at times.</div>
+  const d=dialog(`<h3 style="margin:0 0 4px">AI video <span class="chip" style="font-size:10px">BETA</span></h3><div class="mono" style="font-size:11px;color:var(--m);margin-bottom:10px">Turns an image into a short clip with LTX video: on your AIX node when Local video is installed (text-to-video and sound included), otherwise a free shared GPU queue (~2 s). 3 credits per clip, free for admin, refunded if it fails. It can be slow or busy at times.</div>
   <select id="avsrc" style="width:100%">${imgs.length?imgs.map(f=>`<option value="${esc(f.name)}">${esc(f.name)}</option>`).join(''):'<option value="">No images yet. Upload one or generate with Image mode</option>'}</select>
   <textarea id="avp" rows="2" placeholder="Describe the motion, e.g. the hummingbird hovers and its wings blur, slow camera push-in" style="width:100%;margin-top:8px"></textarea>
   <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn2" id="avup">⬆ Upload image</button><span style="flex:1"></span><button class="btn2" data-close>Close</button><button class="btn" id="avgo">Generate · 3 cr</button></div>
@@ -4647,7 +4647,7 @@ function openVideoBeta(){
   d.querySelector('#avup').onclick=()=>d.querySelector('#avfi').click();
   d.querySelector('#avfi').onchange=async e=>{const f=e.target.files[0];if(!f)return;const nm=safeName(f.name),nf=await makeAsset(nm,await readDU(f));P.files.push(nf);projSave();renderStudio();const sel=d.querySelector('#avsrc');sel.innerHTML+=`<option value="${esc(nm)}">${esc(nm)}</option>`;sel.value=nm};
   d.querySelector('#avgo').onclick=async()=>{const n=d.querySelector('#avsrc').value,f=P.files.find(x=>x.name===n),st=d.querySelector('#avst'),btn=d.querySelector('#avgo');if(!f){st.textContent='Pick or upload an image first';return}
-    btn.disabled=true;const t0=Date.now(),tm=setInterval(()=>{st.textContent='Generating on the free GPU queue… '+Math.round((Date.now()-t0)/1000)+'s (can take a few minutes)'},500);
+    btn.disabled=true;const t0=Date.now(),tm=setInterval(()=>{st.textContent='Generating on the AIX node or free GPU queue… '+Math.round((Date.now()-t0)/1000)+'s (can take a few minutes)'},500);
     try{const small=await fitJpeg(f.content);const j=await videoCall(small,d.querySelector('#avp').value.trim());
       const nm=safeName('video-'+Date.now().toString(36)+'.mp4'),nf=await makeAsset(nm,j.video);P.files.push(nf);P.active=nm;PAGE=nm;projSave();
       const c=proj().chat||(proj().chat=[]);c.push({role:'assistant',content:'AI video '+nm+' from '+f.name+' · '+(j.spentCredits?j.spentCredits+' credits used':'admin, 0 credits')+(j.credits!=null?' · balance '+j.credits+' cr':'')+'. Use Export to download.'});projSave();
@@ -4658,11 +4658,14 @@ setTimeout(function(){const b=$('#fvid');if(b)b.onclick=openVideoBeta},0);
 const VIDINTENT=/^\s*(please\s+)?(can you\s+|could you\s+)?(create|make|generate|render)\s+(me\s+)?(an?\s+|the\s+|some\s+)?(\w+\s+)?(video|clip)\b/i;
 async function chatVideo(c,text,blob){
   const subj=text.replace(VIDINTENT,'').replace(/^\s*(of|for|showing|with|that shows)\s+/i,'').trim()||text;
-  const t0=Date.now(),ph={role:'assistant',content:blob?'Animating your image on the free GPU queue… this can take a few minutes.':'Step 1: making the start image, then Step 2: animating it on the free GPU queue. This can take a few minutes.',ts:Date.now()};
+  const t0=Date.now(),ph={role:'assistant',content:blob?'Animating your image on the AIX node or the free GPU queue… this can take a few minutes.':'Step 1: making the start image, then Step 2: animating it on the free GPU queue. This can take a few minutes.',ts:Date.now()};
   c.msgs.push(ph);renderMsgs();let spent=0;
   try{let start;
-    if(blob)start=await readDU(blob);else{const j=await imgCall(subj+', highly detailed, cinematic',S.imgm||'qwen');start=j.image;spent+=j.spentCredits||0}
-    const v=await videoCall(await fitJpeg(start),subj);spent+=v.spentCredits||0;
+    let v=null;
+    if(blob)start=await readDU(blob);
+    else{try{ph.content='Rendering your video (text-to-video on the AIX node). This can take a few minutes.';renderMsgs();v=await videoCall(null,subj)}catch(e){if(!e.needImage)throw e}
+      if(!v){ph.content='Step 1: making the start image, then Step 2: animating it. This can take a few minutes.';renderMsgs();const j=await imgCall(subj+', highly detailed, cinematic',S.imgm||'qwen');start=j.image;spent+=j.spentCredits||0}}
+    if(!v)v=await videoCall(await fitJpeg(start),subj);spent+=v.spentCredits||0;
     const id='a'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);ASSET[id]=v.video;aput(id,v.video);
     Object.assign(ph,{content:`Here's your video: **${subj}**\n\n${spent?spent+' credits used':'Admin: 0 credits'}${v.credits!=null?' · balance '+v.credits+' cr':''} · stored on this device`,aid:id,kind:'video',dur:Date.now()-t0})
   }catch(e){Object.assign(ph,{content:(e.message||String(e))+(spent?' (the start image cost '+spent+' credit'+(spent>1?'s':'')+'; the video step was not charged)':''),err:1,dur:Date.now()-t0})}}

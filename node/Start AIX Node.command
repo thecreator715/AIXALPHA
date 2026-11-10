@@ -137,7 +137,10 @@ if [ "$GB" -ge 16 ]; then
 fi
 
 # Qwen-Image 2.1 (default image model): install + test once in the background; images use cloud FLUX until it passes
-[ -s .aix-image ] || [ -f .aix-image-skip ] || ( [ -f "Install Qwen Image.command" ] && bash "./Install Qwen Image.command" >> runtime/image-install.out 2>&1 ) &
+( # one at a time so the big downloads never compete
+  [ -s .aix-image ] || [ -f .aix-image-skip ] || { [ -f "Install Qwen Image.command" ] && bash "./Install Qwen Image.command" >> runtime/image-install.out 2>&1; }
+  [ -s .aix-video ] || [ -f .aix-video-skip ] || { [ -f "Install Local Video.command" ] && bash "./Install Local Video.command" >> runtime/video-install.out 2>&1; }
+) &
 
 # restart the node so it registers the final model names
 kill $NODE_PID 2>/dev/null; pkill -f "runtime/empty.yml" 2>/dev/null; free_port; rm -f .aix-public-url

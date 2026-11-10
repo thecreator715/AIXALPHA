@@ -12,6 +12,7 @@ Users' images and site files are stored in `hosted/<id>/` next to `server.js` (o
 ## Commands
 - **AIX MASTER.command**: one double-click. Stops old processes, checks cloud link, secret, files and disk space, then starts everything.
 - **Install Qwen Image.command**: installs Qwen-Image 2.1 (mflux), tests it and switches the node to it. Runs automatically on first start; needs about 45 GB free.
+- **Install Local Video.command**: installs local video (LTX-2.3, MLX), tests it and switches the node to it. Runs automatically on first start after the image install; needs about 45 GB free.
 - **Update Qwen.command**: re-downloads every launcher (syntax-checked, with a backup) and the node, rebuilds the model list, starts everything. Run this once after receiving a new zip.
 - **Start AIX Node.command**: installs/updates Ollama, downloads models, keeps the Mac awake, proves the model loads (steps the context down if memory is short), runs the node and tunnel. ALPHA XQ switches to Qwen 4 automatically once Ollama has it.
 - **Install AutoStart.command**: start at every login.

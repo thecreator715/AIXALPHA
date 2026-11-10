@@ -6,7 +6,7 @@ RAW="https://raw.githubusercontent.com/thecreator715/AIXALPHA/main/node"
 TMP="$(mktemp -d)"
 say "1/4 Downloading the latest AIX node files"
 fail=0
-for src in "server.js" "monitor.html" "Start AIX Node.command" "AIX MASTER.command" "Install AutoStart.command" "Open Node Panel.command" "Update Qwen.command" "Install Qwen Image.command"; do
+for src in "server.js" "monitor.html" "Start AIX Node.command" "AIX MASTER.command" "Install AutoStart.command" "Open Node Panel.command" "Update Qwen.command" "Install Qwen Image.command" "Install Local Video.command"; do
   enc=$(printf %s "$src" | sed 's/ /%20/g'); f="$TMP/$src"
   ok=0
   for t in 1 2 3; do curl -fsSL -m 60 "$RAW/$enc" -o "$f" && [ -s "$f" ] && ok=1 && break; sleep 2; done

@@ -2116,7 +2116,7 @@ export default {
       if (!/^https:\/\//.test(url) || !b.token || !b.model) return json(env, req, { error: 'https url, token and model required' }, 400);
       const models = (b.models && typeof b.models === 'object') ? Object.fromEntries(['eco', 'balanced', 'thorough'].filter((k) => b.models[k]).map((k) => [k, String(b.models[k]).slice(0, 80)])) : {};
       const id = String(b.id || 'main').replace(/[^\w.-]/g, '').slice(0, 40) || 'main', now = Date.now();
-      const me = { id, url, token: String(b.token), model: String(b.model), models, img: !!b.img, prio: Math.max(1, Math.min(9, +b.prio || 1)), name: String(b.name || id).slice(0, 40), at: now };
+      const me = { id, url, token: String(b.token), model: String(b.model), models, img: !!b.img, vid: !!b.vid, prio: Math.max(1, Math.min(9, +b.prio || 1)), name: String(b.name || id).slice(0, 40), at: now };
       let map = {}; try { const r0 = await env.DB.prepare("SELECT v FROM settings WHERE k='nodes'").first(); if (r0) map = JSON.parse(r0.v); } catch {}
       for (const k of Object.keys(map)) if (now - (map[k].at || 0) > 7 * 86400e3) delete map[k];
       map[id] = me;
@@ -2299,24 +2299,43 @@ async function hfVideo(env, prompt, imageDataUrl) {
   if (bytes.length > 12e6) throw new Error('The video was too large.');
   return 'data:video/mp4;base64,' + b64(bytes);
 }
+// Local video on the Mac node (LTX-2.3 MLX): text-to-video or image-to-video. Same price as the cloud queue; the cloud queue is the backup.
+async function nodeVideo(env, prompt, image) {
+  const nd = await nodeGet(env); const cands = nd ? [nd, ...(nd.alts || [])].filter((n) => n && n.vid) : [];
+  for (const n of cands) {
+    try {
+      const r = await nfetch(n.url.replace(/\/+$/, '') + '/v1/videos/generate', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + n.token }, body: JSON.stringify({ prompt, image: image || null, w: 768, h: 512 }) }, 1500000);
+      const t = r.ok ? (await r.text()).trim() : ''; const j = t ? JSON.parse(t) : null; if (j && j.video) return j.video;
+    } catch (e) { /* next node, then the cloud queue */ }
+  }
+  return null;
+}
+async function nodeHasVid(env) { try { const nd = await nodeGet(env); return !!(nd && [nd, ...(nd.alts || [])].some((n) => n && n.vid)); } catch { return false; } }
 async function video(env, req) {
   const a = await authed(env, req);
   if (!a) return json(env, req, { error: 'Sign in to generate video.' }, 401);
   let b; try { b = await req.json(); } catch { return json(env, req, { error: 'bad request' }, 400); }
   const prompt = String(b.prompt || '').slice(0, 500).trim();
-  if (!b.image || String(b.image).length > 6e6) return json(env, req, { error: 'Add a start image (under ~4 MB).' }, 400);
+  const hasNode = await nodeHasVid(env);
+  if (!b.image && !hasNode) return json(env, req, { error: 'Add a start image (under ~4 MB).', needImage: true }, 400);
+  if (b.image && String(b.image).length > 6e6) return json(env, req, { error: 'Add a start image (under ~4 MB).' }, 400);
   const owner = owners(env).includes(a.email) && !a.meter;
   if (!owner) {
     const up = await env.DB.prepare('UPDATE users SET credits=credits-? WHERE email=? AND credits>=?').bind(VIDEO_CR, a.email, VIDEO_CR).run();
     if (!(up.meta && up.meta.changes > 0)) return json(env, req, { error: 'Out of credits. A video clip costs ' + VIDEO_CR + ' credits.' }, 402);
   }
-  try {
-    const vid = await hfVideo(env, prompt, b.image);
+  const finish = async () => {
+    let vid = hasNode ? await nodeVideo(env, prompt || 'Cinematic motion, smooth camera', b.image) : null;
+    if (!vid) { if (!b.image) throw new Error('Local video is busy or offline. Add a start image to use the cloud queue.'); vid = await hfVideo(env, prompt, b.image); }
     if (!owner) await env.DB.prepare('INSERT INTO usage(email,at,input,output,credits) VALUES(?,?,0,0,?)').bind(a.email, new Date().toISOString(), VIDEO_CR).run();
     const f = await getUser(env, a.email);
-    return json(env, req, { video: vid, credits: +Number(f.credits).toFixed(2), spentCredits: owner ? 0 : VIDEO_CR });
-  } catch (e) {
-    if (!owner) await env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(VIDEO_CR, a.email).run();
-    return json(env, req, { error: e.message || 'Video failed' }, 502);
-  }
+    return { video: vid, credits: +Number(f.credits).toFixed(2), spentCredits: owner ? 0 : VIDEO_CR };
+  };
+  const fail = async (e) => { if (!owner) await env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(VIDEO_CR, a.email).run(); return { error: e.message || 'Video failed' }; };
+  if (!hasNode) { try { return json(env, req, await finish()); } catch (e) { return json(env, req, await fail(e), 502); } }
+  // local render can take minutes: answer at once and send a space every 15 s so no proxy times out; the JSON arrives at the end
+  const { readable, writable } = new TransformStream(), w = writable.getWriter(), enc = new TextEncoder();
+  const hb = setInterval(() => { w.write(enc.encode(' ')).catch(() => {}); }, 15000);
+  (async () => { let out; try { out = await finish(); } catch (e) { out = await fail(e); } clearInterval(hb); try { await w.write(enc.encode(JSON.stringify(out))); await w.close(); } catch {} })();
+  const hd = json(env, req, {}).headers; return new Response(readable, { status: 200, headers: hd });
 }

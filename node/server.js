@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path'), crypto = require('crypto');
-const VERSION = 31;   // bump on every release: nodes auto-update when GitHub has a higher number
+const VERSION = 32;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -162,7 +162,7 @@ async function checkUpdate() {
     const me = path.join(__dirname, 'server.js'); try { fs.copyFileSync(me, me + '.bak'); } catch {}
     fs.writeFileSync(me + '.new', src); fs.renameSync(me + '.new', me); UPDST.applied = true;
     try { fs.writeFileSync(path.join(__dirname, 'monitor.html'), await getRemote('monitor.html', 8000)); } catch {}
-    for (const f of ['Start AIX Node.command', 'AIX MASTER.command', 'Update Qwen.command', 'Install AutoStart.command', 'Install Qwen Image.command']) {   // launchers refresh too (rename keeps a running script safe)
+    for (const f of ['Start AIX Node.command', 'AIX MASTER.command', 'Update Qwen.command', 'Install AutoStart.command', 'Install Qwen Image.command', 'Install Local Video.command']) {   // launchers refresh too (rename keeps a running script safe)
       try { const t = await getRemote(f.replace(/ /g, '%20'), 8000); if (t.startsWith('#!/bin/bash') && t.length > 400) { const fp = path.join(__dirname, f); fs.writeFileSync(fp + '.new', t, { mode: 0o755 }); fs.renameSync(fp + '.new', fp); } } catch {}
     }
     console.log('Updated node to v' + m[1] + ' — restarting'); setTimeout(() => process.exit(0), 800);
@@ -207,12 +207,41 @@ let LISTEN_TRY = 0;
 const IMGDIR = path.join(__dirname, 'runtime', 'img'); try { fs.mkdirSync(IMGDIR, { recursive: true }); } catch {}
 const imgCfg = () => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, '.aix-image'), 'utf8')); } catch { return null; } };   // {cmd, args:[...], steps, stepsHq}
 const imgReady = () => { const c = imgCfg(); return !!(c && c.cmd && c.ok !== false); };
+// the image and video engines need most of the Mac's memory: unload the chat model first (it reloads on the next chat), unless AIX_UNLOAD=0
+async function unloadLLM() {
+  if (process.env.AIX_UNLOAD === '0') return;
+  try { const ps = await (await fetch(OLLAMA + '/api/ps', { signal: AbortSignal.timeout(4000) })).json(); for (const m of ps.models || []) await fetch(OLLAMA + '/api/generate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: m.name, keep_alive: 0 }), signal: AbortSignal.timeout(8000) }).catch(() => {}); } catch {}
+}
 let IMGBUSY = Promise.resolve(), IMGQ = 0;
+const vidCfg = () => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, '.aix-video'), 'utf8')); } catch { return null; } };   // {cmd,args:[...],ok}
+const vidReady = () => { const c = vidCfg(); return !!(c && c.cmd && c.ok !== false); };
+let VIDQ = 0;
+// Local video with LTX-2.3 (MLX). Text-to-video, or image-to-video when a start image is given.
+function genVid(prompt, imgBuf, w, hgt) {
+  const c = vidCfg(); if (!c || !c.cmd) return Promise.reject(Object.assign(new Error('local video not installed'), { code: 501 }));
+  if (VIDQ >= 2) return Promise.reject(Object.assign(new Error('video queue full'), { code: 429 }));
+  VIDQ++;
+  const run = async () => {
+    await unloadLLM();
+    const id = Date.now() + crypto.randomBytes(3).toString('hex'), out = path.join(IMGDIR, 'v' + id + '.mp4'), inp = path.join(IMGDIR, 'v' + id + '.png');
+    let args = (c.args || []).concat(['-p', prompt, '-o', out, '-H', String(hgt), '-W', String(w)]);
+    if (imgBuf) { fs.writeFileSync(inp, imgBuf); args = args.concat(['--image', inp]); }
+    return await new Promise((resolve, reject) => {
+      const cp = require('child_process').spawn(c.cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PATH: process.env.PATH + ':' + os.homedir() + '/.local/bin:/opt/homebrew/bin:/usr/local/bin' } });
+      let err = ''; cp.stderr.on('data', (d) => { err = (err + d).slice(-1500); }); cp.stdout.on('data', () => {});
+      const to = setTimeout(() => { try { cp.kill('SIGKILL'); } catch {} }, 1500000);
+      const clean = () => { try { fs.unlinkSync(inp); } catch {} try { fs.unlinkSync(out); } catch {} };
+      cp.on('error', (e) => { clearTimeout(to); clean(); reject(e); });
+      cp.on('close', (code) => { clearTimeout(to); try { const b = fs.readFileSync(out); clean(); if (b.length > 5000) return resolve(b); } catch {} clean(); reject(new Error('video run failed (' + code + '): ' + err.split('\n').slice(-3).join(' ').slice(0, 300))); });
+    });
+  };
+  const p = IMGBUSY.then(run, run); IMGBUSY = p.catch(() => {}); return p.finally(() => { VIDQ--; });
+}
 function genImg(prompt, hq, w, hgt) {
   const c = imgCfg(); if (!c || !c.cmd) return Promise.reject(Object.assign(new Error('image model not installed'), { code: 501 }));
   if (IMGQ >= 3) return Promise.reject(Object.assign(new Error('image queue full'), { code: 429 }));
   IMGQ++;
-  const run = () => new Promise((resolve, reject) => {
+  const run = async () => { await unloadLLM(); return new Promise((resolve, reject) => {
     const out = path.join(IMGDIR, 'i' + Date.now() + crypto.randomBytes(3).toString('hex') + '.png');
     const steps = String(hq ? (c.stepsHq || 30) : (c.steps || 16));
     const args = (c.args || []).concat(['--prompt', prompt, '--steps', steps, '--width', String(w), '--height', String(hgt), '--seed', String(Math.floor(Math.random() * 2e9)), '--output', out]);
@@ -221,14 +250,14 @@ function genImg(prompt, hq, w, hgt) {
     const to = setTimeout(() => { try { cp.kill('SIGKILL'); } catch {} }, hq ? 600000 : 420000);
     cp.on('error', (e) => { clearTimeout(to); reject(e); });
     cp.on('close', (code) => { clearTimeout(to); try { const b = fs.readFileSync(out); fs.unlinkSync(out); if (b.length > 1000) return resolve(b); } catch {} reject(new Error('image run failed (' + code + '): ' + err.split('\n').slice(-3).join(' ').slice(0, 300))); });
-  });
+  }); };
   const p = IMGBUSY.then(run, run); IMGBUSY = p.catch(() => {}); return p.finally(() => { IMGQ--; });
 }
 const SRV = http.createServer(async (req, res) => {
   const h = cors(req), u = req.url.split('?')[0];
   if (req.method === 'OPTIONS') { res.writeHead(204, h); return res.end(); }
   if (u === '/' || u === '/monitor' || u === '/monitor.html') { try { const f = await panelHtml(); res.writeHead(200, { ...h, 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); return res.end(f); } catch { res.writeHead(404, h); return res.end('monitor.html missing'); } }
-  if (u === '/health') return J(res, h, 200, { status: 'ok', engine: 'aix-node', build: 3, version: VERSION, image: imgReady(), update: UPDST });
+  if (u === '/health') return J(res, h, 200, { status: 'ok', engine: 'aix-node', build: 3, version: VERSION, image: imgReady(), video: vidReady(), update: UPDST });
   const localAdmin = u.startsWith('/admin') && /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(req.headers.host || '') && !req.headers['x-forwarded-for'] && !req.headers['cf-connecting-ip'] && (!req.headers.origin || req.headers.origin === 'http://' + req.headers.host);
   // ---- co-admin roles: owner (node token / this Mac) can mint limited tokens in admins.json ----
   const AF = path.join(__dirname, 'admins.json'), loadTeam = () => { try { return JSON.parse(fs.readFileSync(AF, 'utf8')); } catch { return {}; } };
@@ -361,6 +390,18 @@ const SRV = http.createServer(async (req, res) => {
       let vis = ''; try { vis = fs.readFileSync(path.join(__dirname, '.aix-vision-model'), 'utf8').trim(); } catch {}
       return J(res, h, 200, { tiers: { eco: t.eco || '', balanced: t.balanced || '', thorough: t.thorough || process.env.MODEL || '' }, vision: process.env.VISION_MODEL || vis, think: thinkOn(), main: process.env.MODEL || '', note: 'Tier changes are sent to the cloud within seconds. Vision changes apply immediately.' });
     }
+    if (u === '/v1/videos/generate' && req.method === 'POST') {
+      // headers go out at once and a space is sent every 20 s so tunnels/proxies do not time out during the long render; the JSON follows at the end
+      let b; try { b = JSON.parse((await body(req)).toString() || '{}'); } catch { return J(res, h, 400, { error: 'bad json' }); }
+      const pr = String(b.prompt || '').slice(0, 800).trim(); if (!pr) return J(res, h, 400, { error: 'prompt required' });
+      if (!vidReady()) return J(res, h, 501, { error: 'local video not installed' });
+      const m = /^data:image\/[\w+.-]+;base64,(.+)$/.exec(String(b.image || '')), ib = m ? Buffer.from(m[1], 'base64') : null;
+      const dm = (v, d) => Math.max(256, Math.min(1024, Math.round((+v || d) / 64) * 64));
+      res.writeHead(200, { ...h, 'content-type': 'application/json' }); const hb = setInterval(() => { try { res.write(' '); } catch {} }, 20000);
+      try { const mp4 = await genVid(pr, ib, dm(b.w, 768), dm(b.h, 512)); clearInterval(hb); res.end(JSON.stringify({ video: 'data:video/mp4;base64,' + mp4.toString('base64'), model: 'ltx-2.3' })); }
+      catch (e) { clearInterval(hb); res.end(JSON.stringify({ error: String(e.message || e).slice(0, 300), code: e.code || 502 })); }
+      return;
+    }
     if (u === '/v1/images/generate' && req.method === 'POST') {
       try {
         const b = JSON.parse((await body(req)).toString() || '{}'), pr = String(b.prompt || '').slice(0, 1000).trim(); if (!pr) return J(res, h, 400, { error: 'prompt required' });
@@ -432,7 +473,7 @@ const SRV = http.createServer(async (req, res) => {
     const NODEID = () => { const f = path.join(__dirname, '.aix-node-id'); try { return fs.readFileSync(f, 'utf8').trim() || 'main'; } catch { const id = (os.hostname().replace(/[^\w]/g, '').slice(0, 12) || 'host') + '-' + crypto.randomBytes(3).toString('hex'); try { fs.writeFileSync(f, id); } catch {} return id; } };
     const NODEPRIO = () => { try { return Math.max(1, Math.min(9, parseInt(fs.readFileSync(path.join(__dirname, '.aix-priority'), 'utf8')) || +process.env.NODE_PRIO || 1)); } catch { return Math.max(1, Math.min(9, +process.env.NODE_PRIO || 1)); } };
     const readTiers = () => { try { const t = JSON.parse(fs.readFileSync(path.join(__dirname, '.aix-models'), 'utf8')); const o = {}; for (const k of ['eco', 'balanced', 'thorough']) if (t[k]) o[k] = String(t[k]); return o; } catch { return {}; } };
-    const reg = async () => { const PU = getPU(); if (!PU) return; try { const r = await fetch(W.replace(/\/+$/, '') + '/api/node/register', { method: 'POST', headers: { 'content-type': 'application/json', 'x-node-secret': NS }, body: JSON.stringify({ url: PU, token: TOKEN, model: MODEL, models: readTiers(), img: imgReady(), id: NODEID(), prio: NODEPRIO(), name: os.hostname().slice(0, 30) }) }); REGOK = r.ok; LASTREG = Date.now(); if (!reg.ok) { reg.ok = r.ok; console.log(r.ok ? 'Registered with AIX cloud: apps will use this node automatically' : 'Register failed: HTTP ' + r.status); } } catch (e) { console.log('Register error: ' + e.message); reg.ok = false; } };
+    const reg = async () => { const PU = getPU(); if (!PU) return; try { const r = await fetch(W.replace(/\/+$/, '') + '/api/node/register', { method: 'POST', headers: { 'content-type': 'application/json', 'x-node-secret': NS }, body: JSON.stringify({ url: PU, token: TOKEN, model: MODEL, models: readTiers(), img: imgReady(), vid: vidReady(), id: NODEID(), prio: NODEPRIO(), name: os.hostname().slice(0, 30) }) }); REGOK = r.ok; LASTREG = Date.now(); if (!reg.ok) { reg.ok = r.ok; console.log(r.ok ? 'Registered with AIX cloud: apps will use this node automatically' : 'Register failed: HTTP ' + r.status); } } catch (e) { console.log('Register error: ' + e.message); reg.ok = false; } };
     REGNOW = reg; global.__REGNOW = reg; reg(); setInterval(reg, 60000);
   } else console.log('Cloud registration off (needs AIX_WORKER, AIX_NODE_SECRET, MODEL)');
 });
