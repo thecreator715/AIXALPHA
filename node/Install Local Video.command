@@ -1,6 +1,6 @@
 #!/bin/bash
 # Installs local video generation (Lightricks LTX-2.5, 8-bit, Apple MLX; falls back to LTX-2.3) and tests it.
-# Text-to-video and image-to-video with audio, 3 credits per clip. The cloud uses this Mac first and the free cloud queue as backup,
+# Text-to-video and image-to-video with audio, 1 credit per second. The cloud uses this Mac first and the free cloud queue as backup,
 # so a failed install never breaks video. Full log: runtime/video-install.log
 cd "$(dirname "$0")" || exit 1
 mkdir -p runtime; LOG="runtime/video-install.log"; : > "$LOG"
@@ -72,7 +72,7 @@ if [ $OK = 0 ]; then
 fi
 say "4/4 Done"
 if [ $OK = 1 ]; then
-  echo "  Local video is ready: $(python3 -c 'import json;print(json.load(open(".aix-video"))["label"])' 2>/dev/null) (3 credits per clip). The chat model is unloaded while a clip renders and reloads on the next chat."
+  echo "  Local video is ready: $(python3 -c 'import json;print(json.load(open(".aix-video"))["label"])' 2>/dev/null) (1 credit per second, 5 minimum). The chat model is unloaded while a clip renders and reloads on the next chat."
 else
   fail "The local video test did not pass (details: $LOG)."
 fi
