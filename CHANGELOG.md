@@ -1,5 +1,11 @@
 # AIX Alpha v3.0 - revision 8
 
+## Video length and shape options (node v34)
+- Turning on Video mode shows two menus in the chat toolbar: length (2, 4, 6, 8, 10, 15, 20, 30, 45 s, 1 min) and shape (Landscape 768x512, Wide 1024x576, Portrait, Tall, Square). Choices are remembered.
+- Pricing: 5 credits for a clip up to 2 s, then +5 credits for every full minute of length (2 s to 59 s = 5, 1 min = 10). Charged up front, refunded on failure, free for admin. Constants: `VIDEO_CR` / `vidCost()` in the worker and app.
+- Maximum is 1 minute per clip. Clips over 2 s need the Mac node (the free cloud queue only does about 2 s); the worker says so before charging. The node picks the frame count (8n+1 at 24 fps) and scales its timeout with length. Long clips can take an hour or more and may run out of memory on 32 GB; shorter lengths are the safe choice.
+- The start image is cropped to the chosen shape.
+
 ## Local video upgraded to LTX-2.5 (node v33)
 - Cause of the failed install: `uv tool install ltx-2-mlx` does not work (the engine is not a published package). The installer now clones the engine, runs `uv sync` (Python 3.12) and runs it with `uv run --project`.
 - Default is LTX-2.5 (22B, 8-bit MLX, `MrMofer/ltx-2.5-mlx-q8`, runtime branch `ltx25` pinned to a known commit). If it fails the self-test, LTX-2.3 (`dgrauet/ltx-2.3-mlx-q4`) is tried automatically; if both fail, video stays on the cloud queue.

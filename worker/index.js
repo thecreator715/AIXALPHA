@@ -2257,7 +2257,8 @@ async function image(env, req) {
 }
 
 // ---- AI video (beta): free Hugging Face ZeroGPU Space (Lightricks LTX-Video distilled), image -> short clip ----
-const VIDEO_CR = 3;
+const VIDEO_CR = 5;   // 5 credits for a clip up to 2 s; +5 for every full minute of length
+const vidCost = (sec) => VIDEO_CR + 5 * Math.floor(Math.max(2, sec) / 60);
 const HF_VIDEO = 'https://lightricks-ltx-video-distilled.hf.space';
 const b64 = (u8) => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
 async function hfVideo(env, prompt, imageDataUrl) {
@@ -2300,11 +2301,11 @@ async function hfVideo(env, prompt, imageDataUrl) {
   return 'data:video/mp4;base64,' + b64(bytes);
 }
 // Local video on the Mac node (LTX-2.3 MLX): text-to-video or image-to-video. Same price as the cloud queue; the cloud queue is the backup.
-async function nodeVideo(env, prompt, image) {
+async function nodeVideo(env, prompt, image, w, h, sec) {
   const nd = await nodeGet(env); const cands = nd ? [nd, ...(nd.alts || [])].filter((n) => n && n.vid) : [];
   for (const n of cands) {
     try {
-      const r = await nfetch(n.url.replace(/\/+$/, '') + '/v1/videos/generate', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + n.token }, body: JSON.stringify({ prompt, image: image || null, w: 768, h: 512 }) }, 1500000);
+      const r = await nfetch(n.url.replace(/\/+$/, '') + '/v1/videos/generate', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + n.token }, body: JSON.stringify({ prompt, image: image || null, w: w || 768, h: h || 512, sec: sec || 2 }) }, Math.min(7200000, 1500000 + (sec || 2) * 240000));
       const t = r.ok ? (await r.text()).trim() : ''; const j = t ? JSON.parse(t) : null; if (j && j.video) return j.video;
     } catch (e) { /* next node, then the cloud queue */ }
   }
@@ -2317,21 +2318,23 @@ async function video(env, req) {
   let b; try { b = await req.json(); } catch { return json(env, req, { error: 'bad request' }, 400); }
   const prompt = String(b.prompt || '').slice(0, 500).trim();
   const hasNode = await nodeHasVid(env);
+  const sec = Math.max(2, Math.min(60, Math.round(+b.sec || 2))), VW = Math.max(256, Math.min(1024, Math.round((+b.w || 768) / 64) * 64)), VH = Math.max(256, Math.min(1024, Math.round((+b.h || 512) / 64) * 64)), COST = vidCost(sec);
+  if (sec > 2 && !hasNode) return json(env, req, { error: 'Clips longer than 2 seconds need the AIX Mac node (local video). It is offline or not installed. Pick 2 seconds to use the cloud queue.' }, 400);
   if (!b.image && !hasNode) return json(env, req, { error: 'Add a start image (under ~4 MB).', needImage: true }, 400);
   if (b.image && String(b.image).length > 6e6) return json(env, req, { error: 'Add a start image (under ~4 MB).' }, 400);
   const owner = owners(env).includes(a.email) && !a.meter;
   if (!owner) {
-    const up = await env.DB.prepare('UPDATE users SET credits=credits-? WHERE email=? AND credits>=?').bind(VIDEO_CR, a.email, VIDEO_CR).run();
-    if (!(up.meta && up.meta.changes > 0)) return json(env, req, { error: 'Out of credits. A video clip costs ' + VIDEO_CR + ' credits.' }, 402);
+    const up = await env.DB.prepare('UPDATE users SET credits=credits-? WHERE email=? AND credits>=?').bind(COST, a.email, COST).run();
+    if (!(up.meta && up.meta.changes > 0)) return json(env, req, { error: 'Out of credits. This clip costs ' + COST + ' credits.' }, 402);
   }
   const finish = async () => {
-    let vid = hasNode ? await nodeVideo(env, prompt || 'Cinematic motion, smooth camera', b.image) : null;
-    if (!vid) { if (!b.image) throw new Error('Local video is busy or offline. Add a start image to use the cloud queue.'); vid = await hfVideo(env, prompt, b.image); }
-    if (!owner) await env.DB.prepare('INSERT INTO usage(email,at,input,output,credits) VALUES(?,?,0,0,?)').bind(a.email, new Date().toISOString(), VIDEO_CR).run();
+    let vid = hasNode ? await nodeVideo(env, prompt || 'Cinematic motion, smooth camera', b.image, VW, VH, sec) : null;
+    if (!vid) { if (sec > 2) throw new Error('The Mac node could not render this clip (busy, offline or ran out of memory). Try a shorter duration.'); if (!b.image) throw new Error('Local video is busy or offline. Add a start image to use the cloud queue.'); vid = await hfVideo(env, prompt, b.image); }
+    if (!owner) await env.DB.prepare('INSERT INTO usage(email,at,input,output,credits) VALUES(?,?,0,0,?)').bind(a.email, new Date().toISOString(), COST).run();
     const f = await getUser(env, a.email);
-    return { video: vid, credits: +Number(f.credits).toFixed(2), spentCredits: owner ? 0 : VIDEO_CR };
+    return { video: vid, credits: +Number(f.credits).toFixed(2), spentCredits: owner ? 0 : COST };
   };
-  const fail = async (e) => { if (!owner) await env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(VIDEO_CR, a.email).run(); return { error: e.message || 'Video failed' }; };
+  const fail = async (e) => { if (!owner) await env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(COST, a.email).run(); return { error: e.message || 'Video failed' }; };
   if (!hasNode) { try { return json(env, req, await finish()); } catch (e) { return json(env, req, await fail(e), 502); } }
   // local render can take minutes: answer at once and send a space every 15 s so no proxy times out; the JSON arrives at the end
   const { readable, writable } = new TransformStream(), w = writable.getWriter(), enc = new TextEncoder();
