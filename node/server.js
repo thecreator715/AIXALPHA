@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path'), crypto = require('crypto');
-const VERSION = 34;   // bump on every release: nodes auto-update when GitHub has a higher number
+const VERSION = 35;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -217,7 +217,7 @@ const vidCfg = () => { try { return JSON.parse(fs.readFileSync(path.join(__dirna
 const vidReady = () => { const c = vidCfg(); return !!(c && c.cmd && c.ok !== false); };
 let VIDQ = 0;
 // Local video with LTX-2.5 (MLX; 2.3 fallback). Text-to-video, or image-to-video when a start image is given.
-function genVid(prompt, imgBuf, w, hgt, sec) {
+function genVid(prompt, imgBuf, w, hgt, sec, up) {
   sec = Math.max(2, Math.min(60, Math.round(+sec || 2)));
   const c = vidCfg(); if (!c || !c.cmd) return Promise.reject(Object.assign(new Error('local video not installed'), { code: 501 }));
   if (VIDQ >= 2) return Promise.reject(Object.assign(new Error('video queue full'), { code: 429 }));
@@ -237,7 +237,7 @@ function genVid(prompt, imgBuf, w, hgt, sec) {
       const to = setTimeout(() => { try { cp.kill('SIGKILL'); } catch {} }, Math.min(10800000, 1500000 + sec * 240000));
       const clean = () => { try { fs.unlinkSync(inp); } catch {} try { fs.unlinkSync(out); } catch {} };
       cp.on('error', (e) => { clearTimeout(to); clean(); reject(e); });
-      cp.on('close', (code) => { clearTimeout(to); try { const b = fs.readFileSync(out); clean(); if (b.length > 5000) return resolve(b); } catch {} clean(); reject(new Error('video run failed (' + code + '): ' + err.split('\n').slice(-3).join(' ').slice(0, 300))); });
+      cp.on('close', (code) => { clearTimeout(to); try { const b = fs.readFileSync(out); clean(); if (b.length > 5000) { if (!up) { clean(); return resolve(b); } const o2 = out + '.hd.mp4'; const ff = require('child_process').spawn('ffmpeg', ['-y', '-i', out, '-vf', 'scale=-2:1080:flags=lanczos,unsharp=5:5:0.9:3:3:0.4', '-c:v', 'libx264', '-crf', '17', '-preset', 'medium', '-pix_fmt', 'yuv420p', '-c:a', 'copy', o2], { stdio: 'ignore', env: { ...process.env, PATH: process.env.PATH + ':/opt/homebrew/bin:/usr/local/bin' } }); ff.on('close', () => { let r = b; try { const hd = fs.readFileSync(o2); if (hd.length > 5000) r = hd; } catch {} try { fs.unlinkSync(o2); } catch {} clean(); resolve(r); }); ff.on('error', () => { clean(); resolve(b); }); return; } } catch {} clean(); reject(new Error('video run failed (' + code + '): ' + err.split('\n').slice(-3).join(' ').slice(0, 300))); });
     });
   };
   const p = IMGBUSY.then(run, run); IMGBUSY = p.catch(() => {}); return p.finally(() => { VIDQ--; });
@@ -401,9 +401,9 @@ const SRV = http.createServer(async (req, res) => {
       const pr = String(b.prompt || '').slice(0, 800).trim(); if (!pr) return J(res, h, 400, { error: 'prompt required' });
       if (!vidReady()) return J(res, h, 501, { error: 'local video not installed' });
       const m = /^data:image\/[\w+.-]+;base64,(.+)$/.exec(String(b.image || '')), ib = m ? Buffer.from(m[1], 'base64') : null;
-      const dm = (v, d) => Math.max(256, Math.min(1024, Math.round((+v || d) / 64) * 64));
+      const dm = (v, d) => Math.max(256, Math.min(1280, Math.round((+v || d) / 64) * 64));
       res.writeHead(200, { ...h, 'content-type': 'application/json' }); const hb = setInterval(() => { try { res.write(' '); } catch {} }, 20000);
-      try { const mp4 = await genVid(pr, ib, dm(b.w, 768), dm(b.h, 512), b.sec); clearInterval(hb); res.end(JSON.stringify({ video: 'data:video/mp4;base64,' + mp4.toString('base64'), model: ((vidCfg() || {}).label || 'ltx').toLowerCase().replace(/\s+/g, '-') })); }
+      try { const mp4 = await genVid(pr, ib, dm(b.w, 768), dm(b.h, 512), b.sec, !!b.up); clearInterval(hb); res.end(JSON.stringify({ video: 'data:video/mp4;base64,' + mp4.toString('base64'), model: ((vidCfg() || {}).label || 'ltx').toLowerCase().replace(/\s+/g, '-') })); }
       catch (e) { clearInterval(hb); res.end(JSON.stringify({ error: String(e.message || e).slice(0, 300), code: e.code || 502 })); }
       return;
     }
