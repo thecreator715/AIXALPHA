@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path'), crypto = require('crypto');
-const VERSION = 42;   // bump on every release: nodes auto-update when GitHub has a higher number
+const VERSION = 43;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -277,13 +277,15 @@ function genVid(prompt, imgBuf, w, hgt, sec, up, q, job) {
   const c = vidCfg(); if (!c || !c.cmd) return Promise.reject(Object.assign(new Error('local video not installed'), { code: 501 }));
   if (VIDQ >= 2) return Promise.reject(Object.assign(new Error('video queue full'), { code: 429 }));
   VIDQ++; job = job || vidJob(w, hgt, sec, q, up); VIDJOBS.push(job);
-  const run = async () => {
+  const run1 = async (forceLow) => {
     if (job.cancelled) throw Object.assign(new Error('video cancelled'), { code: 499 });
     job.runStart = Date.now(); job.lastOut = Date.now(); job.stage = 'Freeing memory (unloading the chat model)'; await unloadLLM(); job.stage = 'Starting the engine'; if (!VIDJOBS.some((o) => o !== job && o.runStart && !o.done)) killStrays();   // nothing else should be rendering: clear any engine left behind by a cancelled or crashed run
     const id = Date.now() + crypto.randomBytes(3).toString('hex'), out = path.join(IMGDIR, 'v' + id + '.mp4'), inp = path.join(IMGDIR, 'v' + id + '.png');
     const F = Object.assign({ prompt: '-p', out: '-o', h: '-H', w: '-W', img: '--image', frames: null, fps: null }, c.flags || {});
     const MODE = (c.modes && c.modes[q]) || null;   // quality tiers: fast = distilled; hq / best use the dev model with guidance (slower, cleaner)
-    const base = (c.args || []).map((x) => (MODE && x === '--distilled') ? MODE : x);
+    let base = (c.args || []).map((x) => (MODE && x === '--distilled') ? MODE : x);
+    // --low-ram swaps model parts in and out of memory and is much slower; with lots of free memory (chat model already unloaded) it is left off for speed
+    const lowEnv = process.env.AIX_VID_LOWRAM, free0 = availGb(); if (!forceLow && lowEnv !== '1' && (lowEnv === '0' || free0 >= 26)) base = base.filter((x) => x !== '--low-ram'); job.fast = !base.includes('--low-ram');
     let args = base.concat([F.prompt, prompt, F.out, out, F.h, String(hgt), F.w, String(w)]);
     const nfr = Math.round(sec * (c.fps || 24) / 8) * 8 + 1;   // frame counts must be 8n+1
     if (F.frames) args = args.concat([F.frames, String(sec > 2 ? nfr : (c.nframes || 49))]);
@@ -299,9 +301,10 @@ function genVid(prompt, imgBuf, w, hgt, sec, up, q, job) {
       const STALL = +process.env.AIX_VID_STALL || 1200000, wd = setInterval(() => { const ps = procStats(cp.pid); if (ps) { job.ps = ps; if (ps.cpu >= 25) job.lastBusy = Date.now(); } if (Date.now() - job.lastOut > STALL && Date.now() - (job.lastBusy || 0) > STALL / 2) { job.stalled = 1; killTree(cp); } }, 4000);   // no output for 20 min = stuck engine
       const clean = () => { try { fs.unlinkSync(inp); } catch {} try { fs.unlinkSync(out); } catch {} };
       cp.on('error', (e) => { clearTimeout(to); clearInterval(wd); clean(); reject(e); });
-      cp.on('close', (code) => { clearTimeout(to); clearInterval(wd); if (job.cancelled) { clean(); return reject(Object.assign(new Error('video cancelled'), { code: 499 })); } try { const b = fs.readFileSync(out); clean(); if (b.length > 5000) { vidRec(job); if (!up) { clean(); return resolve(b); } const o2 = out + '.hd.mp4'; vidStage(job, 8); const ff = require('child_process').spawn('ffmpeg', ['-y', '-i', out, '-vf', 'scale=-2:1080:flags=lanczos,unsharp=5:5:0.9:3:3:0.4', '-c:v', 'libx264', '-crf', '17', '-preset', 'medium', '-pix_fmt', 'yuv420p', '-c:a', 'copy', o2], { stdio: 'ignore', env: { ...process.env, PATH: process.env.PATH + ':/opt/homebrew/bin:/usr/local/bin' } }); ff.on('close', () => { let r = b; try { const hd = fs.readFileSync(o2); if (hd.length > 5000) r = hd; } catch {} try { fs.unlinkSync(o2); } catch {} clean(); resolve(r); }); ff.on('error', () => { clean(); resolve(b); }); return; } } catch {} clean(); reject(new Error(job.stalled ? 'the video engine stopped responding for 20 minutes and was restarted (try a shorter clip, Fast quality, or free some RAM)' : job.timedOut ? 'the render took longer than the time limit and was stopped (try a shorter clip or lower quality)' : 'video run failed (' + code + '): ' + err.split('\n').slice(-3).join(' ').slice(0, 300))); });
+      cp.on('close', (code) => { clearTimeout(to); clearInterval(wd); if (job.cancelled) { clean(); return reject(Object.assign(new Error('video cancelled'), { code: 499 })); } try { const b = fs.readFileSync(out); clean(); if (b.length > 5000) { vidRec(job); if (!up) { clean(); return resolve(b); } const o2 = out + '.hd.mp4'; vidStage(job, 8); const ff = require('child_process').spawn('ffmpeg', ['-y', '-i', out, '-vf', 'scale=-2:1080:flags=lanczos,unsharp=5:5:0.9:3:3:0.4', '-c:v', 'libx264', '-crf', '18', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-c:a', 'copy', o2], { stdio: 'ignore', env: { ...process.env, PATH: process.env.PATH + ':/opt/homebrew/bin:/usr/local/bin' } }); ff.on('close', () => { let r = b; try { const hd = fs.readFileSync(o2); if (hd.length > 5000) r = hd; } catch {} try { fs.unlinkSync(o2); } catch {} clean(); resolve(r); }); ff.on('error', () => { clean(); resolve(b); }); return; } } catch {} clean(); reject(new Error(job.stalled ? 'the video engine stopped responding for 20 minutes and was restarted (try a shorter clip, Fast quality, or free some RAM)' : job.timedOut ? 'the render took longer than the time limit and was stopped (try a shorter clip or lower quality)' : 'video run failed (' + code + '): ' + err.split('\n').slice(-3).join(' ').slice(0, 300))); });
     });
   };
+  const run = async () => { try { return await run1(false); } catch (e) { if (job.fast && !job.cancelled && !job.stalled && !job.timedOut) { job.stage = 'Retrying in low-memory mode'; job.parsed = null; job.stageIdx = 0; job.pctMax = 0; return await run1(true); } throw e; } };   // fast mode failed (usually memory): one automatic retry with --low-ram
   const p = IMGBUSY.then(run, run); IMGBUSY = p.catch(() => {}); return p.finally(() => { if (!job.rel) VIDQ = Math.max(0, VIDQ - 1); job.done = true; const i = VIDJOBS.indexOf(job); if (i >= 0) VIDJOBS.splice(i, 1); });
 }
 function genImg(prompt, hq, w, hgt) {

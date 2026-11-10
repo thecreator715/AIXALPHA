@@ -1,5 +1,10 @@
 # AIX Alpha v3.0 - revision 8
 
+## Video follows your words + faster (node v43)
+- A short prompt like "a bird flying in the jungle a Red Robin" made LTX invent a random face: the prompt rewrite was timing out and the raw words went straight to the model. The rewrite now uses the 70B model first (8B second, 12 s each) and always has a built-in fallback that expands the prompt into a full cinematic description. It names the subject concretely, turns "multiple scenes / cuts" into one continuous moving shot (one clip cannot cut), and never adds people or faces unless asked. The "Prompt used" line under the clip shows exactly what the engine got.
+- Speed: `--low-ram` (slow memory swapping) is left off when 26 GB or more is free after the chat model unloads, with one automatic retry in low-memory mode if that fails; the 1080p sharpen step uses ffmpeg veryfast. Set `AIX_VID_LOWRAM=1` to always use low-ram.
+- For the closest match to your words use Better or Best quality (Fast is 8 quick steps and follows text loosely).
+
 ## Video errors after cancel / retry (node v42)
 - Cause: cancelling killed only the launcher (uv); the python engine under it kept rendering, so the next clip ran out of memory or found the node busy and failed with "Local video is busy or offline". The node now starts the engine in its own process group and kills the whole group on cancel, timeout, stall or exit, and clears any leftover engine before a new render starts.
 - A cancelled clip that was still waiting in line frees its place immediately (a few cancels could previously fill the 2-clip queue).

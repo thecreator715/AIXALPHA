@@ -2303,13 +2303,21 @@ async function hfVideo(env, prompt, imageDataUrl) {
 // Local video on the Mac node (LTX-2.3 MLX): text-to-video or image-to-video. Same price as the cloud queue; the cloud queue is the backup.
 // Rewrites a short request into a detailed LTX-style prompt (subject, motion, camera, light, sound). Falls back to the original on any problem.
 async function enhVideoPrompt(env, prompt, hasImage) {
+  if (!prompt) return prompt;
+  const raw = String(prompt).replace(/\s+/g, ' ').trim().slice(0, 400);
+  const fallback = raw.replace(/[.!\s]+$/, '') + '. One continuous cinematic shot, the subject clearly visible and moving naturally, slow tracking camera, soft natural light, shallow depth of field, rich fine detail, smooth realistic motion, natural ambient sound. No people or faces unless requested.';
   try {
-    if (!env.AI || !prompt) return prompt;
-    const sys = 'You write prompts for the LTX video model. Rewrite the user request as ONE paragraph of 60-110 words in present tense: the main subject and its motion, how the camera moves (slow push-in, tracking, pan), lighting and atmosphere, fine textures, and natural ambient sound. ' + (hasImage ? 'A start image is supplied, so describe only the motion, camera move and sound that grow out of it; never change what is in the image. ' : '') + 'Photorealistic, cinematic, sharp detail, smooth natural motion. Keep every element the user asked for. Output only the prompt.';
-    const r = await Promise.race([env.AI.run('@cf/meta/llama-3.1-8b-instruct', { messages: [{ role: 'system', content: sys }, { role: 'user', content: String(prompt).slice(0, 400) }], max_tokens: 220 }), new Promise((_, no) => setTimeout(() => no(new Error('t')), 9000))]);
-    const t = String((r && (r.response || r.result)) || '').trim().replace(/^["']|["']$/g, '');
-    return t.length > 30 ? t.slice(0, 900) : prompt;
-  } catch (e) { return prompt; }
+    if (!env.AI) return fallback;
+    const sys = 'You write prompts for the LTX video model, which follows detailed text closely and ignores vague prompts. Rewrite the user request as ONE paragraph of 70-120 words in present tense. Name the main subject concretely with its colours, size and look, then its motion, then the setting, how the camera moves (slow tracking, push-in, pan), lighting and atmosphere, fine textures, and natural ambient sound. The clip is one continuous shot, so if the user asks for several scenes or cuts, describe one shot that moves through them. Do not add people, faces or text unless the user asked for them. ' + (hasImage ? 'A start image is supplied, so describe only the motion, camera move and sound that grow out of it; never change what is in the image. ' : '') + 'Photorealistic, cinematic, sharp detail. Keep every element the user asked for. Output only the prompt.';
+    for (const m of ['@cf/meta/llama-3.3-70b-instruct-fp8-fast', '@cf/meta/llama-3.1-8b-instruct']) {
+      try {
+        const r = await Promise.race([env.AI.run(m, { messages: [{ role: 'system', content: sys }, { role: 'user', content: raw }], max_tokens: 260 }), new Promise((_, no) => setTimeout(() => no(new Error('t')), 12000))]);
+        const t = String((r && (r.response || r.result)) || '').trim().replace(/^["']|["']$/g, '');
+        if (t.length > 40) return t.slice(0, 900);
+      } catch (e) { }
+    }
+    return fallback;
+  } catch (e) { return fallback; }
 }
 async function nodeVideo(env, prompt, image, w, h, sec, up, q, onP, info) {
   const nd = await nodeGet(env); const cands = nd ? [nd, ...(nd.alts || [])].filter((n) => n && n.vid) : [];
