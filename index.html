@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head><meta http-equiv="Cache-Control" content="no-cache, must-revalidate"><script>/* freshness guard: if GitHub Pages / the browser served an old copy, reload the newest one once */
-window.APP_BUILD='2026-11-10-v47';
+window.APP_BUILD='2026-11-10-v48';
 (function(){try{if(!/^https?:$/.test(location.protocol)||/claude\.(ai|com)|claudeusercontent/.test(location.hostname))return;
 var K='aix_fresh_try',t=+sessionStorage.getItem(K)||0;if(t>1)return;
 fetch(location.pathname+'?_fresh='+Date.now(),{cache:'no-store'}).then(function(r){return r.text()}).then(function(x){var m=x.match(/APP_BUILD='([^']+)'/);if(m&&m[1]!==window.APP_BUILD&&m[1]>window.APP_BUILD){sessionStorage.setItem(K,String(t+1));location.replace(location.pathname+'?v='+encodeURIComponent(m[1])+'&t='+Date.now()+location.hash)}else sessionStorage.removeItem(K)}).catch(function(){})}catch(e){}})();
@@ -293,7 +293,7 @@ pre.cfg{background:#000;border:1px solid var(--b);border-radius:8px;padding:10px
 @media(max-width:900px){#top{padding-left:10px!important}}
 
 .msg,.cm{position:relative}
-.mtools{position:absolute;top:8px;right:0;display:flex;gap:2px;background:#0c0c0ef2;border:1px solid var(--b);border-radius:10px;padding:3px;opacity:0;transform:translateY(-2px);transition:opacity .15s,transform .15s;z-index:3;backdrop-filter:blur(6px)}
+.mtools{position:absolute;top:8px;right:0;display:flex;gap:2px;background:#0c0c0ef2;border:1px solid var(--b);border-radius:10px;padding:3px;opacity:0;transition:none;z-index:3}
 .msg:hover>.mtools,.cm:hover>.mtools,.mtools:focus-within{opacity:1;transform:none}
 .mtools button{width:28px;height:28px;border:0;background:transparent;color:#a1a1aa;border-radius:7px;display:grid;place-items:center;padding:0;cursor:pointer}.mtools button:hover{background:#1c1c1f;color:#fff}
 #editban{display:flex;gap:10px;align-items:center;justify-content:space-between;border:1px solid var(--ac);background:#06281d;border-radius:10px;padding:6px 10px;margin-bottom:6px;font-size:11px;color:#a7f3d0}

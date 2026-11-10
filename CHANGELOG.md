@@ -307,3 +307,6 @@
 - Qwen Fast keeps the chosen aspect ratio (no more 3840×2160 / 4k-in-prompt overriding the size dropdown).
 - Explicit size dropdown choice now beats size words in the prompt.
 - Mode toolbar no longer squeezes on 900–1500 px desktop windows (wraps instead).
+
+## v48
+- Message action icons no longer flicker on desktop: removed fade/blur transition that replayed whenever the chat re-rendered.
