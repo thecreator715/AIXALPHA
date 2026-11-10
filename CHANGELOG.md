@@ -2,7 +2,7 @@
 
 ## Video length and shape options (node v34)
 - Turning on Video mode shows two menus in the chat toolbar: length (2, 4, 6, 8, 10, 15, 20, 30, 45 s, 1 min) and shape (Landscape 768x512, Wide 1024x576, Portrait, Tall, Square). Choices are remembered.
-- Pricing: 5 credits for a clip up to 2 s, then +5 credits for every full minute of length (2 s to 59 s = 5, 1 min = 10). Charged up front, refunded on failure, free for admin. Constants: `VIDEO_CR` / `vidCost()` in the worker and app.
+- Pricing: 1 credit per second, 5 credits minimum (2 s to 5 s = 5, 10 s = 10, 1 min = 60). Charged up front, refunded on failure, free for admin. Constants: `VIDEO_CR` / `vidCost()` in the worker and app.
 - Maximum is 1 minute per clip. Clips over 2 s need the Mac node (the free cloud queue only does about 2 s); the worker says so before charging. The node picks the frame count (8n+1 at 24 fps) and scales its timeout with length. Long clips can take an hour or more and may run out of memory on 32 GB; shorter lengths are the safe choice.
 - The start image is cropped to the chosen shape.
 

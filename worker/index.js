@@ -2257,8 +2257,8 @@ async function image(env, req) {
 }
 
 // ---- AI video (beta): free Hugging Face ZeroGPU Space (Lightricks LTX-Video distilled), image -> short clip ----
-const VIDEO_CR = 5;   // 5 credits for a clip up to 2 s; +5 for every full minute of length
-const vidCost = (sec) => VIDEO_CR + 5 * Math.floor(Math.max(2, sec) / 60);
+const VIDEO_CR = 5;   // minimum price (clips up to 5 s); then 1 credit per second
+const vidCost = (sec) => Math.max(VIDEO_CR, Math.round(sec));
 const HF_VIDEO = 'https://lightricks-ltx-video-distilled.hf.space';
 const b64 = (u8) => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
 async function hfVideo(env, prompt, imageDataUrl) {
