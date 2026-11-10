@@ -1502,8 +1502,9 @@ function fupChips(box,c){box.querySelectorAll('.fups').forEach(x=>x.remove());re
   const d=document.createElement('div');d.className='fups';d.style.cssText='display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 4px';d.innerHTML=ch.map(x=>`<button class="btn2" data-fu="${esc(x)}" style="padding:7px 14px;border-radius:99px;font-size:12.5px">${esc(x)}</button>`).join('');box.appendChild(d)}
 document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data-fu]');if(!b)return;e.stopPropagation();send(b.dataset.fu)},true);
 function spVis(){try{const b=$('#spbtn');if(b){const c=curChat();b.style.setProperty('display',c&&(c.msgs||[]).some(m=>m.mesh)?'':'none','important')}}catch{}}
-function renderMsgs(){spVis();
-  const c=curChat();$('#ttl').textContent=c?c.title:'New chat';
+let RMID=null;
+function renderMsgs(){spVis();const _ch=$('#chat'),_keep=_ch?_ch.scrollTop:0,_near=_ch?_ch.scrollHeight-_ch.scrollTop-_ch.clientHeight<140:true;
+  const c=curChat();$('#ttl').textContent=c?c.title:'New chat';const _same=RMID===(c?c.id:null);
   const box=$('#msgs');
   if(!c||!c.msgs.length){box.innerHTML=`<div class="empty"><h2>AIX Alpha v3.0</h2><div class="mono" style="font-size:12px">Loop engine · route → diet → cache → generate → verify → repair</div>
    <div class="tiles">${[['Single-file app','Build a single html pomodoro timer app with dark UI and session history'],['3D mesh (free)','Render a gold metallic torus knot 3d model'],['Fast answer','what is a mutex?'],['Constraint check','explain recursion in 20 words'],['Compare','Compare Postgres and SQLite for a 5k-user SaaS and give a recommendation']].map(([a,b])=>`<div class="tile" data-ex="${esc(b)}"><b>${a}</b>${esc(b)}</div>`).join('')}</div></div>`;updateMeter();return}
@@ -1515,7 +1516,7 @@ function renderMsgs(){spVis();
   box.querySelectorAll('[data-mesh]').forEach(el=>mountMesh(el,c.msgs[+el.dataset.mesh].mesh));
   box.querySelectorAll('[data-inpv]').forEach(el=>{el.srcdoc=extractHtml(c.msgs[+el.dataset.inpv].content)||''});
   try{fupChips(box,c)}catch(e){}
-  $('#chat').scrollTop=1e9;updateMeter();
+  const _c2=$('#chat');if(_c2){if(!_same||_near||AUTOSC)_c2.scrollTop=1e9;else _c2.scrollTop=_keep}RMID=c?c.id:null;updateMeter();
 }
 document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data-pj]');if(!b)return;const el=document.querySelector('#msgs [data-m="'+b.dataset.pj+'"]');if(el){el.scrollIntoView({block:'center',behavior:'smooth'});el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),1600)}});
 function updateMeter(){if($('#estline'))refreshEst(false);const c=curChat(),sp=c?.cost||0;{const pct=Math.max(Math.min(1,sp/S.caps.ses),sp>0?.03:0),C=2*Math.PI*15,f=$('#fill');f.style.strokeDasharray=C.toFixed(2);f.style.strokeDashoffset=(C*(1-pct)).toFixed(2);f.style.stroke=sp/S.caps.ses>.8?'var(--r)':sp/S.caps.ses>.5?'var(--a)':'var(--g)'}
