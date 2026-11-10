@@ -182,3 +182,6 @@
 - New XQ button next to ECO / BALANCED / THOROUGH: one tap selects ALPHA XQ on the Thorough tier; tapping another mode returns to your previous persona.
 - Start AIX Node: keeps the Mac awake (caffeinate), auto-updates an old Ollama, checks free disk, retries downloads, proves the model loads and steps the context down if memory is short.
 - Update Qwen / AIX MASTER: syntax-check every file before use, back up old copies, retry downloads, disk warning. The node now also refreshes its launchers when it self-updates.
+
+## Fix: cloud 500 / "Register failed: HTTP 500"
+- A live worker update dropped the D1 database binding (DB), so every database call returned HTTP 500 (control panel tabs, node registration, balances). Binding, AI binding and variables restored from wrangler.toml. Always deploy with `wrangler deploy` (it re-applies bindings) or re-apply bindings after a live content patch.
