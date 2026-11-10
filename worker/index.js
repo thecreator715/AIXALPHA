@@ -11,7 +11,7 @@ const cors = (env, req) => {
   const allow = (env.ALLOWED_ORIGINS || '*').split(',').map((s) => s.trim());
   const o = req.headers.get('origin') || '';
   const ok = allow.includes('*') ? '*' : allow.includes(o) ? o : '';
-  return { 'access-control-allow-origin': ok, 'access-control-allow-headers': 'content-type, authorization, x-admin-token, x-meter, x-node-secret', 'access-control-allow-methods': 'GET,POST,PUT,OPTIONS', vary: 'Origin' };
+  return { 'access-control-allow-origin': ok, 'access-control-allow-headers': 'content-type, authorization, x-admin-token, x-meter, x-node-secret, x-device, x-aix-device', 'access-control-allow-methods': 'GET,POST,PUT,OPTIONS', vary: 'Origin' };
 };
 const json = (env, req, body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...cors(env, req) } });
 const sha = async (s) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(s)))].map((b) => b.toString(16).padStart(2, '0')).join('');

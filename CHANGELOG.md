@@ -1,5 +1,8 @@
 # AIX Alpha v3.0 - revision 8
 
+## Fix: sign-in and sign-up blocked by CORS (x-device header)
+- The device id header added for the free-credit check was not on the server's allowed-headers list, so browsers refused every sign-in/sign-up request before it was sent. `x-device` and `x-aix-device` are now allowed. No app update needed.
+
 ## Admin sign-in with email
 - Sign in now accepts the account email as well as the username, so the owner can sign in on the live site with divercityrecords@gmail.com (the `admin` username still works). The sign-in box is a plain text field again so usernames are not rejected.
 
