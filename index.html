@@ -1097,7 +1097,7 @@ function nodeSample(){
     return{text,truncated:trunc}};
   f.limits=async()=>({images:false});f.node=true;return f}
 const nodeWrap=()=>{if(!NODEFN){const f=withTools(nodeSample());NODEFN=async(a,b)=>{let r;try{r=await f(a,b)}catch(e){if(e.nodeDown){NODEDOWN=Date.now();let cloud=sampleFn||pickEngine();if(cloud&&!cloud.node){if(ISOWNER)try{toast('Mac node unreachable: using the cloud engine for now')}catch{}return cloud(a,b)}}throw e}
-r.node=true;try{const tok=store.get(TOKK,'');if(tok&&BACKEND()){const j=await fetch(BACKEND()+'/api/node/charge',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+tok},body:JSON.stringify({input:est(a),output:est(r.text||'')})}).then(x=>x.json());if(j&&j.credits!=null){BAL=j.credits;setStatus()}}}catch{}return r};NODEFN.limits=f.limits}return NODEFN};
+r.node=true;try{const tok=store.get(TOKK,'');if(tok&&BACKEND()){const j=await fetch(BACKEND()+'/api/node/charge',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+tok},body:JSON.stringify({input:est(a),output:est(r.text||''),xq:S.pid==='aix-alpha-xq'})}).then(x=>x.json());if(j&&j.credits!=null){BAL=j.credits;setStatus()}}}catch{}return r};NODEFN.limits=f.limits}return NODEFN};
 
 /* auto-pair from the Mac node launcher: #node=<url>&token=<t>&model=<m> */
 (function(){try{const h=new URLSearchParams(location.hash.slice(1));const u=h.get('node');if(!u)return;const cfg={url:u,token:h.get('token')||'',model:h.get('model')||'',on:true};try{history.replaceState(null,'',location.pathname+location.search)}catch{}

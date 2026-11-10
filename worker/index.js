@@ -519,7 +519,7 @@ async function v1Run(env, req, kr, a, b) {
   const msgs = b.messages.slice(-100).map((m) => ({ role: ['system', 'assistant'].includes(m.role) ? m.role : 'user', content: txt(m.content) })).filter((m) => m.content);
   const total = msgs.reduce((n, m) => n + m.content.length, 0);
   if (!msgs.length || total > 400000) return oaiErr(env, req, 400, 'messages empty or too long (limit about 100k tokens)');
-  const maxTok = Math.max(1, Math.min(Number(b.max_tokens || b.max_completion_tokens) || 1024, 4096)), stream = !!b.stream, id = oaiId();
+  const XQ = /xq/i.test(String(b.model || '')), maxTok = Math.max(1, Math.min(Number(b.max_tokens || b.max_completion_tokens) || 1024, XQ ? 49152 : 4096)), stream = !!b.stream, id = oaiId(), XM = XQ ? 2.5 : 1;
   const temp = typeof b.temperature === 'number' ? Math.max(0, Math.min(b.temperature, 2)) : undefined;
   await env.DB.prepare('UPDATE api_keys SET last=?, requests=requests+1 WHERE key_hash=?').bind(Date.now(), kr.key_hash).run();
   const sse = { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', ...cors(env, req) };
@@ -528,18 +528,18 @@ async function v1Run(env, req, kr, a, b) {
   const noOnly = !!(await cfgAll(env)).nodeOnly, nd = (b.model === 'aix-alpha-cloud' && !noOnly) ? null : await nodeGet(env);
   if (nd) {
     try {
-      const up = await nfetch(nd.url.replace(/\/+$/, '') + '/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + nd.token, 'x-aix-user': a.email, 'x-aix-src': 'api' }, body: JSON.stringify({ model: nd.model, stream, max_tokens: maxTok, temperature: temp, messages: msgs }) }, stream ? 20000 : 110000);
+      const up = await nfetch(nd.url.replace(/\/+$/, '') + '/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + nd.token, 'x-aix-user': a.email, 'x-aix-src': 'api', ...(XQ ? { 'x-aix-think': '1' } : {}) }, body: JSON.stringify({ model: nd.model, stream, max_tokens: maxTok, temperature: temp, messages: msgs }) }, stream ? 20000 : 110000);
       if (up.ok) {
         if (!stream) {
           const j = await up.json(); const ch = (j.choices || [])[0] || {}; const t = (ch.message && ch.message.content) || '';
           const u = { prompt_tokens: (j.usage && j.usage.prompt_tokens) || inTok, completion_tokens: (j.usage && j.usage.completion_tokens) || Math.ceil(t.length / 4) };
-          await chargeKey(env, a, kr, 'node', { input: u.prompt_tokens, output: u.completion_tokens });
+          await chargeKey(env, a, kr, 'node', { input: u.prompt_tokens, output: Math.ceil(u.completion_tokens * XM) });
           return json(env, req, { id, object: 'chat.completion', created: Math.floor(Date.now() / 1000), model: 'aix-alpha', choices: [{ index: 0, message: { role: 'assistant', content: t }, finish_reason: ch.finish_reason === 'length' ? 'length' : 'stop' }], usage: { ...u, total_tokens: u.prompt_tokens + u.completion_tokens } });
         }
         let buf = '', outChars = 0; const dec = new TextDecoder();
         const ts = new TransformStream({
           transform(c, ctl) { ctl.enqueue(c); buf += dec.decode(c, { stream: true }); const lines = buf.split('\n'); buf = lines.pop(); for (const ln of lines) if (ln.startsWith('data:') && !ln.includes('[DONE]')) { try { const e = JSON.parse(ln.slice(5)); const t = e.choices && e.choices[0] && e.choices[0].delta && e.choices[0].delta.content; if (t) outChars += t.length; } catch { /* ignore */ } } },
-          async flush() { await chargeKey(env, a, kr, 'node', { input: inTok, output: Math.ceil(outChars / 4) }); },
+          async flush() { await chargeKey(env, a, kr, 'node', { input: inTok, output: Math.ceil(outChars / 4 * XM) }); },
         });
         return new Response(up.body.pipeThrough(ts), { headers: sse });
       }
@@ -2126,7 +2126,7 @@ export default {
     if (path === '/api/node/charge' && req.method === 'POST') {          // replies served by a local Ollama node: same credit scaling as the cloud model
       const a = await authed(env, req); if (!a) return json(env, req, { error: 'sign in' }, 401);
       const b = await req.json().catch(() => ({})); const inp = Math.min(400000, Math.max(0, Number(b.input) || 0)), out = Math.min(200000, Math.max(0, Number(b.output) || 0));
-      return json(env, req, await charge(env, a, { input: inp, output: out }));
+      return json(env, req, await charge(env, a, { input: inp, output: Math.ceil(out * (b.xq ? 2.5 : 1)) }));
     }
     if (path === '/api/account/host-charge' && req.method === 'POST') {   // site hosting: 50 credits ($5.00) per 30 days; owners host free
       const a = await authed(env, req); if (!a) return json(env, req, { error: 'sign in' }, 401);

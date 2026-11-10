@@ -176,3 +176,4 @@
 - New website design rulebook for every website / landing page request (and TARGET = Website): theme-derived colour palette, mesh-gradient background with glowing orbs, glass cards and floating glass nav, gradient text and glowing buttons, distinctive Google font pairs, bullet-proof centering and responsive type (clamp), SVG illustrations, scroll reveal, FAQ, CTA band and footer. Prevents the logo/headline overlap and oversized mobile text.
 - Follow-up edits keep the existing design.
 - ALPHA XQ costs 2.5x output credits (covers hidden thinking tokens); app estimate updated.
+- Billing audit: API calls with an XQ model id now get the 49K cap, thinking and the 2.5x output rate on node and stream paths; the browser-to-node charge route applies it too.
