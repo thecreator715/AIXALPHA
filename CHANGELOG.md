@@ -1,5 +1,11 @@
 # AIX Alpha v3.0 - revision 8
 
+## Faster images: Qwen Fast and a realistic first estimate (node v45)
+- Why it got slower: Qwen-Image runs on your Mac at 20 steps (40 in Thorough/XQ) and takes a few minutes. The cloud FLUX engine answers in seconds, so images felt instant whenever the Mac was not used.
+- New choice in the image model menu: "Qwen Fast" (1 credit). It renders 8 steps at up to 768 px on the Mac, about a minute, and is then upscaled to the size you picked.
+- FLUX stays the seconds option, Qwen-Image 2.1 stays the best-quality option.
+- The first-time estimate for Qwen was 30 s; it now starts at about 4 min for Qwen, 70 s for Fast, 8 min for HQ, and learns from your last five renders.
+
 ## Fix: "Load failed" on image mode, and a real progress meter (node v44)
 - Cause: the image route sent nothing back until the picture was finished, which can take minutes with Qwen-Image on the Mac. Mobile Safari drops a silent connection after a while and reports "Load failed". Video never had this because it streams progress.
 - The Mac node (v44) now streams image progress: engine step n of N, percent and time left, with a line every 2 s. The server relays it with a heartbeat every 8 s, so the connection stays alive however long the render takes.

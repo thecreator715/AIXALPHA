@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path'), crypto = require('crypto');
-const VERSION = 44;   // bump on every release: nodes auto-update when GitHub has a higher number
+const VERSION = 45;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -314,15 +314,15 @@ function imgSnap(j) {
   if (j.done) { pct = 100; eta = 0; stage = 'Done'; }
   return { stage, pct: Math.round(pct * 10) / 10, step: j.step || 0, steps: j.steps, eta, elapsed: Math.round(el), w: j.w, h: j.h, run: j.run ? 1 : 0, alive: !!j.cp && !j.done, silent: Math.round((now - (j.lastOut || j.t0)) / 1000), last: j.last || '' };
 }
-function genImg(prompt, hq, w, hgt, job) {
+function genImg(prompt, hq, w, hgt, job, fastSteps) {
   job = job || {}; job.t0 = Date.now(); job.w = w; job.h = hgt; job.step = 0; job.stage = 'Waiting for the image engine'; job.lastOut = job.t0;
   const c = imgCfg(); if (!c || !c.cmd) return Promise.reject(Object.assign(new Error('image model not installed'), { code: 501 }));
-  job.steps = hq ? (c.stepsHq || 30) : (c.steps || 16);
+  job.steps = fastSteps || (hq ? (c.stepsHq || 30) : (c.steps || 16));
   if (IMGQ >= 3) return Promise.reject(Object.assign(new Error('image queue full'), { code: 429 }));
   IMGQ++;
   const run = async () => { if (job.cancel) throw new Error('cancelled'); job.stage = 'Freeing memory for the image model'; job.run = 1; await unloadLLM(); if (job.cancel) throw new Error('cancelled'); job.stage = 'Loading the image model'; return new Promise((resolve, reject) => {
     const out = path.join(IMGDIR, 'i' + Date.now() + crypto.randomBytes(3).toString('hex') + '.png');
-    const steps = String(hq ? (c.stepsHq || 30) : (c.steps || 16));
+    const steps = String(job.steps);
     const args = (c.args || []).concat(['--prompt', prompt, '--steps', steps, '--width', String(w), '--height', String(hgt), '--seed', String(Math.floor(Math.random() * 2e9)), '--output', out]);
     const cp = require('child_process').spawn(c.cmd, args, { detached: os.platform() !== 'win32', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PATH: process.env.PATH + ':' + os.homedir() + '/.local/bin:/opt/homebrew/bin:/usr/local/bin' } });
     job.cp = cp; let err = '';
@@ -515,14 +515,14 @@ const SRV = http.createServer(async (req, res) => {
     if (u === '/v1/images/generate' && req.method === 'POST') {
       let b, pr; try { b = JSON.parse((await body(req)).toString() || '{}'); pr = String(b.prompt || '').slice(0, 1000).trim(); } catch { return J(res, h, 400, { error: 'bad json' }); }
       if (!pr) return J(res, h, 400, { error: 'prompt required' });
-      const dm = (v) => Math.max(512, Math.min(1536, Math.round((+v || +b.size || 1024) / 64) * 64)), W = dm(b.w), H = dm(b.h), job = {};
+      const dm = (v) => Math.max(512, Math.min(b.fast ? 768 : 1536, Math.round((+v || +b.size || 1024) / 64) * 64)), W = dm(b.w), H = dm(b.h), job = {};
       // headers go out at once; progress lines ({"p":{...}}) every 2 s, then one final JSON line. A client that leaves stops the render.
       res.writeHead(200, { ...h, 'content-type': 'application/x-ndjson', 'cache-control': 'no-cache', 'x-accel-buffering': 'no' });
       const send = (o) => { try { res.write(JSON.stringify(o) + '\n'); } catch {} };
       let hb = null;
       res.on('close', () => { if (hb) clearInterval(hb); if (!res.writableEnded) { job.cancel = true; if (job.cp) killTree(job.cp); } });
       try {
-        const pm = genImg(pr, !!b.hq, W, H, job); send({ p: imgSnap(job) }); hb = setInterval(() => send({ p: imgSnap(job) }), 2000);
+        const pm = genImg(pr, !!b.hq, W, H, job, b.fast ? 8 : 0); send({ p: imgSnap(job) }); hb = setInterval(() => send({ p: imgSnap(job) }), 2000);
         const png = await pm; clearInterval(hb); job.done = true; send({ p: imgSnap(job) });
         res.end(JSON.stringify({ image: 'data:image/png;base64,' + png.toString('base64'), model: 'qwen-image-2.1', hq: !!b.hq, secs: Math.round((Date.now() - job.t0) / 1000) }));
       } catch (e) { if (hb) clearInterval(hb); try { res.end(JSON.stringify({ error: String(e.message || e).slice(0, 300), code: e.code || 502 })); } catch {} }

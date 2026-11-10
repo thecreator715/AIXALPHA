@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head><meta http-equiv="Cache-Control" content="no-cache, must-revalidate"><script>/* freshness guard: if GitHub Pages / the browser served an old copy, reload the newest one once */
-window.APP_BUILD='2026-11-10-v45';
+window.APP_BUILD='2026-11-10-v46';
 (function(){try{if(!/^https?:$/.test(location.protocol)||/claude\.(ai|com)|claudeusercontent/.test(location.hostname))return;
 var K='aix_fresh_try',t=+sessionStorage.getItem(K)||0;if(t>1)return;
 fetch(location.pathname+'?_fresh='+Date.now(),{cache:'no-store'}).then(function(r){return r.text()}).then(function(x){var m=x.match(/APP_BUILD='([^']+)'/);if(m&&m[1]!==window.APP_BUILD&&m[1]>window.APP_BUILD){sessionStorage.setItem(K,String(t+1));location.replace(location.pathname+'?v='+encodeURIComponent(m[1])+'&t='+Date.now()+location.hash)}else sessionStorage.removeItem(K)}).catch(function(){})}catch(e){}})();
@@ -788,7 +788,7 @@ html:has(dialog#dlg[open]),body:has(dialog#dlg[open]){overflow:hidden!important;
         <button class="tg" id="evalb" title="One tiny reviewer call on DEEP answers"></button>
         <button class="tg" id="tgtb" title="Build target: AUTO guesses, WEBSITE builds multi-section sites, APP builds working apps, CHAT only talks. Click to cycle."></button>
 <button class="tg" id="askb" title="Question mode: when AIX is unsure it asks multiple-choice questions first, then runs your choice"></button>
-        <select class="tg" id="imgsz" title="Image size and shape (default is set in Settings)" style="height:auto;padding:4px 8px"></select><select class="tg" id="imgm" title="Image model: Qwen-Image 2.1 = 1 credit (2.5 credits, higher quality, in Thorough/XQ) · FLUX.1 1 cr · FLUX.2 3 cr (free for admin)" style="height:auto;padding:4px 8px"><option value="qwen">Qwen-Image 2.1 · 1 cr</option><option value="flux">FLUX · 1 cr</option><option value="flux2">FLUX.2 · 3 cr</option></select>
+        <select class="tg" id="imgsz" title="Image size and shape (default is set in Settings)" style="height:auto;padding:4px 8px"></select><select class="tg" id="imgm" title="Image model: Qwen-Image 2.1 = 1 credit (2.5 credits, higher quality, in Thorough/XQ) · FLUX.1 1 cr · FLUX.2 3 cr (free for admin)" style="height:auto;padding:4px 8px"><option value="qwen">Qwen-Image 2.1 · 1 cr · best, slow</option><option value="qwen-fast">Qwen Fast · 1 cr · about 1 min</option><option value="flux">FLUX · 1 cr · seconds</option><option value="flux2">FLUX.2 · 3 cr</option></select>
         <button class="tg" id="imgb" title="Image mode: every message you send becomes an image. 1 credit per image (free for admin). Sign in required."></button>
         <button class="tg" id="councilb" title="Council: 3 viewpoints (analyst, skeptic, builder) answer your question, then a judge merges them. Uses about 4 model calls. You can also type /council before a question."></button>
         <button class="tg" id="turbob" title="Turbo: app and website builds run in fast build mode (complete code, low temperature, biggest answer budget) on the Alpha node. Same credits as normal."></button>
@@ -1675,7 +1675,7 @@ $('#modes').onclick=e=>{const b=e.target.closest('button');if(!b)return;if(b.dat
 const SEARCH_CR=1;
 function setWeb(on){S.web=on;store.set('aix3_web',on);updateMeter();refreshEst(false);toast(on?'Live web ON · about 1 credit per search':'Live web off')}
 {const q=$('#imgsz');q.innerHTML=IMG_SIZES.map(z=>`<option value="${z.id}">${z.label}</option>`).join('');q.value=S.imgsz;q.onchange=e=>{S.imgsz=e.target.value;store.set('aix3_imgsz',S.imgsz);toast('Image size: '+imgSize(S.imgsz).label)}}
-$('#imgm').value=S.imgm;$('#imgm').onchange=e=>{S.imgm=e.target.value;store.set('aix3_imgm2',S.imgm);toast({qwen:'Qwen-Image 2.1 · 1 credit per image (2.5 credits, higher quality, in Thorough/XQ)',flux:'FLUX.1 · 1 credit per image',flux2:'FLUX.2 · 3 credits per image'}[S.imgm])};
+$('#imgm').value=S.imgm;$('#imgm').onchange=e=>{S.imgm=e.target.value;store.set('aix3_imgm2',S.imgm);toast({qwen:'Qwen-Image 2.1 · 1 credit per image, best quality, a few minutes on the Mac (2.5 credits in Thorough/XQ)','qwen-fast':'Qwen Fast · 1 credit, fewer steps and a smaller render, about a minute',flux:'FLUX.1 · 1 credit per image, ready in seconds',flux2:'FLUX.2 · 3 credits per image'}[S.imgm])};
 $('#councilb').onclick=()=>{S.council=!S.council;store.set('aix3_council',S.council);updateMeter();toast(S.council?'Council ON · each question gets 3 viewpoints and a judge (about 4 calls)':'Council OFF')};
 $('#turbob').onclick=()=>{S.turbo=!S.turbo;store.set('aix3_turbo',S.turbo);updateMeter();toast(S.turbo?'Turbo ON · app and website builds use fast build mode on the Alpha node (same credits)':'Turbo OFF')};
 $('#vidb').onclick=()=>{S.vid=!S.vid;store.set('aix3_vid',S.vid);if(S.vid&&S.img){S.img=false;store.set('aix3_img',false)}updateMeter();vidOpts();toast(S.vid?'Video mode ON · LTX-2.5 · '+vidLbl(vidSec())+' · '+vidCost(vidSec())+' credits · pick length and shape in the green video row':'Video mode off')};
@@ -4620,7 +4620,7 @@ setTimeout(function(){const b=$('#fanim');if(b)b.onclick=openAnimate},0);
 
 /* ===== Chat image generation: "create an image of a hummingbird" ===== */
 const IMGINTENT=/^\s*(please\s+)?(can you\s+|could you\s+)?(create|generate|make|draw|paint|render|design|show me)\s+(me\s+)?(an?\s+|the\s+|some\s+)?(\w+\s+)?(image|picture|photo|photograph|illustration|artwork|painting|portrait|wallpaper)s?\b/i;
-function ipEst(key){const H=(store.get('aix3_imgdur',{})||{})[key]||[];if(H.length)return H.reduce((a,b)=>a+b,0)/H.length;return /\|/.test(key)&&/qwen/.test(key)?30000:12000}
+function ipEst(key){const H=(store.get('aix3_imgdur',{})||{})[key]||[];if(H.length)return H.reduce((a,b)=>a+b,0)/H.length;return /^qwen-hq/.test(key)?480000:/^qwen-fast/.test(key)?70000:/^qwen/.test(key)?240000:10000}
 function ipLearn(key,ms){try{const d=store.get('aix3_imgdur',{})||{};d[key]=((d[key]||[]).concat(ms)).slice(-5);store.set('aix3_imgdur',d)}catch{}}
 function ipInner(m){const p=m.iprog,now=Date.now(),el=now-p.t0,sn=p.snap;
   if(el>900000)return '<div class="mono" style="font-size:12px;color:#fbbf24">This render was interrupted. Send the prompt again.</div>';
@@ -4878,7 +4878,7 @@ function toJpeg(src,tw,th,q){return new Promise((ok,no)=>{const im=new Image();i
  x.drawImage(cur,cx,cy,cw,ch,0,0,W,H);ok(c.toDataURL('image/jpeg',q||.93))}catch(e){no(e)}};im.onerror=()=>no(new Error('image load failed'));im.src=src})}
 async function saveJpeg(src,name){try{const j=await toJpeg(src,0,0,.95);dl((name||'aix-image').replace(/\.(png|jpe?g|webp|svg)$/i,'')+'.jpg',j)}catch(e){toast('Could not convert to JPEG here; saving the original');dl((name||'aix-image')+'.jpg',src)}}
 document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data-sj]');if(!b)return;e.preventDefault();const k=b.dataset.sj,src=ASSET[k]||k;if(src)saveJpeg(src,b.dataset.nm||'aix-image')});
-const IMG_LBL={qwen:'Qwen-Image 2.1','qwen-hq':'Qwen-Image 2.1 HQ',flux:'FLUX',flux2:'FLUX.2'};
+const IMG_LBL={qwen:'Qwen-Image 2.1','qwen-fast':'Qwen-Image Fast','qwen-hq':'Qwen-Image 2.1 HQ',flux:'FLUX',flux2:'FLUX.2'};
 function pickImgModel(t){return /flux\s*\.?\s*2/i.test(t)?'flux2':(S.imgm==='nano'?'qwen':(S.imgm||'qwen'))}
 async function imgCall(prompt,model,sizeId,onP){model=model||S.imgm||'qwen';const SZ=imgSize(sizeId||S.imgsz),GD=genDims(SZ.w,SZ.h);
   if(!BACKEND())throw new Error('Image generation needs the AIX server (use the GitHub site).');

@@ -2217,6 +2217,7 @@ export default {
 const IMG_MODELS = {
   qwen:  { cr: 1,   label: 'Qwen-Image 2.1' },
   'qwen-hq': { cr: 2.5, label: 'Qwen-Image 2.1 HQ' },
+  'qwen-fast': { cr: 1, label: 'Qwen-Image Fast' },
   flux:  { cr: 1, label: 'FLUX.1 schnell' },
   flux2: { cr: 3, label: 'FLUX.2' },
 };
@@ -2227,7 +2228,7 @@ async function qwenImage(env, kind, prompt, w, h, onP) {
     const ac = new AbortController(); let stall = null; const arm = () => { clearTimeout(stall); stall = setTimeout(() => ac.abort(), 60000); }; const cap = setTimeout(() => ac.abort(), kind === 'qwen-hq' ? 660000 : 480000);
     try {
       arm();
-      const r = await fetch(n.url.replace(/\/+$/, '') + '/v1/images/generate', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + n.token }, body: JSON.stringify({ prompt, hq: kind === 'qwen-hq', w, h, prog: true }), signal: ac.signal });
+      const r = await fetch(n.url.replace(/\/+$/, '') + '/v1/images/generate', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + n.token }, body: JSON.stringify({ prompt, hq: kind === 'qwen-hq', fast: kind === 'qwen-fast', w, h, prog: true }), signal: ac.signal });
       if (!r.ok) continue;
       // the node sends progress lines ({"p":{...}}) and then one final JSON line; an older node sends one JSON object at the end
       const rd = r.body.getReader(), dec = new TextDecoder(); let buf = '', last = null;
@@ -2275,7 +2276,7 @@ async function image(env, req, ctx) {
     let out;
     try {
       let image, via = kind;
-      if (kind === 'qwen' || kind === 'qwen-hq') { const q = await qwenImage(env, kind, prompt, DW, DH, emit); image = q.image; via = q.via; }
+      if (kind === 'qwen' || kind === 'qwen-hq' || kind === 'qwen-fast') { const q = await qwenImage(env, kind, prompt, DW, DH, emit); image = q.image; via = q.via; }
       else { if (emit) emit({ stage: 'Rendering the picture', pct: 20, cloud: 1 }); image = await genImage(env, kind, prompt, Math.min(8, Math.max(1, +b.steps || 4)), DW, DH); }
       const f = await getUser(env, a.email);
       out = { image, model: kind, via, credits: +Number(f.credits).toFixed(2), spentCredits: owner ? 0 : cost };
