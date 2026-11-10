@@ -191,19 +191,19 @@ async function edgeSearch1(q) {
   return { via, errors: res.length ? undefined : errs, results: res.slice(0, 7) };
 }
 async function viaNode1(env, req, a, nd, prompt, stream, maxTok, mode, images) {
-  mode = modeOf(mode); const XQ = /ALPHA XQ, the flagship AIX engine/.test(String(prompt));
-  maxTok = XQ ? Math.min(Math.max(maxTok || 4096, 49152), 49152) : /BUILD RULE/.test(String(prompt)) ? Math.max(Math.min(maxTok || 4096, 24576), mode === 'eco' ? 18432 : 24576) : Math.min(maxTok || 4096, MODE_TOK[mode] || 4096);
+  mode = modeOf(mode); const XQ = /ALPHA XQ, the flagship AIX engine/.test(String(prompt)), XO = nd.cloud ? 18 : XQ ? 2.5 : 1, XI = nd.cloud ? 24 : 1;   // cloud Qwen3.8-Max is billed at ~1.5x its real cost (Haiku-equivalent tokens x24 in, x18 out)
+  maxTok = XQ ? (nd.cloud ? 32768 : 49152) : /BUILD RULE/.test(String(prompt)) ? Math.max(Math.min(maxTok || 4096, 24576), mode === 'eco' ? 18432 : 24576) : Math.min(maxTok || 4096, MODE_TOK[mode] || 4096);
   const imgs = (Array.isArray(images) ? images : []).slice(0, 4).filter((i) => i && i.data);
   const userContent = imgs.length ? [{ type: 'text', text: prompt }, ...imgs.map((i) => ({ type: 'image_url', image_url: { url: 'data:' + String(i.media_type || 'image/png') + ';base64,' + i.data } }))] : prompt;
   let up;
   try {
-    up = await nfetch(nd.url.replace(/\/+$/, '') + '/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + nd.token, 'x-aix-user': a.email, 'x-aix-src': 'chat', ...(XQ && !/<partial_answer>|\[Revision required|\[Reviewer found/.test(String(prompt)) ? { 'x-aix-think': '1' } : {}) }, body: JSON.stringify({ model: tierModel(nd, mode), stream, max_tokens: maxTok, temperature: XQ ? 0.5 : mode === 'eco' ? 0.3 : mode === 'turbo' ? 0.2 : 0.6, messages: [{ role: 'system', content: MODE_SYS[mode] }, { role: 'user', content: userContent }] }) }, stream ? 110000 : 120000);
+    up = await nfetch(nd.url.replace(/\/+$/, '') + '/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + nd.token, ...(nd.cloud ? {} : { 'x-aix-user': a.email, 'x-aix-src': 'chat' }), ...(XQ && !nd.cloud && !/<partial_answer>|\[Revision required|\[Reviewer found/.test(String(prompt)) ? { 'x-aix-think': '1' } : {}) }, body: JSON.stringify({ model: tierModel(nd, mode), stream, max_tokens: maxTok, temperature: XQ ? 0.5 : mode === 'eco' ? 0.3 : mode === 'turbo' ? 0.2 : 0.6, messages: [{ role: 'system', content: MODE_SYS[mode] }, { role: 'user', content: userContent }] }) }, stream ? 110000 : 120000);
   } catch { return null; }
   if (!up.ok) return null;
   const inTok = Math.ceil(prompt.length / 4);
   if (!stream) {
     const j = await up.json().catch(() => null); if (!j) return null; const ch = (j.choices || [])[0] || {}; const text = (ch.message && ch.message.content) || '';
-    const bill = await charge(env, a, { input: j.usage?.prompt_tokens || inTok, output: Math.ceil((j.usage?.completion_tokens || Math.ceil(text.length / 4)) * (XQ ? 2.5 : 1)), mode });
+    const bill = await charge(env, a, { input: Math.ceil((j.usage?.prompt_tokens || inTok) * XI), output: Math.ceil((j.usage?.completion_tokens || Math.ceil(text.length / 4)) * XO), mode });
     return json(env, req, { text, truncated: ch.finish_reason === 'length', engine: 'node', ...bill });
   }
   let buf = '', outChars = 0, thN = 0, thAt = 0; const dec = new TextDecoder();
@@ -222,7 +222,7 @@ async function viaNode1(env, req, a, nd, prompt, stream, maxTok, mode, images) {
         } catch {}
       }
     },
-    async flush(ctl) { const bill = await charge(env, a, { input: inTok, output: Math.ceil(outChars / 4 * (XQ ? 2.5 : 1)), mode }); ctl.enqueue(enc.encode('data: ' + JSON.stringify({ type: 'aix_balance', engine: 'node', ...bill }) + '\n\n')); },
+    async flush(ctl) { const bill = await charge(env, a, { input: Math.ceil(inTok * XI), output: Math.ceil(outChars / 4 * XO), mode }); ctl.enqueue(enc.encode('data: ' + JSON.stringify({ type: 'aix_balance', engine: 'node', ...bill }) + '\n\n')); },
   });
   return new Response(up.body.pipeThrough(ts), { headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', ...cors(env, req) } });
 }
@@ -259,7 +259,11 @@ async function sample(env, req) {
       } catch (e) { np = '(Live web search was unavailable just now. Do not claim to have browsed. Say live search was unavailable and answer from general knowledge, flagging it may be out of date.)\n\n' + prompt; }
     }
     const mx = Math.min(Number(b.max_tokens) || 4096, 8192), md = String(b.mode || '');
-    let r = nd ? await viaNode(env, req, a, nd, np, stream, mx, md, b.images) : null;
+    let r = null;
+    if (env.DASHSCOPE_API_KEY && /ALPHA XQ, the flagship AIX engine/.test(np) && !(Array.isArray(b.images) && b.images.length)) {   // XQ -> Qwen3.8-Max (Alibaba Cloud) when the owner has added a key; node is the fallback
+      try { r = await viaNode1(env, req, a, { url: String(env.DASHSCOPE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode'), token: env.DASHSCOPE_API_KEY, model: 'qwen3.8-max', models: { thorough: 'qwen3.8-max' }, cloud: true }, np, stream, mx, md, []); } catch (e) { r = null; }
+    }
+    if (!r && nd) r = await viaNode(env, req, a, nd, np, stream, mx, md, b.images);
     if (!r && nd && Array.isArray(b.images) && b.images.length) r = await viaNode(env, req, a, nd, '(The user attached an image, but this node has no vision model installed, so only the text can be read. Say so briefly.)\n\n' + np, stream, mx, md, []);
     if (r && srch) { try { r.headers.set('x-aix-search', srch); r.headers.set('access-control-expose-headers', 'x-aix-search'); } catch (e) { /* header is optional */ } }
     return r || json(env, req, { error: 'The Alpha node is offline right now (the Mac is asleep or the node stopped). Try again in a minute.', nodeOffline: true }, 503);
@@ -2116,7 +2120,7 @@ export default {
       if (!/^https:\/\//.test(url) || !b.token || !b.model) return json(env, req, { error: 'https url, token and model required' }, 400);
       const models = (b.models && typeof b.models === 'object') ? Object.fromEntries(['eco', 'balanced', 'thorough'].filter((k) => b.models[k]).map((k) => [k, String(b.models[k]).slice(0, 80)])) : {};
       const id = String(b.id || 'main').replace(/[^\w.-]/g, '').slice(0, 40) || 'main', now = Date.now();
-      const me = { id, url, token: String(b.token), model: String(b.model), models, prio: Math.max(1, Math.min(9, +b.prio || 1)), name: String(b.name || id).slice(0, 40), at: now };
+      const me = { id, url, token: String(b.token), model: String(b.model), models, img: !!b.img, prio: Math.max(1, Math.min(9, +b.prio || 1)), name: String(b.name || id).slice(0, 40), at: now };
       let map = {}; try { const r0 = await env.DB.prepare("SELECT v FROM settings WHERE k='nodes'").first(); if (r0) map = JSON.parse(r0.v); } catch {}
       for (const k of Object.keys(map)) if (now - (map[k].at || 0) > 7 * 86400e3) delete map[k];
       map[id] = me;
@@ -2201,9 +2205,22 @@ export default {
 
 // Free FLUX.1 [schnell] images on Workers AI (shared free allowance); per-user daily cap, no credits charged.
 const IMG_MODELS = {
+  qwen:  { cr: 1,   label: 'Qwen-Image 2.1' },
+  'qwen-hq': { cr: 2.5, label: 'Qwen-Image 2.1 HQ' },
   flux:  { cr: 1, label: 'FLUX.1 schnell' },
   flux2: { cr: 3, label: 'FLUX.2' },
 };
+// Qwen-Image 2.1 runs on the owner's Mac node (mflux); if no node has it, or it fails, the same price buys FLUX on Workers AI
+async function qwenImage(env, kind, prompt) {
+  const nd = await nodeGet(env); const cands = nd ? [nd, ...(nd.alts || [])].filter((n) => n && n.img) : [];
+  for (const n of cands) {
+    try {
+      const r = await nfetch(n.url.replace(/\/+$/, '') + '/v1/images/generate', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + n.token }, body: JSON.stringify({ prompt, hq: kind === 'qwen-hq', size: 1024 }) }, kind === 'qwen-hq' ? 280000 : 170000);
+      const j = r.ok ? await r.json().catch(() => null) : null; if (j && j.image) return { image: j.image, via: 'qwen' };
+    } catch (e) { /* try next node, then FLUX */ }
+  }
+  return { image: await genImage(env, kind === 'qwen-hq' ? 'flux2' : 'flux', prompt, 4), via: kind === 'qwen-hq' ? 'flux2' : 'flux' };
+}
 async function genImage(env, kind, prompt, steps) {
   if (kind === 'flux2') {
     const form = new FormData(); form.append('prompt', prompt); form.append('width', '1024'); form.append('height', '1024');
@@ -2223,17 +2240,19 @@ async function image(env, req) {
   let b; try { b = await req.json(); } catch { return json(env, req, { error: 'bad request' }, 400); }
   const prompt = String(b.prompt || '').slice(0, 1000).trim();
   if (!prompt) return json(env, req, { error: 'Describe the image' }, 400);
-  const kind = IMG_MODELS[b.model] ? b.model : 'flux', cost = IMG_MODELS[kind].cr;
+  let kind = IMG_MODELS[b.model] ? b.model : 'qwen'; if (kind === 'qwen' && /^(thorough|xq)$/.test(String(b.mode || ''))) kind = 'qwen-hq'; const cost = IMG_MODELS[kind].cr;
   const owner = owners(env).includes(a.email) && !a.meter;
   if (!owner) {
     const up = await env.DB.prepare('UPDATE users SET credits=credits-? WHERE email=? AND credits>=?').bind(cost, a.email, cost).run();
     if (!(up.meta && up.meta.changes > 0)) return json(env, req, { error: 'Out of credits. ' + IMG_MODELS[kind].label + ' costs ' + cost + ' credit' + (cost > 1 ? 's' : '') + '.' }, 402);
   }
   try {
-    const image = await genImage(env, kind, prompt, Math.min(8, Math.max(1, +b.steps || 4)));
+    let image, via = kind;
+    if (kind === 'qwen' || kind === 'qwen-hq') { const q = await qwenImage(env, kind, prompt); image = q.image; via = q.via; }
+    else image = await genImage(env, kind, prompt, Math.min(8, Math.max(1, +b.steps || 4)));
     if (!owner) await env.DB.prepare('INSERT INTO usage(email,at,input,output,credits) VALUES(?,?,0,0,?)').bind(a.email, new Date().toISOString(), cost).run();
     const f = await getUser(env, a.email);
-    return json(env, req, { image, model: kind, credits: +Number(f.credits).toFixed(2), spentCredits: owner ? 0 : cost });
+    return json(env, req, { image, model: kind, via, credits: +Number(f.credits).toFixed(2), spentCredits: owner ? 0 : cost });
   } catch (e) {
     if (!owner) await env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(cost, a.email).run();
     return json(env, req, { error: 'Image model error: ' + (e.message || e) }, 502);

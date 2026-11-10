@@ -134,6 +134,9 @@ if [ "$GB" -ge 16 ]; then
   else echo "  Vision model not available (images will be skipped)"; fi
 fi
 
+# Qwen-Image 2.1 (default image model): install + test once in the background; images use cloud FLUX until it passes
+[ -s .aix-image ] || [ -f .aix-image-skip ] || ( [ -f "Install Qwen Image.command" ] && bash "./Install Qwen Image.command" >> runtime/image-install.out 2>&1 ) &
+
 # restart the node so it registers the final model names
 kill $NODE_PID 2>/dev/null; pkill -f "runtime/empty.yml" 2>/dev/null; free_port; rm -f .aix-public-url
 export MODEL; [ -s .aix-vision-model ] && export VISION_MODEL="$(cat .aix-vision-model)"

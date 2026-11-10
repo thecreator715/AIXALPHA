@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path'), crypto = require('crypto');
-const VERSION = 28;   // bump on every release: nodes auto-update when GitHub has a higher number
+const VERSION = 29;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -162,7 +162,7 @@ async function checkUpdate() {
     const me = path.join(__dirname, 'server.js'); try { fs.copyFileSync(me, me + '.bak'); } catch {}
     fs.writeFileSync(me + '.new', src); fs.renameSync(me + '.new', me); UPDST.applied = true;
     try { fs.writeFileSync(path.join(__dirname, 'monitor.html'), await getRemote('monitor.html', 8000)); } catch {}
-    for (const f of ['Start AIX Node.command', 'AIX MASTER.command', 'Update Qwen.command', 'Install AutoStart.command']) {   // launchers refresh too (rename keeps a running script safe)
+    for (const f of ['Start AIX Node.command', 'AIX MASTER.command', 'Update Qwen.command', 'Install AutoStart.command', 'Install Qwen Image.command']) {   // launchers refresh too (rename keeps a running script safe)
       try { const t = await getRemote(f.replace(/ /g, '%20'), 8000); if (t.startsWith('#!/bin/bash') && t.length > 400) { const fp = path.join(__dirname, f); fs.writeFileSync(fp + '.new', t, { mode: 0o755 }); fs.renameSync(fp + '.new', fp); } } catch {}
     }
     console.log('Updated node to v' + m[1] + ' — restarting'); setTimeout(() => process.exit(0), 800);
@@ -202,11 +202,33 @@ function startTunnel(PUF, onUrl) {
 const stopTunnel = () => { TUN_STOP = true; try { TUN && TUN.kill(); } catch {} };
 process.on('exit', stopTunnel); process.on('SIGTERM', () => process.exit(0)); process.on('SIGINT', () => process.exit(0));
 let LISTEN_TRY = 0;
+
+// ---- Qwen-Image 2.1 on Apple Silicon via mflux (installed by the launcher; falls back to cloud FLUX when absent) ----
+const IMGDIR = path.join(__dirname, 'runtime', 'img'); try { fs.mkdirSync(IMGDIR, { recursive: true }); } catch {}
+const imgCfg = () => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, '.aix-image'), 'utf8')); } catch { return null; } };   // {cmd, args:[...], steps, stepsHq}
+const imgReady = () => { const c = imgCfg(); return !!(c && c.cmd && c.ok !== false); };
+let IMGBUSY = Promise.resolve(), IMGQ = 0;
+function genImg(prompt, hq, w, hgt) {
+  const c = imgCfg(); if (!c || !c.cmd) return Promise.reject(Object.assign(new Error('image model not installed'), { code: 501 }));
+  if (IMGQ >= 3) return Promise.reject(Object.assign(new Error('image queue full'), { code: 429 }));
+  IMGQ++;
+  const run = () => new Promise((resolve, reject) => {
+    const out = path.join(IMGDIR, 'i' + Date.now() + crypto.randomBytes(3).toString('hex') + '.png');
+    const steps = String(hq ? (c.stepsHq || 30) : (c.steps || 16));
+    const args = (c.args || []).concat(['--prompt', prompt, '--steps', steps, '--width', String(w), '--height', String(hgt), '--seed', String(Math.floor(Math.random() * 2e9)), '--output', out]);
+    const cp = require('child_process').spawn(c.cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PATH: process.env.PATH + ':' + os.homedir() + '/.local/bin:/opt/homebrew/bin:/usr/local/bin' } });
+    let err = ''; cp.stderr.on('data', (d) => { err = (err + d).slice(-1500); }); cp.stdout.on('data', () => {});
+    const to = setTimeout(() => { try { cp.kill('SIGKILL'); } catch {} }, hq ? 600000 : 420000);
+    cp.on('error', (e) => { clearTimeout(to); reject(e); });
+    cp.on('close', (code) => { clearTimeout(to); try { const b = fs.readFileSync(out); fs.unlinkSync(out); if (b.length > 1000) return resolve(b); } catch {} reject(new Error('image run failed (' + code + '): ' + err.split('\n').slice(-3).join(' ').slice(0, 300))); });
+  });
+  const p = IMGBUSY.then(run, run); IMGBUSY = p.catch(() => {}); return p.finally(() => { IMGQ--; });
+}
 const SRV = http.createServer(async (req, res) => {
   const h = cors(req), u = req.url.split('?')[0];
   if (req.method === 'OPTIONS') { res.writeHead(204, h); return res.end(); }
   if (u === '/' || u === '/monitor' || u === '/monitor.html') { try { const f = await panelHtml(); res.writeHead(200, { ...h, 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); return res.end(f); } catch { res.writeHead(404, h); return res.end('monitor.html missing'); } }
-  if (u === '/health') return J(res, h, 200, { status: 'ok', engine: 'aix-node', build: 3, version: VERSION, update: UPDST });
+  if (u === '/health') return J(res, h, 200, { status: 'ok', engine: 'aix-node', build: 3, version: VERSION, image: imgReady(), update: UPDST });
   const localAdmin = u.startsWith('/admin') && /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(req.headers.host || '') && !req.headers['x-forwarded-for'] && !req.headers['cf-connecting-ip'] && (!req.headers.origin || req.headers.origin === 'http://' + req.headers.host);
   // ---- co-admin roles: owner (node token / this Mac) can mint limited tokens in admins.json ----
   const AF = path.join(__dirname, 'admins.json'), loadTeam = () => { try { return JSON.parse(fs.readFileSync(AF, 'utf8')); } catch { return {}; } };
@@ -339,6 +361,13 @@ const SRV = http.createServer(async (req, res) => {
       let vis = ''; try { vis = fs.readFileSync(path.join(__dirname, '.aix-vision-model'), 'utf8').trim(); } catch {}
       return J(res, h, 200, { tiers: { eco: t.eco || '', balanced: t.balanced || '', thorough: t.thorough || process.env.MODEL || '' }, vision: process.env.VISION_MODEL || vis, think: thinkOn(), main: process.env.MODEL || '', note: 'Tier changes are sent to the cloud within seconds. Vision changes apply immediately.' });
     }
+    if (u === '/v1/images/generate' && req.method === 'POST') {
+      try {
+        const b = JSON.parse((await body(req)).toString() || '{}'), pr = String(b.prompt || '').slice(0, 1000).trim(); if (!pr) return J(res, h, 400, { error: 'prompt required' });
+        const sz = Math.max(512, Math.min(1280, Math.round((+b.size || 1024) / 64) * 64));
+        const png = await genImg(pr, !!b.hq, sz, sz); return J(res, h, 200, { image: 'data:image/png;base64,' + png.toString('base64'), model: 'qwen-image-2.1', hq: !!b.hq });
+      } catch (e) { return J(res, h, e.code || 502, { error: String(e.message || e).slice(0, 300) }); }
+    }
     if (u.startsWith('/v1/') || u === '/api/tags') {
       const t0 = Date.now(); let buf = req.method === 'GET' ? undefined : await body(req); let model = '', pj = null; try { pj = JSON.parse(buf.toString()); if (/qwen3|qwq|deepseek-r1/i.test(pj.model || '') && pj.reasoning_effort == null && pj.think == null && !thinkOn() && !req.headers['x-aix-think']) { pj.reasoning_effort = 'none'; pj.think = false; buf = Buffer.from(JSON.stringify(pj)); } model = pj.model || ''; const hasImg = pj.messages && pj.messages.some((m) => Array.isArray(m.content) && m.content.some((c) => c && c.type === 'image_url')); if (hasImg) { const vm = await visionModel(); if (vm) { pj.model = model = vm; } else { pj.messages = pj.messages.map((m) => (Array.isArray(m.content) ? { ...m, content: m.content.filter((c) => !(c && c.type === 'image_url')).map((c) => (c.type === 'text' ? c.text : '')).join('\n') + '\n\n(Note for the assistant: the user attached an image but the vision model is still being installed on this host. Tell them in one short sentence that image reading will be ready in a few minutes and to try again, then answer any text part of the question.)' } : m)); } buf = Buffer.from(JSON.stringify(pj)); } } catch (e) { console.log('vision route error', e && e.message); }
       ST.req++; const ent = { t: new Date().toISOString(), path: u, model, status: 0, ms: 0, tokens: 0, user: clip(req.headers['x-aix-user'], 80), src: clip(req.headers['x-aix-src'], 12) || 'direct', stream: !!(pj && pj.stream), msgs: pj && pj.messages ? pj.messages.length : 0, inChars: pj && pj.messages ? JSON.stringify(pj.messages).length : 0, prompt: LOGTEXT && pj ? clip(lastUser(pj.messages), 400) : '', reply: '' };
@@ -403,7 +432,7 @@ const SRV = http.createServer(async (req, res) => {
     const NODEID = () => { const f = path.join(__dirname, '.aix-node-id'); try { return fs.readFileSync(f, 'utf8').trim() || 'main'; } catch { const id = (os.hostname().replace(/[^\w]/g, '').slice(0, 12) || 'host') + '-' + crypto.randomBytes(3).toString('hex'); try { fs.writeFileSync(f, id); } catch {} return id; } };
     const NODEPRIO = () => { try { return Math.max(1, Math.min(9, parseInt(fs.readFileSync(path.join(__dirname, '.aix-priority'), 'utf8')) || +process.env.NODE_PRIO || 1)); } catch { return Math.max(1, Math.min(9, +process.env.NODE_PRIO || 1)); } };
     const readTiers = () => { try { const t = JSON.parse(fs.readFileSync(path.join(__dirname, '.aix-models'), 'utf8')); const o = {}; for (const k of ['eco', 'balanced', 'thorough']) if (t[k]) o[k] = String(t[k]); return o; } catch { return {}; } };
-    const reg = async () => { const PU = getPU(); if (!PU) return; try { const r = await fetch(W.replace(/\/+$/, '') + '/api/node/register', { method: 'POST', headers: { 'content-type': 'application/json', 'x-node-secret': NS }, body: JSON.stringify({ url: PU, token: TOKEN, model: MODEL, models: readTiers(), id: NODEID(), prio: NODEPRIO(), name: os.hostname().slice(0, 30) }) }); REGOK = r.ok; LASTREG = Date.now(); if (!reg.ok) { reg.ok = r.ok; console.log(r.ok ? 'Registered with AIX cloud: apps will use this node automatically' : 'Register failed: HTTP ' + r.status); } } catch (e) { console.log('Register error: ' + e.message); reg.ok = false; } };
+    const reg = async () => { const PU = getPU(); if (!PU) return; try { const r = await fetch(W.replace(/\/+$/, '') + '/api/node/register', { method: 'POST', headers: { 'content-type': 'application/json', 'x-node-secret': NS }, body: JSON.stringify({ url: PU, token: TOKEN, model: MODEL, models: readTiers(), img: imgReady(), id: NODEID(), prio: NODEPRIO(), name: os.hostname().slice(0, 30) }) }); REGOK = r.ok; LASTREG = Date.now(); if (!reg.ok) { reg.ok = r.ok; console.log(r.ok ? 'Registered with AIX cloud: apps will use this node automatically' : 'Register failed: HTTP ' + r.status); } } catch (e) { console.log('Register error: ' + e.message); reg.ok = false; } };
     REGNOW = reg; global.__REGNOW = reg; reg(); setInterval(reg, 60000);
   } else console.log('Cloud registration off (needs AIX_WORKER, AIX_NODE_SECRET, MODEL)');
 });

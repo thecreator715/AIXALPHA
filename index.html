@@ -774,7 +774,7 @@ html:has(dialog#dlg[open]),body:has(dialog#dlg[open]){overflow:hidden!important;
         <button class="tg" id="evalb" title="One tiny reviewer call on DEEP answers"></button>
         <button class="tg" id="tgtb" title="Build target: AUTO guesses, WEBSITE builds multi-section sites, APP builds working apps, CHAT only talks. Click to cycle."></button>
 <button class="tg" id="askb" title="Question mode: when AIX is unsure it asks multiple-choice questions first, then runs your choice"></button>
-        <select class="tg" id="imgm" title="Image model: FLUX.1 schnell 1 credit · FLUX.2 3 credits (free for admin)" style="height:auto;padding:4px 8px"><option value="flux">FLUX · 1 cr</option><option value="flux2">FLUX.2 · 3 cr</option></select>
+        <select class="tg" id="imgm" title="Image model: Qwen-Image 2.1 = 1 credit (2.5 credits, higher quality, in Thorough/XQ) · FLUX.1 1 cr · FLUX.2 3 cr (free for admin)" style="height:auto;padding:4px 8px"><option value="qwen">Qwen-Image 2.1 · 1 cr</option><option value="flux">FLUX · 1 cr</option><option value="flux2">FLUX.2 · 3 cr</option></select>
         <button class="tg" id="imgb" title="Image mode: every message you send becomes an image. 1 credit per image (free for admin). Sign in required."></button>
         <button class="tg" id="councilb" title="Council: 3 viewpoints (analyst, skeptic, builder) answer your question, then a judge merges them. Uses about 4 model calls. You can also type /council before a question."></button>
         <button class="tg" id="turbob" title="Turbo: app and website builds run in fast build mode (complete code, low temperature, biggest answer budget) on the Alpha node. Same credits as normal."></button>
@@ -860,7 +860,7 @@ const BREV_OLD={MICRO:'Style: reply in at most 4 sentences.',STANDARD:'Style: be
 const BREV={MICRO:'Style: short, at most about 4 sentences, no padding; bold the key term.',STANDARD:'Style: concise but well structured: bold key terms, bullets for options, numbered steps for procedures.',DEEP:'Style: complete and well structured with headings, bold lead-ins, bullets and tables where they help. No restating the question, no filler closing.'};
 const SPECRULE='SPECIFICITY RULE: answer THIS exact message, not the topic in general. Use the user\'s own words, names, numbers and context; give concrete specifics (real values, named examples, exact steps) instead of generic advice; no boilerplate opener or closer; never say "it depends" without saying on what. If a mode is enabled (WEB, EVAL, TARGET, ASK, COUNCIL) the reply must visibly use it: cite the live web results, follow the target format, answer the question asked.';
 const MODESPEC={eco:'Depth: ECO. Give the single most useful specific answer in the fewest words.',balanced:'Depth: BALANCED. Specific and structured, with one concrete example when it helps.',thorough:'Depth: THOROUGH. Go deep: concrete specifics, exact numbers or steps, edge cases and trade-offs, and a clear recommendation.'};
-const S={council:store.get('aix3_council',false),turbo:store.get('aix3_turbo',false),vid:store.get('aix3_vid',false),imgm:store.get('aix3_imgm','flux'),img:store.get('aix3_img',false),web:store.get('aix3_web',false),auto:store.get('aix3_auto',false),mode:store.get('aix3_mode','eco'),verify:store.get('aix3_verify','local'),caps:store.get('aix3_caps',{req:0.01,ses:0.25,day:2}),
+const S={council:store.get('aix3_council',false),turbo:store.get('aix3_turbo',false),vid:store.get('aix3_vid',false),imgm:store.get('aix3_imgm2','qwen'),img:store.get('aix3_img',false),web:store.get('aix3_web',false),auto:store.get('aix3_auto',false),mode:store.get('aix3_mode','eco'),verify:store.get('aix3_verify','local'),caps:store.get('aix3_caps',{req:0.01,ses:0.25,day:2}),
  chats:store.get('aix3_chats',[]),cur:null,pid:store.get('aix3_pid','aix-alpha-v3'),busy:false,ws:store.get('aix3_wsa',''),cache:{},ledger:store.get('aix3_ledger',{})};
 const today=()=>new Date().toISOString().slice(0,10);
 const daySpend=()=>S.ledger[today()]||0;
@@ -1644,7 +1644,7 @@ $('#hub').onclick=openHub;$('#set').onclick=openSettings;$('#about').onclick=ope
 $('#modes').onclick=e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.m==='xq'){if(S.pid!=='aix-alpha-xq'){store.set('aix3_pidprev',S.pid);S.pid='aix-alpha-xq';store.set('aix3_pid',S.pid)}S.auto=false;store.set('aix3_auto',false);S.mode='thorough';store.set('aix3_mode',S.mode);buildPersonaSel();updateMeter();refreshEst(true);return}if(S.pid==='aix-alpha-xq'){S.pid=store.get('aix3_pidprev','aix-alpha-v3');store.set('aix3_pid',S.pid);buildPersonaSel()}if(b.dataset.m==='auto'){S.auto=!S.auto;store.set('aix3_auto',S.auto);updateMeter();refreshEst(true);return}S.auto=false;store.set('aix3_auto',false);S.mode=b.dataset.m;store.set('aix3_mode',S.mode);updateMeter();refreshEst(true)};
 const SEARCH_CR=1;
 function setWeb(on){S.web=on;store.set('aix3_web',on);updateMeter();refreshEst(false);toast(on?'Live web ON · about 1 credit per search':'Live web off')}
-$('#imgm').value=S.imgm;$('#imgm').onchange=e=>{S.imgm=e.target.value;store.set('aix3_imgm',S.imgm);toast({flux:'FLUX.1 · 1 credit per image',flux2:'FLUX.2 · 3 credits per image'}[S.imgm])};
+$('#imgm').value=S.imgm;$('#imgm').onchange=e=>{S.imgm=e.target.value;store.set('aix3_imgm2',S.imgm);toast({qwen:'Qwen-Image 2.1 · 1 credit per image (2.5 credits, higher quality, in Thorough/XQ)',flux:'FLUX.1 · 1 credit per image',flux2:'FLUX.2 · 3 credits per image'}[S.imgm])};
 $('#councilb').onclick=()=>{S.council=!S.council;store.set('aix3_council',S.council);updateMeter();toast(S.council?'Council ON · each question gets 3 viewpoints and a judge (about 4 calls)':'Council OFF')};
 $('#turbob').onclick=()=>{S.turbo=!S.turbo;store.set('aix3_turbo',S.turbo);updateMeter();toast(S.turbo?'Turbo ON · app and website builds use fast build mode on the Alpha node (same credits)':'Turbo OFF')};
 $('#vidb').onclick=()=>{S.vid=!S.vid;store.set('aix3_vid',S.vid);if(S.vid&&S.img){S.img=false;store.set('aix3_img',false)}updateMeter();toast(S.vid?'Video mode ON · each message becomes a short AI clip (beta)':'Video mode off')};
@@ -4595,7 +4595,7 @@ async function chatFlux(c,text){
   const t0=Date.now(),model=pickImgModel(text);
   try{const j=await imgCall(prompt.replace(/\b(with|using|in)\s+(flux\s*\.?\s*2)\b/ig,'').trim(),model);
     const id='a'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);ASSET[id]=j.image;aput(id,j.image);
-    c.msgs.push({role:'assistant',content:`Here's your image: **${subj}**\n\n${IMG_LBL[model]} · ${j.spentCredits?j.spentCredits+' credit'+(j.spentCredits>1?'s':'')+' used':'admin, 0 credits'}${j.credits!=null?' · balance '+j.credits+' cr':''} · stored on this device`,ts:Date.now(),dur:Date.now()-t0,aid:id})
+    c.msgs.push({role:'assistant',content:`Here's your image: **${subj}**\n\n${IMG_LBL[j.model||model]||'Image'}${j.via&&j.via!==(j.model||model)?' (backup engine: '+IMG_LBL[j.via]+')':''} · ${j.spentCredits?j.spentCredits+' credit'+(j.spentCredits>1?'s':'')+' used':'admin, 0 credits'}${j.credits!=null?' · balance '+j.credits+' cr':''} · stored on this device`,ts:Date.now(),dur:Date.now()-t0,aid:id})
   }catch(e){c.msgs.push({role:'assistant',content:e.message||String(e),err:1,ts:Date.now(),dur:Date.now()-t0})}}
 
 setTimeout(()=>{try{hydAll()}catch{}},400);
@@ -4637,7 +4637,7 @@ async function chatVideo(c,text,blob){
   const t0=Date.now(),ph={role:'assistant',content:blob?'Animating your image on the free GPU queue… this can take a few minutes.':'Step 1: making the start image, then Step 2: animating it on the free GPU queue. This can take a few minutes.',ts:Date.now()};
   c.msgs.push(ph);renderMsgs();let spent=0;
   try{let start;
-    if(blob)start=await readDU(blob);else{const j=await imgCall(subj+', highly detailed, cinematic',S.imgm==='flux2'?'flux2':'flux');start=j.image;spent+=j.spentCredits||0}
+    if(blob)start=await readDU(blob);else{const j=await imgCall(subj+', highly detailed, cinematic',S.imgm||'qwen');start=j.image;spent+=j.spentCredits||0}
     const v=await videoCall(await fitJpeg(start),subj);spent+=v.spentCredits||0;
     const id='a'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);ASSET[id]=v.video;aput(id,v.video);
     Object.assign(ph,{content:`Here's your video: **${subj}**\n\n${spent?spent+' credits used':'Admin: 0 credits'}${v.credits!=null?' · balance '+v.credits+' cr':''} · stored on this device`,aid:id,kind:'video',dur:Date.now()-t0})
@@ -4740,14 +4740,14 @@ function artPrompt(kind,spec){
   return `You are an illustrator. Create the image as a hand-built SVG (viewBox 0 0 1024 1024, layered shapes, gradients, soft shadows, a coherent palette, no text unless the spec asks). Show it large, plus a style switcher if it helps (e.g. light and dark background). Buttons: "Download PNG" (rasterise the SVG to a 2048px canvas via an Image and call aixSave), "Copy SVG".\n${common}\n\nSpec: ${spec}`}
 addEventListener('message',e=>{if(e.data&&e.data.aixdl){dl(e.data.name||'download.'+e.data.aixdl,e.data.data);toast(e.data.aixdl.toUpperCase()+' downloaded')}});
 function clipPrompt(spec){return `Create a self-contained single-file HTML animated clip (no external assets). Draw a polished, looping animation on one <canvas> (1280x720, requestAnimationFrame, easing, parallax, particles or camera moves as suited). Add buttons: Play/Pause, and "Record WebM" which records exactly one loop (default 6 seconds, adjustable 3-15) using canvas.captureStream(30) and MediaRecorder (prefer video/webm;codecs=vp9, fall back to video/webm), shows a progress bar, then reads the blob with FileReader and calls parent.postMessage({aixdl:'webm',data:dataUrl,name:'clip.webm'},'*') (the sandbox blocks normal downloads). Dark page, centred canvas scaled to fit.\n\nSpec: ${spec}`}
-setTimeout(function(){const fw=$('#fw'),g=$('#gen');if(!fw||!g)return;const base=g.placeholder;const upd=()=>{const c=ART_CR[fw.value];g.placeholder=fw.value==='flux'?'Describe the image (FLUX 1 · FLUX.2 3 credits)':c?base.replace(/\s*\(~.*$/,'')+' (~'+c+' credits)':base};fw.addEventListener('change',upd);upd()},50);
+setTimeout(function(){const fw=$('#fw'),g=$('#gen');if(!fw||!g)return;const base=g.placeholder;const upd=()=>{const c=ART_CR[fw.value];g.placeholder=fw.value==='flux'?'Describe the image (Qwen-Image 2.1 · 1 credit, 2.5 in Thorough/XQ)':c?base.replace(/\s*\(~.*$/,'')+' (~'+c+' credits)':base};fw.addEventListener('change',upd);upd()},50);
 
-const IMG_LBL={flux:'FLUX',flux2:'FLUX.2'};
-function pickImgModel(t){return /flux\s*\.?\s*2/i.test(t)?'flux2':(S.imgm==='nano'?'flux':(S.imgm||'flux'))}
-async function imgCall(prompt,model){model=model||S.imgm||'flux';
+const IMG_LBL={qwen:'Qwen-Image 2.1','qwen-hq':'Qwen-Image 2.1 HQ',flux:'FLUX',flux2:'FLUX.2'};
+function pickImgModel(t){return /flux\s*\.?\s*2/i.test(t)?'flux2':(S.imgm==='nano'?'qwen':(S.imgm||'qwen'))}
+async function imgCall(prompt,model){model=model||S.imgm||'qwen';
   if(!BACKEND())throw new Error('Image generation needs the AIX server (use the GitHub site).');
-  const tok=store.get(TOKK,'');if(!tok){setTimeout(()=>{try{openAccount('Sign in to generate images. FLUX costs 1 credit; FLUX.2 costs 3.')}catch{}},200);throw new Error('Sign in to generate images (1 credit FLUX, 3 credits FLUX.2 or Nano Banana).')}
-  const r=await fetch(BACKEND()+'/api/image',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+tok},body:JSON.stringify({prompt,model})});
+  const tok=store.get(TOKK,'');if(!tok){setTimeout(()=>{try{openAccount('Sign in to generate images. Qwen-Image costs 1 credit (2.5 in Thorough/XQ).')}catch{}},200);throw new Error('Sign in to generate images (1 credit Qwen-Image or FLUX, 2.5 in Thorough/XQ, 3 credits FLUX.2).')}
+  const r=await fetch(BACKEND()+'/api/image',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+tok},body:JSON.stringify({prompt,model,mode:(S.pid==='aix-alpha-xq'?'xq':S.mode)})});
   const j=await r.json().catch(()=>({}));
   if(r.status===402){BAL=0;try{setStatus()}catch{}setTimeout(()=>{try{openCredits('Not enough credits for this image. Add credits to continue.')}catch{}},200);throw new Error(j.error||'Out of credits. An image costs 1 credit.')}
   if(r.status===401){setTimeout(()=>{try{openAccount('Your session expired. Sign in again.')}catch{}},200);throw new Error('Please sign in again.')}

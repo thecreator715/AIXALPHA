@@ -1,5 +1,12 @@
 # AIX Alpha v3.0 - revision 8
 
+## Qwen-Image 2.1 default + XQ on Qwen3.8-Max (node v29)
+- **Qwen-Image 2.1** (7B, via mflux on the Mac node) is now the default image model: **1 credit** per image, **2.5 credits** (40 steps instead of 20, higher quality) in Thorough and XQ. FLUX.1 (1 cr) and FLUX.2 (3 cr) stay selectable. If no node has the model or a run fails, the same price buys FLUX on Workers AI, so image requests never fail.
+- `Install Qwen Image.command` installs uv + mflux, downloads the weights once (about 33 GB), self-tests and writes `.aix-image`. `Start AIX Node.command` runs it in the background the first time; `Update Qwen.command` refreshes it. Switch off with a `.aix-image-skip` file.
+- Node endpoint `POST /v1/images/generate` (token protected, one image at a time, queue of 3).
+- **XQ on Qwen3.8-Max**: when the worker secret `DASHSCOPE_API_KEY` is set, XQ chats go to Alibaba Cloud's qwen3.8-max (32,768-token output cap); the Mac node is the automatic fallback. Billed at about 1.5x Alibaba's price (Haiku-equivalent tokens x24 in, x18 out). User email is not sent to Alibaba.
+- Licence note: Qwen-Image-2.1 weights use the Qwen Research License (non-commercial). Selling credits for images from the local model is a commercial use; check the licence or switch the default to FLUX/the hosted API.
+
 ## ALPHA XQ upgrade (node v26)
 - XQ output limit doubled to 49,152 tokens, thinking mode on for XQ only, temperature 0.5, plan/compare/re-check method in its prompt. Node context window raised to 65,536 on 32 GB+ Macs to fit it.
 
