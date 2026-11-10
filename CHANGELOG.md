@@ -190,3 +190,4 @@
 - Node: stream headers and a heartbeat are sent immediately (long prompt processing or thinking can no longer look like a dead connection); closing the browser or worker connection now cancels the model run so the next request never queues behind it; hidden reasoning is budgeted (24,000 chars, AIX_THINK_MAX) and, if exceeded, the run restarts once with thinking off so the build is always delivered.
 - Worker: forwards heartbeats and "thinking" progress, reports max_tokens truncation on the node path (the app now continues cut-off builds instead of calling them complete), surfaces node errors, no thinking on continue/refine passes.
 - App: stalled or dropped streams (2 min of silence) end cleanly and are continued instead of hanging; partial builds are kept; XQ per-request credit budget raised 4x so long builds are not stopped mid-way.
+- PDF dossier updated to revision 8 (ALPHA XQ, Qwen 3.8 / Qwen 4 plan, limits, billing, reliability, launchers).
