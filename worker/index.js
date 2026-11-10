@@ -2348,10 +2348,18 @@ async function video(env, req) {
   if (!b.image && !hasNode) return json(env, req, { error: 'Add a start image (under ~4 MB).', needImage: true }, 400);
   if (b.image && String(b.image).length > 6e6) return json(env, req, { error: 'Add a start image (under ~4 MB).' }, 400);
   const owner = owners(env).includes(a.email) && !a.meter;
+  if (sec > 8) { const es = await entStatus(env, a); if (!es.active) return json(env, req, { error: 'Videos longer than 8 seconds need an Enterprise membership.', needEnterprise: true }, 403); }
   if (!owner) {
     const up = await env.DB.prepare('UPDATE users SET credits=credits-? WHERE email=? AND credits>=?').bind(COST, a.email, COST).run();
     if (!(up.meta && up.meta.changes > 0)) return json(env, req, { error: 'Out of credits. This clip costs ' + COST + ' credits.' }, 402);
   }
+  if (!owner) {
+    await env.DB.prepare('CREATE TABLE IF NOT EXISTS vid_lock(email TEXT PRIMARY KEY, until INTEGER DEFAULT 0)').run();
+    const lk = await env.DB.prepare('SELECT until FROM vid_lock WHERE email=?').bind(a.email).first();
+    if (lk && lk.until > Date.now()) { await env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(COST, a.email).run(); return json(env, req, { error: 'One video at a time: your previous clip is still rendering. Wait for it to finish or cancel it.' }, 429); }
+    await env.DB.prepare('INSERT INTO vid_lock(email,until) VALUES(?,?) ON CONFLICT(email) DO UPDATE SET until=excluded.until').bind(a.email, Date.now() + 90 * 60000).run();
+  }
+  const unlock = async () => { if (!owner) { try { await env.DB.prepare('UPDATE vid_lock SET until=0 WHERE email=?').bind(a.email).run(); } catch (e) { } } };
   const finish = async (emit) => {
     const info = {};
     if (emit) emit({ stage: (b.enh === false || !prompt) ? 'Starting' : 'Improving your prompt', pct: 0, cost: owner ? 0 : COST, sec, w: VW, h: VH, q: b.q || 'fast', up: !!b.up, elapsed: 0, run: 0, eta: null });
@@ -2363,12 +2371,12 @@ async function video(env, req) {
     return { video: vid, credits: +Number(f.credits).toFixed(2), spentCredits: owner ? 0 : COST, prompt: vp, renderSecs: info.secs || null, frames: info.frames || null, engine: info.model || (hasNode ? 'ltx' : 'cloud-queue') };
   };
   const fail = async (e) => { if (!owner) await env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(COST, a.email).run(); return { error: e.message || 'Video failed' }; };
-  if (!hasNode) { try { return json(env, req, await finish()); } catch (e) { return json(env, req, await fail(e), 502); } }
+  if (!hasNode) { try { const r0 = await finish(); await unlock(); return json(env, req, r0); } catch (e) { const f0 = await fail(e); await unlock(); return json(env, req, f0, 502); } }
   // local render can take minutes: answer at once and send a space every 15 s so no proxy times out; the JSON arrives at the end
   const { readable, writable } = new TransformStream(), w = writable.getWriter(), enc = new TextEncoder();
   const hb = setInterval(() => { w.write(enc.encode(' ')).catch(() => {}); }, 15000);
   let gone = false;
   const emit = b.prog ? (p) => { if (gone) return false; w.write(enc.encode(JSON.stringify({ p }) + '\n')).catch(() => { gone = true; }); return true; } : null;   // progress lines only for apps that ask for them (b.prog)
-  (async () => { let out; try { out = await finish(emit); } catch (e) { out = await fail(e); } clearInterval(hb); try { await w.write(enc.encode('\n' + JSON.stringify(out))); await w.close(); } catch {} })();
+  (async () => { let out; try { out = await finish(emit); } catch (e) { out = await fail(e); } await unlock(); clearInterval(hb); try { await w.write(enc.encode('\n' + JSON.stringify(out))); await w.close(); } catch {} })();
   const hd = json(env, req, {}).headers; return new Response(readable, { status: 200, headers: hd });
 }

@@ -1,5 +1,10 @@
 # AIX Alpha v3.0 - revision 8
 
+## Video limits: 8 s for everyone, longer needs Enterprise; one clip at a time
+- Lengths over 8 seconds (10 s up to 1 min) are shown greyed out with a lock and "Enterprise only" until the account has an active Enterprise membership (owner/admin always unlocked). A notice with a "Get Enterprise" button sits next to the Length menu; a saved longer length falls back to 8 s.
+- The server enforces it too (403 "needs an Enterprise membership"), so it cannot be bypassed from the console.
+- One video at a time per account: a second request while one is rendering is refused with a clear message and the credits are refunded; the lock clears when the clip finishes, fails or is cancelled (and expires after 90 min at the latest). Admin is exempt.
+
 ## Video follows your words + faster (node v43)
 - A short prompt like "a bird flying in the jungle a Red Robin" made LTX invent a random face: the prompt rewrite was timing out and the raw words went straight to the model. The rewrite now uses the 70B model first (8B second, 12 s each) and always has a built-in fallback that expands the prompt into a full cinematic description. It names the subject concretely, turns "multiple scenes / cuts" into one continuous moving shot (one clip cannot cut), and never adds people or faces unless asked. The "Prompt used" line under the clip shows exactly what the engine got.
 - Speed: `--low-ram` (slow memory swapping) is left off when 26 GB or more is free after the chat model unloads, with one automatic retry in low-memory mode if that fails; the 1080p sharpen step uses ffmpeg veryfast. Set `AIX_VID_LOWRAM=1` to always use low-ram.
