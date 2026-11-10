@@ -1,5 +1,11 @@
 # AIX Alpha v3.0 - revision 8
 
+## Local video upgraded to LTX-2.5 (node v33)
+- Cause of the failed install: `uv tool install ltx-2-mlx` does not work (the engine is not a published package). The installer now clones the engine, runs `uv sync` (Python 3.12) and runs it with `uv run --project`.
+- Default is LTX-2.5 (22B, 8-bit MLX, `MrMofer/ltx-2.5-mlx-q8`, runtime branch `ltx25` pinned to a known commit). If it fails the self-test, LTX-2.3 (`dgrauet/ltx-2.3-mlx-q4`) is tried automatically; if both fail, video stays on the cloud queue.
+- The installer reads `generate --help` and records the real flag names in `.aix-video` (`flags`), so the node adapts to the engine instead of guessing. Clips are 49 frames at 24 fps (2 s); `nframes` in `.aix-video` can be raised (8n+1, e.g. 97).
+- Needs about 70 GB free (the 2.5 model repo is 59 GB). Everything is logged to `runtime/video-install.log`.
+
 ## Local video with LTX-2.3 (node v32)
 - Video now runs on the Mac node first: Lightricks LTX-2.3 (4-bit, Apple MLX through ltx-2-mlx). Text-to-video, or image-to-video with a start image, with sound. 3 credits per clip (free for admin, refunded on failure). If the node is offline, busy or the clip fails and an image was given, the free cloud queue is the backup.
 - `Install Local Video.command` installs uv, ffmpeg and the engine, downloads the model once (about 30 GB), self-tests, and writes `.aix-video`. `Start AIX Node.command` runs the image and video installers one after the other in the background on first start; `Update Qwen.command` refreshes both. Switch off with `.aix-video-skip`.
