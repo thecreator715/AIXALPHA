@@ -1,5 +1,9 @@
 # AIX Alpha v3.0 - revision 8
 
+## Is it working or hung? Live engine health (node v41)
+- The render card now shows a pulsing "Working" light with the engine's real CPU and memory use and the time since its last output, the engine's latest log line, and clear amber/red warnings: engine quiet, probably stuck (CPU idle and silent 10+ min), or no update from the server (connection lost).
+- The node only restarts a silent engine if its CPU is also idle, so a long quiet decode is never killed by mistake.
+
 ## Video queue fix: stuck "Waiting in line" (node v40)
 - Cause: an older engine process (left running after a node auto-restart, or a render whose app tab was closed) kept the queue and all the RAM, so new clips waited behind it forever.
 - The node now stops stray engines on start, cancels a render when the app disconnects (the worker passes that through), drops older queued clips from the same user, and restarts an engine that is silent for 20 minutes. Hard time limit cut from 3.3 h to 3 h max.
