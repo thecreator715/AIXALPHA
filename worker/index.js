@@ -2207,19 +2207,19 @@ const IMG_MODELS = {
   flux2: { cr: 3, label: 'FLUX.2' },
 };
 // Qwen-Image 2.1 runs on the owner's Mac node (mflux); if no node has it, or it fails, the same price buys FLUX on Workers AI
-async function qwenImage(env, kind, prompt) {
+async function qwenImage(env, kind, prompt, w, h) {
   const nd = await nodeGet(env); const cands = nd ? [nd, ...(nd.alts || [])].filter((n) => n && n.img) : [];
   for (const n of cands) {
     try {
-      const r = await nfetch(n.url.replace(/\/+$/, '') + '/v1/images/generate', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + n.token }, body: JSON.stringify({ prompt, hq: kind === 'qwen-hq', size: 1024 }) }, kind === 'qwen-hq' ? 280000 : 170000);
+      const r = await nfetch(n.url.replace(/\/+$/, '') + '/v1/images/generate', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + n.token }, body: JSON.stringify({ prompt, hq: kind === 'qwen-hq', w, h }) }, kind === 'qwen-hq' ? 280000 : 170000);
       const j = r.ok ? await r.json().catch(() => null) : null; if (j && j.image) return { image: j.image, via: 'qwen' };
     } catch (e) { /* try next node, then FLUX */ }
   }
-  return { image: await genImage(env, kind === 'qwen-hq' ? 'flux2' : 'flux', prompt, 4), via: kind === 'qwen-hq' ? 'flux2' : 'flux' };
+  return { image: await genImage(env, kind === 'qwen-hq' ? 'flux2' : 'flux', prompt, 4, w, h), via: kind === 'qwen-hq' ? 'flux2' : 'flux' };
 }
-async function genImage(env, kind, prompt, steps) {
+async function genImage(env, kind, prompt, steps, w, h) {
   if (kind === 'flux2') {
-    const form = new FormData(); form.append('prompt', prompt); form.append('width', '1024'); form.append('height', '1024');
+    const form = new FormData(); form.append('prompt', prompt); form.append('width', String(w || 1024)); form.append('height', String(h || 1024));
     const fr = new Response(form);
     const out = await env.AI.run('@cf/black-forest-labs/flux-2-dev', { multipart: { body: fr.body, contentType: fr.headers.get('content-type') } });
     if (!out || !out.image) throw new Error('no image returned');
@@ -2242,10 +2242,11 @@ async function image(env, req) {
     const up = await env.DB.prepare('UPDATE users SET credits=credits-? WHERE email=? AND credits>=?').bind(cost, a.email, cost).run();
     if (!(up.meta && up.meta.changes > 0)) return json(env, req, { error: 'Out of credits. ' + IMG_MODELS[kind].label + ' costs ' + cost + ' credit' + (cost > 1 ? 's' : '') + '.' }, 402);
   }
+  const dm = (v) => Math.max(512, Math.min(1536, Math.round((+v || 1024) / 64) * 64)), DW = dm(b.w), DH = dm(b.h);
   try {
     let image, via = kind;
-    if (kind === 'qwen' || kind === 'qwen-hq') { const q = await qwenImage(env, kind, prompt); image = q.image; via = q.via; }
-    else image = await genImage(env, kind, prompt, Math.min(8, Math.max(1, +b.steps || 4)));
+    if (kind === 'qwen' || kind === 'qwen-hq') { const q = await qwenImage(env, kind, prompt, DW, DH); image = q.image; via = q.via; }
+    else image = await genImage(env, kind, prompt, Math.min(8, Math.max(1, +b.steps || 4)), DW, DH);
     if (!owner) await env.DB.prepare('INSERT INTO usage(email,at,input,output,credits) VALUES(?,?,0,0,?)').bind(a.email, new Date().toISOString(), cost).run();
     const f = await getUser(env, a.email);
     return json(env, req, { image, model: kind, via, credits: +Number(f.credits).toFixed(2), spentCredits: owner ? 0 : cost });

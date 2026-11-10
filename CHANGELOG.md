@@ -1,5 +1,10 @@
 # AIX Alpha v3.0 - revision 8
 
+## Image sizes + JPEG downloads (node v31)
+- Every image download (gallery pop-up and chat "Save image") now produces a real JPEG. The old button guessed the type by searching the image data for "svg", which could wrongly save an .svg.
+- Image size/shape: Settings -> Images sets the default; a size menu sits next to the image-model menu; or just ask ("4K ultra wide", "iPhone screen", "portrait", "wide angle landscape"). Presets: square, landscape, wide 16:9, 4K UHD, ultra wide 21:9, 4K ultra wide (5120x2160), portrait, tall 9:16, iPhone screen, phone wallpaper 4K, fast draft.
+- The model renders at the right shape (about 1 megapixel); sizes above that are enlarged smoothly, so 4K output is upscaled, not natively rendered. Credits are unchanged.
+
 ## Hang fix, Max removed (node v30)
 - XQ no longer routes to Qwen3.8-Max: XQ runs on the Mac node again, as before (the cloud route and DASHSCOPE key support were removed).
 - Hang: hidden "thinking" could run up to 24,000 characters (several minutes) before the first word appeared. Budget is now 6,000 characters, and XQ build/code requests skip thinking (the build method is already in the prompt), so output starts in seconds.

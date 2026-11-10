@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path'), crypto = require('crypto');
-const VERSION = 30;   // bump on every release: nodes auto-update when GitHub has a higher number
+const VERSION = 31;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -364,8 +364,8 @@ const SRV = http.createServer(async (req, res) => {
     if (u === '/v1/images/generate' && req.method === 'POST') {
       try {
         const b = JSON.parse((await body(req)).toString() || '{}'), pr = String(b.prompt || '').slice(0, 1000).trim(); if (!pr) return J(res, h, 400, { error: 'prompt required' });
-        const sz = Math.max(512, Math.min(1280, Math.round((+b.size || 1024) / 64) * 64));
-        const png = await genImg(pr, !!b.hq, sz, sz); return J(res, h, 200, { image: 'data:image/png;base64,' + png.toString('base64'), model: 'qwen-image-2.1', hq: !!b.hq });
+        const dm = (v) => Math.max(512, Math.min(1536, Math.round((+v || +b.size || 1024) / 64) * 64)), W = dm(b.w), H = dm(b.h);
+        const png = await genImg(pr, !!b.hq, W, H); return J(res, h, 200, { image: 'data:image/png;base64,' + png.toString('base64'), model: 'qwen-image-2.1', hq: !!b.hq });
       } catch (e) { return J(res, h, e.code || 502, { error: String(e.message || e).slice(0, 300) }); }
     }
     if (u.startsWith('/v1/') || u === '/api/tags') {
