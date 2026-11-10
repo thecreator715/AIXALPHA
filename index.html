@@ -1511,7 +1511,7 @@ function renderMsgs(){spVis();const _ch=$('#chat'),_keep=_ch?_ch.scrollTop:0,_ne
   box.innerHTML=c.msgs.map((m,i)=>m.ask?askCardHtml(m,i):m.role==='user'?`<div class="msg u${m.pin?' pinned':''}" data-m="${i}">${mtools(i,'user')}<div class="who mono"><b>OPERATOR</b></div><div class="body">${md(m.content.replace(/\n*\[Attached file: ([^\]]+)\]\n```[\s\S]*?```/g,'\n📎 $1'))}</div></div>`:
    `<div class="msg${m.pin?' pinned':''}" data-m="${i}">${mtools(i,'assistant')}<div class="who mono"><b>${esc((personas().find(p=>p.id===m.pid)||PRESETS[0]).name)}</b><span class="chip">${m.kind==='video'?'VIDEO · BETA':m.aid||m.imgurl?'IMAGE':m.t&&!m.t.calls?'LOCAL · 0 TOKENS':'AIX ENGINE'}</span></div>
    ${m.t?`${actHtml(m.t.protocol,{dur:m.dur,open:!!m.t.app})}${chipsHtml(m.t)}${m.t.app?buildDetails(m):''}`:''}
-   <div class="body">${m.err?`<span style="color:var(--r)">${esc(m.content)}</span>`:md(m.content)}</div>${m.vprog?vpHtml(m):''}${m.mesh?`<div class="mv" data-mesh="${i}"></div>`:''}${m.agent?agentCard(m,i):''}${m.doc?docCard(m.doc):''}${m.kind==='video'&&ASSET[m.aid]?`<div class="gimg"><video src="${ASSET[m.aid]}" controls autoplay loop muted playsinline style="max-width:100%;border-radius:12px;display:block;margin:8px 0"></video><a class="btn2" download="aix-video.mp4" href="${ASSET[m.aid]}">Save video</a></div>`:(m.aid&&ASSET[m.aid])||m.imgurl?`<div class="gimg"><img src="${m.imgurl||ASSET[m.aid]}" alt="generated image" onerror="imgFail(this)" style="max-width:100%;border-radius:12px;display:block;margin:8px 0"><a class="btn2" href="#" data-sj="${m.aid&&ASSET[m.aid]?m.aid:esc(m.imgurl||'')}" data-nm="aix-image">Save image (JPEG)</a></div>`:''}${m.ui==='connect'?'<div class="ccwrap">'+connectCardsHtml()+'</div>':''}${PVHTML(m,i)}</div>`).join('');
+   <div class="body">${m.err?`<span style="color:var(--r)">${esc(m.content)}</span>`:md(m.content)}</div>${m.vprog?vpHtml(m):''}${m.iprog?ipHtml(m):''}${m.mesh?`<div class="mv" data-mesh="${i}"></div>`:''}${m.agent?agentCard(m,i):''}${m.doc?docCard(m.doc):''}${m.kind==='video'&&ASSET[m.aid]?`<div class="gimg"><video src="${ASSET[m.aid]}" controls autoplay loop muted playsinline style="max-width:100%;border-radius:12px;display:block;margin:8px 0"></video><a class="btn2" download="aix-video.mp4" href="${ASSET[m.aid]}">Save video</a></div>`:(m.aid&&ASSET[m.aid])||m.imgurl?`<div class="gimg"><img src="${m.imgurl||ASSET[m.aid]}" alt="generated image" onerror="imgFail(this)" style="max-width:100%;border-radius:12px;display:block;margin:8px 0"><a class="btn2" href="#" data-sj="${m.aid&&ASSET[m.aid]?m.aid:esc(m.imgurl||'')}" data-nm="aix-image">Save image (JPEG)</a></div>`:''}${m.ui==='connect'?'<div class="ccwrap">'+connectCardsHtml()+'</div>':''}${PVHTML(m,i)}</div>`).join('');
   {const pins=c.msgs.map((m,i)=>({m,i})).filter(x=>x.m.pin);if(pins.length)box.insertAdjacentHTML('afterbegin',`<div class="pinstrip"><b class="mono">📌 PINNED</b>${pins.map(x=>`<button data-pj="${x.i}">${esc(stripAtt(String(x.m.content||'')).replace(/\s+/g,' ').slice(0,42)||'message')}</button>`).join('')}</div>`)}
   box.querySelectorAll('[data-mesh]').forEach(el=>mountMesh(el,c.msgs[+el.dataset.mesh].mesh));
   box.querySelectorAll('[data-inpv]').forEach(el=>{el.srcdoc=extractHtml(c.msgs[+el.dataset.inpv].content)||''});
@@ -4620,14 +4620,32 @@ setTimeout(function(){const b=$('#fanim');if(b)b.onclick=openAnimate},0);
 
 /* ===== Chat image generation: "create an image of a hummingbird" ===== */
 const IMGINTENT=/^\s*(please\s+)?(can you\s+|could you\s+)?(create|generate|make|draw|paint|render|design|show me)\s+(me\s+)?(an?\s+|the\s+|some\s+)?(\w+\s+)?(image|picture|photo|photograph|illustration|artwork|painting|portrait|wallpaper)s?\b/i;
+function ipEst(key){const H=(store.get('aix3_imgdur',{})||{})[key]||[];if(H.length)return H.reduce((a,b)=>a+b,0)/H.length;return /\|/.test(key)&&/qwen/.test(key)?30000:12000}
+function ipLearn(key,ms){try{const d=store.get('aix3_imgdur',{})||{};d[key]=((d[key]||[]).concat(ms)).slice(-5);store.set('aix3_imgdur',d)}catch{}}
+function ipInner(m){const p=m.iprog,now=Date.now(),el=now-p.t0,est=p.est,stale=el>600000;
+  if(stale)return '<div class="mono" style="font-size:12px;color:#fbbf24">This render was interrupted. Send the prompt again.</div>';
+  const pct=Math.min(95,el/est*100),left=est-el,over=left<0;
+  const stage=el<1500?'Sending your prompt…':el<est*0.9?'Rendering the picture…':'Finishing up…';
+  const tl=over?'Taking longer than usual, still working…':'About '+Math.max(1,Math.ceil(left/1000))+' s left (estimate)';
+  return `<div style="display:flex;justify-content:space-between;gap:8px;font:600 12px var(--mono,monospace);color:#6ee7b7"><span>🖼 ${esc(stage)}</span><span>${Math.floor(pct)}%</span></div>
+  <div style="height:10px;border-radius:99px;background:#0b1f17;border:1px solid #065f46;margin:8px 0;overflow:hidden"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#059669,#34d399);border-radius:99px;transition:width .5s ease"></div></div>
+  <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;font:11.5px var(--mono,monospace);color:var(--m)"><span>Elapsed ${Math.floor(el/1000)} s</span><span>${tl}</span></div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><span style="font:10.5px var(--mono,monospace);color:#a7f3d0;border:1px solid #065f46;border-radius:99px;padding:2px 8px">${esc(p.label)}</span><span style="font:10.5px var(--mono,monospace);color:#a7f3d0;border:1px solid #065f46;border-radius:99px;padding:2px 8px">${esc(p.size)}</span></div>`}
+function ipHtml(m){return `<div data-ip="${m.iprog.id}" style="margin:8px 0;padding:12px;border:1px solid #065f46;border-radius:12px;background:#06281d">${ipInner(m)}</div>`}
+function ipPaint(m){document.querySelectorAll('[data-ip="'+m.iprog.id+'"]').forEach(el=>{el.innerHTML=ipInner(m)})}
 async function chatFlux(c,text){
   const subj=text.replace(IMGINTENT,'').replace(/^\s*(of|for|showing|with|that shows)\s+/i,'').replace(/\s*\b(with|using|in)\s+(flux\s*\.?\s*2)\b/ig,'').trim()||text;
   const prompt=subj+(/\b(photo|realistic|painting|illustration|cartoon|anime|pixel|sketch|3d|render)\b/i.test(subj)?'':', highly detailed, beautiful lighting');
-  const t0=Date.now(),model=pickImgModel(text),szId=sizeFromText(text)||S.imgsz;
+  const t0=Date.now(),model=pickImgModel(text),szId=sizeFromText(text)||S.imgsz,SZ=imgSize(szId),GD=genDims(SZ.w,SZ.h),key=model+'|'+GD[0]+'x'+GD[1];
+  const ph={role:'assistant',content:'',ts:t0,iprog:{id:'ip'+t0,t0,est:ipEst(key),key,label:IMG_LBL[model]||'Image',size:SZ.w+'×'+SZ.h}};
+  c.msgs.push(ph);renderMsgs();const tk=setInterval(()=>{try{ipPaint(ph)}catch{}},500);
+  const at=()=>c.msgs.indexOf(ph);
   try{const j=await imgCall(prompt.replace(/\b(with|using|in)\s+(flux\s*\.?\s*2)\b/ig,'').trim(),model,szId);
+    clearInterval(tk);ipLearn(key,Date.now()-t0);
     const id='a'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);ASSET[id]=j.image;aput(id,j.image);
-    c.msgs.push({role:'assistant',content:`Here's your image: **${subj}**\n\n${IMG_LBL[j.model||model]||'Image'}${j.via&&j.via!==(j.model||model)?' (backup engine: '+IMG_LBL[j.via]+')':''} · ${j.spentCredits?j.spentCredits+' credit'+(j.spentCredits>1?'s':'')+' used':'admin, 0 credits'}${j.credits!=null?' · balance '+j.credits+' cr':''} · stored on this device`,ts:Date.now(),dur:Date.now()-t0,aid:id})
-  }catch(e){c.msgs.push({role:'assistant',content:e.message||String(e),err:1,ts:Date.now(),dur:Date.now()-t0})}}
+    const msg={role:'assistant',content:`Here's your image: **${subj}**\n\n${IMG_LBL[j.model||model]||'Image'}${j.via&&j.via!==(j.model||model)?' (backup engine: '+IMG_LBL[j.via]+')':''} · ${j.spentCredits?j.spentCredits+' credit'+(j.spentCredits>1?'s':'')+' used':'admin, 0 credits'}${j.credits!=null?' · balance '+j.credits+' cr':''} · stored on this device`,ts:Date.now(),dur:Date.now()-t0,aid:id};
+    if(at()>=0)c.msgs[at()]=msg;else c.msgs.push(msg)
+  }catch(e){clearInterval(tk);const msg={role:'assistant',content:e.message||String(e),err:1,ts:Date.now(),dur:Date.now()-t0};if(at()>=0)c.msgs[at()]=msg;else c.msgs.push(msg)}}
 
 setTimeout(()=>{try{hydAll()}catch{}},400);
 function imgFail(el){const d=document.createElement('div');d.className='mono';d.style.cssText='color:var(--a);padding:8px 0';d.textContent='The free public image service is busy or blocked right now. Sign in with a free account to use the AIX server FLUX instead.';const a=el.parentNode&&el.parentNode.querySelector('a');if(a)a.remove();el.replaceWith(d)}
