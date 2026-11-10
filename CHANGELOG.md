@@ -1,5 +1,10 @@
 # AIX Alpha v3.0 - revision 8
 
+## Video errors after cancel / retry (node v42)
+- Cause: cancelling killed only the launcher (uv); the python engine under it kept rendering, so the next clip ran out of memory or found the node busy and failed with "Local video is busy or offline". The node now starts the engine in its own process group and kills the whole group on cancel, timeout, stall or exit, and clears any leftover engine before a new render starts.
+- A cancelled clip that was still waiting in line frees its place immediately (a few cancels could previously fill the 2-clip queue).
+- The error message now includes the real reason from the node instead of the generic "busy or offline", and a "previous clip still stopping" tip for the queue case.
+
 ## Is it working or hung? Live engine health (node v41)
 - The render card now shows a pulsing "Working" light with the engine's real CPU and memory use and the time since its last output, the engine's latest log line, and clear amber/red warnings: engine quiet, probably stuck (CPU idle and silent 10+ min), or no update from the server (connection lost).
 - The node only restarts a silent engine if its CPU is also idle, so a long quiet decode is never killed by mistake.

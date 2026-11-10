@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path'), crypto = require('crypto');
-const VERSION = 41;   // bump on every release: nodes auto-update when GitHub has a higher number
+const VERSION = 42;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -222,10 +222,15 @@ function availGb() { try { if (os.platform() === 'darwin') { const o = require('
 // cancel a video job: kills the engine if it is running, or drops it from the queue
 // CPU and memory of the engine process and everything it started (uv -> python), so the app can show whether it is really working
 function procStats(pid) { try { const o = require('child_process').execSync('ps -A -o pid=,ppid=,%cpu=,rss=', { encoding: 'utf8', timeout: 2500 }), rows = o.trim().split('\n').map((l) => l.trim().split(/\s+/).map(Number)), kids = new Set([pid]); let grew = true; while (grew) { grew = false; for (const r of rows) if (!kids.has(r[0]) && kids.has(r[1])) { kids.add(r[0]); grew = true; } } let cpu = 0, rss = 0, n = 0; for (const r of rows) if (kids.has(r[0])) { cpu += r[2] || 0; rss += r[3] || 0; n++; } return { cpu: Math.round(cpu), rssGb: +(rss / 1048576).toFixed(1), n }; } catch { return null; } }
-function cancelJob(j, why) { if (!j || j.done) return; j.cancelled = why || 'cancelled'; try { if (j.cp) j.cp.kill('SIGKILL'); } catch {} }
-function killStrays() { if (os.platform() !== 'win32') { try { require('child_process').execSync("pkill -9 -f 'ltx-2-mlx|ltx_2_mlx|ltx2_mlx' || true", { timeout: 4000 }); } catch {} } }
+// the engine runs as uv -> python: killing only uv left the python child rendering (RAM full, next clip failed), so the whole process group goes
+function killTree(cp) { if (!cp) return; try { if (cp.pid && os.platform() !== 'win32') process.kill(-cp.pid, 'SIGKILL'); } catch {} try { cp.kill('SIGKILL'); } catch {} }
+function cancelJob(j, why) {
+  if (!j || j.done) return; j.cancelled = why || 'cancelled'; killTree(j.cp);
+  if (!j.runStart && !j.rel) { j.rel = 1; VIDQ = Math.max(0, VIDQ - 1); const i = VIDJOBS.indexOf(j); if (i >= 0) VIDJOBS.splice(i, 1); }   // a queued clip that is cancelled frees its place at once
+}
+function killStrays() { if (os.platform() !== 'win32') { try { require('child_process').execFileSync('pkill', ['-9', '-f', '[l]tx-2-mlx|[l]tx_2_mlx|[l]tx2_mlx'], { timeout: 4000, stdio: 'ignore' }); } catch {} } }
 if (!global.__STRAYKILLED) { global.__STRAYKILLED = 1; killStrays(); }   // an auto-update restart used to leave the old engine running, holding all the RAM and blocking the queue
-process.on('exit', () => { for (const j of VIDJOBS) { try { if (j.cp) j.cp.kill('SIGKILL'); } catch {} } });
+process.on('exit', () => { for (const j of VIDJOBS) killTree(j.cp); });
 // ---- video render progress: parses the engine output, learns timings from past renders, streams snapshots to the app ----
 const VSTATS = path.join(__dirname, '.aix-vidstats.json');
 const vstats = () => { try { return JSON.parse(fs.readFileSync(VSTATS, 'utf8')); } catch { return []; } };
@@ -274,7 +279,7 @@ function genVid(prompt, imgBuf, w, hgt, sec, up, q, job) {
   VIDQ++; job = job || vidJob(w, hgt, sec, q, up); VIDJOBS.push(job);
   const run = async () => {
     if (job.cancelled) throw Object.assign(new Error('video cancelled'), { code: 499 });
-    job.runStart = Date.now(); job.lastOut = Date.now(); job.stage = 'Freeing memory (unloading the chat model)'; await unloadLLM(); job.stage = 'Starting the engine';
+    job.runStart = Date.now(); job.lastOut = Date.now(); job.stage = 'Freeing memory (unloading the chat model)'; await unloadLLM(); job.stage = 'Starting the engine'; if (!VIDJOBS.some((o) => o !== job && o.runStart && !o.done)) killStrays();   // nothing else should be rendering: clear any engine left behind by a cancelled or crashed run
     const id = Date.now() + crypto.randomBytes(3).toString('hex'), out = path.join(IMGDIR, 'v' + id + '.mp4'), inp = path.join(IMGDIR, 'v' + id + '.png');
     const F = Object.assign({ prompt: '-p', out: '-o', h: '-H', w: '-W', img: '--image', frames: null, fps: null }, c.flags || {});
     const MODE = (c.modes && c.modes[q]) || null;   // quality tiers: fast = distilled; hq / best use the dev model with guidance (slower, cleaner)
@@ -285,19 +290,19 @@ function genVid(prompt, imgBuf, w, hgt, sec, up, q, job) {
     if (F.fps && c.fps) args = args.concat([F.fps, String(c.fps)]);
     if (imgBuf && F.img) { fs.writeFileSync(inp, imgBuf); args = args.concat([F.img, inp]); }
     return await new Promise((resolve, reject) => {
-      const cp = require('child_process').spawn(c.cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PATH: process.env.PATH + ':' + os.homedir() + '/.local/bin:/opt/homebrew/bin:/usr/local/bin' } });
-      job.cp = cp; if (job.cancelled) { try { cp.kill('SIGKILL'); } catch {} }
+      const cp = require('child_process').spawn(c.cmd, args, { detached: os.platform() !== 'win32', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PATH: process.env.PATH + ':' + os.homedir() + '/.local/bin:/opt/homebrew/bin:/usr/local/bin' } });
+      job.cp = cp; if (job.cancelled) { killTree(cp); }
       let err = ''; const note = (d) => { const l = String(d).replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').split(/[\r\n]+/).map((x) => x.trim()).filter(Boolean).pop(); if (l) job.lastLine = l.slice(0, 140); };
       cp.stderr.on('data', (d) => { note(d); job.lastOut = Date.now(); err = (err + d).slice(-1500); vidFeed(job, d); }); cp.stdout.on('data', (d) => { note(d); job.lastOut = Date.now(); vidFeed(job, d); });
-      const to = setTimeout(() => { job.timedOut = 1; try { cp.kill('SIGKILL'); } catch {} }, Math.min(10800000, (1500000 + sec * 240000) * (MODE ? (q === 'best' ? 3 : 2) : 1)));
+      const to = setTimeout(() => { job.timedOut = 1; killTree(cp); }, Math.min(10800000, (1500000 + sec * 240000) * (MODE ? (q === 'best' ? 3 : 2) : 1)));
       setTimeout(() => { const ps = procStats(cp.pid); if (ps) { job.ps = ps; if (ps.cpu >= 25) job.lastBusy = Date.now(); } }, 1500);
-      const STALL = +process.env.AIX_VID_STALL || 1200000, wd = setInterval(() => { const ps = procStats(cp.pid); if (ps) { job.ps = ps; if (ps.cpu >= 25) job.lastBusy = Date.now(); } if (Date.now() - job.lastOut > STALL && Date.now() - (job.lastBusy || 0) > STALL / 2) { job.stalled = 1; try { cp.kill('SIGKILL'); } catch {} } }, 4000);   // no output for 20 min = stuck engine
+      const STALL = +process.env.AIX_VID_STALL || 1200000, wd = setInterval(() => { const ps = procStats(cp.pid); if (ps) { job.ps = ps; if (ps.cpu >= 25) job.lastBusy = Date.now(); } if (Date.now() - job.lastOut > STALL && Date.now() - (job.lastBusy || 0) > STALL / 2) { job.stalled = 1; killTree(cp); } }, 4000);   // no output for 20 min = stuck engine
       const clean = () => { try { fs.unlinkSync(inp); } catch {} try { fs.unlinkSync(out); } catch {} };
       cp.on('error', (e) => { clearTimeout(to); clearInterval(wd); clean(); reject(e); });
       cp.on('close', (code) => { clearTimeout(to); clearInterval(wd); if (job.cancelled) { clean(); return reject(Object.assign(new Error('video cancelled'), { code: 499 })); } try { const b = fs.readFileSync(out); clean(); if (b.length > 5000) { vidRec(job); if (!up) { clean(); return resolve(b); } const o2 = out + '.hd.mp4'; vidStage(job, 8); const ff = require('child_process').spawn('ffmpeg', ['-y', '-i', out, '-vf', 'scale=-2:1080:flags=lanczos,unsharp=5:5:0.9:3:3:0.4', '-c:v', 'libx264', '-crf', '17', '-preset', 'medium', '-pix_fmt', 'yuv420p', '-c:a', 'copy', o2], { stdio: 'ignore', env: { ...process.env, PATH: process.env.PATH + ':/opt/homebrew/bin:/usr/local/bin' } }); ff.on('close', () => { let r = b; try { const hd = fs.readFileSync(o2); if (hd.length > 5000) r = hd; } catch {} try { fs.unlinkSync(o2); } catch {} clean(); resolve(r); }); ff.on('error', () => { clean(); resolve(b); }); return; } } catch {} clean(); reject(new Error(job.stalled ? 'the video engine stopped responding for 20 minutes and was restarted (try a shorter clip, Fast quality, or free some RAM)' : job.timedOut ? 'the render took longer than the time limit and was stopped (try a shorter clip or lower quality)' : 'video run failed (' + code + '): ' + err.split('\n').slice(-3).join(' ').slice(0, 300))); });
     });
   };
-  const p = IMGBUSY.then(run, run); IMGBUSY = p.catch(() => {}); return p.finally(() => { VIDQ--; job.done = true; const i = VIDJOBS.indexOf(job); if (i >= 0) VIDJOBS.splice(i, 1); });
+  const p = IMGBUSY.then(run, run); IMGBUSY = p.catch(() => {}); return p.finally(() => { if (!job.rel) VIDQ = Math.max(0, VIDQ - 1); job.done = true; const i = VIDJOBS.indexOf(job); if (i >= 0) VIDJOBS.splice(i, 1); });
 }
 function genImg(prompt, hq, w, hgt) {
   const c = imgCfg(); if (!c || !c.cmd) return Promise.reject(Object.assign(new Error('image model not installed'), { code: 501 }));
@@ -307,9 +312,9 @@ function genImg(prompt, hq, w, hgt) {
     const out = path.join(IMGDIR, 'i' + Date.now() + crypto.randomBytes(3).toString('hex') + '.png');
     const steps = String(hq ? (c.stepsHq || 30) : (c.steps || 16));
     const args = (c.args || []).concat(['--prompt', prompt, '--steps', steps, '--width', String(w), '--height', String(hgt), '--seed', String(Math.floor(Math.random() * 2e9)), '--output', out]);
-    const cp = require('child_process').spawn(c.cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PATH: process.env.PATH + ':' + os.homedir() + '/.local/bin:/opt/homebrew/bin:/usr/local/bin' } });
+    const cp = require('child_process').spawn(c.cmd, args, { detached: os.platform() !== 'win32', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PATH: process.env.PATH + ':' + os.homedir() + '/.local/bin:/opt/homebrew/bin:/usr/local/bin' } });
     let err = ''; cp.stderr.on('data', (d) => { err = (err + d).slice(-1500); }); cp.stdout.on('data', () => {});
-    const to = setTimeout(() => { try { cp.kill('SIGKILL'); } catch {} }, hq ? 600000 : 420000);
+    const to = setTimeout(() => { killTree(cp); }, hq ? 600000 : 420000);
     cp.on('error', (e) => { clearTimeout(to); reject(e); });
     cp.on('close', (code) => { clearTimeout(to); try { const b = fs.readFileSync(out); fs.unlinkSync(out); if (b.length > 1000) return resolve(b); } catch {} reject(new Error('image run failed (' + code + '): ' + err.split('\n').slice(-3).join(' ').slice(0, 300))); });
   }); };

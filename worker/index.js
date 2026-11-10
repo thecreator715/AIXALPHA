@@ -2349,7 +2349,7 @@ async function video(env, req) {
     if (emit) emit({ stage: (b.enh === false || !prompt) ? 'Starting' : 'Improving your prompt', pct: 0, cost: owner ? 0 : COST, sec, w: VW, h: VH, q: b.q || 'fast', up: !!b.up, elapsed: 0, run: 0, eta: null });
     const vp = (b.enh === false || !prompt) ? (prompt || 'Cinematic motion, smooth camera') : await enhVideoPrompt(env, prompt, !!b.image);
     let vid = hasNode ? await nodeVideo(env, vp, b.image, VW, VH, sec, b.up, b.q, emit, info) : null;
-    if (!vid) { if (sec > 2) throw new Error('The Mac node could not render this clip' + (info.err ? ' (' + info.err + ')' : ' (busy, offline or ran out of memory)') + '. Try a shorter length or lower quality.'); if (!b.image) throw new Error('Local video is busy or offline. Add a start image to use the cloud queue.'); vid = await hfVideo(env, prompt, b.image); }
+    if (!vid) { if (sec > 2) throw new Error('The Mac node could not render this clip' + (info.err ? ' (' + info.err + ')' : ' (busy, offline or ran out of memory)') + '. Try a shorter length or lower quality.'); if (!b.image) throw new Error('Local video is busy or offline' + (info.err ? ' (' + info.err + ')' : '') + '. Add a start image to use the cloud queue.'); vid = await hfVideo(env, prompt, b.image); }
     if (!owner) await env.DB.prepare('INSERT INTO usage(email,at,input,output,credits) VALUES(?,?,0,0,?)').bind(a.email, new Date().toISOString(), COST).run();
     const f = await getUser(env, a.email);
     return { video: vid, credits: +Number(f.credits).toFixed(2), spentCredits: owner ? 0 : COST, prompt: vp, renderSecs: info.secs || null, frames: info.frames || null, engine: info.model || (hasNode ? 'ltx' : 'cloud-queue') };
