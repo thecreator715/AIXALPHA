@@ -2311,13 +2311,20 @@ async function enhVideoPrompt(env, prompt, hasImage) {
     return t.length > 30 ? t.slice(0, 900) : prompt;
   } catch (e) { return prompt; }
 }
-async function nodeVideo(env, prompt, image, w, h, sec, up, q) {
+async function nodeVideo(env, prompt, image, w, h, sec, up, q, onP, info) {
   const nd = await nodeGet(env); const cands = nd ? [nd, ...(nd.alts || [])].filter((n) => n && n.vid) : [];
   for (const n of cands) {
     try {
       const r = await nfetch(n.url.replace(/\/+$/, '') + '/v1/videos/generate', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + n.token }, body: JSON.stringify({ prompt, image: image || null, w: w || 768, h: h || 512, sec: sec || 2, up: !!up, q: q || 'fast' }) }, Math.min(7200000, 1500000 + (sec || 2) * 240000));
-      const t = r.ok ? (await r.text()).trim() : ''; const j = t ? JSON.parse(t) : null; if (j && j.video) return j.video;
-    } catch (e) { /* next node, then the cloud queue */ }
+      if (!r.ok) { if (info) info.err = 'node answered HTTP ' + r.status; continue; }
+      // the node streams progress lines ({"p":{...}}) and then one final JSON object; an older node sends spaces and one JSON object
+      const rd = r.body.getReader(), dec = new TextDecoder(); let buf = '', last = null;
+      const eat = (ln) => { ln = ln.trim(); if (!ln) return; try { const o = JSON.parse(ln); if (o && o.p) { if (onP) onP(o.p); } else last = o; } catch (e) { /* partial */ } };
+      for (;;) { const { done, value } = await rd.read(); if (done) break; buf += dec.decode(value, { stream: true }); let i; while ((i = buf.indexOf('\n')) >= 0) { eat(buf.slice(0, i)); buf = buf.slice(i + 1); } }
+      eat(buf);
+      if (last && last.video) { if (info) { info.secs = last.secs; info.frames = last.frames; info.model = last.model; } return last.video; }
+      if (last && last.error && info) info.err = last.error;
+    } catch (e) { if (info) info.err = String(e && e.message || e).slice(0, 200); }
   }
   return null;
 }
@@ -2337,19 +2344,22 @@ async function video(env, req) {
     const up = await env.DB.prepare('UPDATE users SET credits=credits-? WHERE email=? AND credits>=?').bind(COST, a.email, COST).run();
     if (!(up.meta && up.meta.changes > 0)) return json(env, req, { error: 'Out of credits. This clip costs ' + COST + ' credits.' }, 402);
   }
-  const finish = async () => {
+  const finish = async (emit) => {
+    const info = {};
+    if (emit) emit({ stage: (b.enh === false || !prompt) ? 'Starting' : 'Improving your prompt', pct: 0, cost: owner ? 0 : COST, sec, w: VW, h: VH, q: b.q || 'fast', up: !!b.up, elapsed: 0, run: 0, eta: null });
     const vp = (b.enh === false || !prompt) ? (prompt || 'Cinematic motion, smooth camera') : await enhVideoPrompt(env, prompt, !!b.image);
-    let vid = hasNode ? await nodeVideo(env, vp, b.image, VW, VH, sec, b.up, b.q) : null;
-    if (!vid) { if (sec > 2) throw new Error('The Mac node could not render this clip (busy, offline or ran out of memory). Try a shorter duration.'); if (!b.image) throw new Error('Local video is busy or offline. Add a start image to use the cloud queue.'); vid = await hfVideo(env, prompt, b.image); }
+    let vid = hasNode ? await nodeVideo(env, vp, b.image, VW, VH, sec, b.up, b.q, emit, info) : null;
+    if (!vid) { if (sec > 2) throw new Error('The Mac node could not render this clip' + (info.err ? ' (' + info.err + ')' : ' (busy, offline or ran out of memory)') + '. Try a shorter length or lower quality.'); if (!b.image) throw new Error('Local video is busy or offline. Add a start image to use the cloud queue.'); vid = await hfVideo(env, prompt, b.image); }
     if (!owner) await env.DB.prepare('INSERT INTO usage(email,at,input,output,credits) VALUES(?,?,0,0,?)').bind(a.email, new Date().toISOString(), COST).run();
     const f = await getUser(env, a.email);
-    return { video: vid, credits: +Number(f.credits).toFixed(2), spentCredits: owner ? 0 : COST };
+    return { video: vid, credits: +Number(f.credits).toFixed(2), spentCredits: owner ? 0 : COST, prompt: vp, renderSecs: info.secs || null, frames: info.frames || null, engine: info.model || (hasNode ? 'ltx' : 'cloud-queue') };
   };
   const fail = async (e) => { if (!owner) await env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(COST, a.email).run(); return { error: e.message || 'Video failed' }; };
   if (!hasNode) { try { return json(env, req, await finish()); } catch (e) { return json(env, req, await fail(e), 502); } }
   // local render can take minutes: answer at once and send a space every 15 s so no proxy times out; the JSON arrives at the end
   const { readable, writable } = new TransformStream(), w = writable.getWriter(), enc = new TextEncoder();
   const hb = setInterval(() => { w.write(enc.encode(' ')).catch(() => {}); }, 15000);
-  (async () => { let out; try { out = await finish(); } catch (e) { out = await fail(e); } clearInterval(hb); try { await w.write(enc.encode(JSON.stringify(out))); await w.close(); } catch {} })();
+  const emit = b.prog ? (p) => { w.write(enc.encode(JSON.stringify({ p }) + '\n')).catch(() => {}); } : null;   // progress lines only for apps that ask for them (b.prog)
+  (async () => { let out; try { out = await finish(emit); } catch (e) { out = await fail(e); } clearInterval(hb); try { await w.write(enc.encode('\n' + JSON.stringify(out))); await w.close(); } catch {} })();
   const hd = json(env, req, {}).headers; return new Response(readable, { status: 200, headers: hd });
 }

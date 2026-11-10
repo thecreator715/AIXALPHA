@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path'), crypto = require('crypto');
-const VERSION = 38;   // bump on every release: nodes auto-update when GitHub has a higher number
+const VERSION = 39;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -216,14 +216,54 @@ let IMGBUSY = Promise.resolve(), IMGQ = 0;
 const vidCfg = () => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, '.aix-video'), 'utf8')); } catch { return null; } };   // {cmd,args:[...],ok}
 const vidReady = () => { const c = vidCfg(); return !!(c && c.cmd && c.ok !== false); };
 let VIDQ = 0;
+// ---- video render progress: parses the engine output, learns timings from past renders, streams snapshots to the app ----
+const VSTATS = path.join(__dirname, '.aix-vidstats.json');
+const vstats = () => { try { return JSON.parse(fs.readFileSync(VSTATS, 'utf8')); } catch { return []; } };
+const VIDJOBS = [];
+const VSTAGES = [['Waiting in line', 0, 0], ['Loading the model', 2, 10], ['Reading your prompt', 12, 3], ['Stage 1 · drawing the clip', 15, 40], ['Stage 2 · refining detail', 55, 28], ['Decoding frames', 83, 8], ['Making the sound', 91, 5], ['Writing the video', 96, 2], ['Sharpening + upscaling to 1080p', 98, 1]];
+function vidJob(w, hgt, sec, q, up) {
+  sec = Math.max(2, Math.min(60, Math.round(+sec || 2))); const c = vidCfg() || {}, fps = c.fps || 24;
+  return { created: Date.now(), runStart: 0, stage: VSTAGES[0][0], stageIdx: 0, parsed: null, pctMax: 0, step: null, steps: null, sec, w, h: hgt, q: q || 'fast', up: !!up, fps, frames: sec > 2 ? Math.round(sec * fps / 8) * 8 + 1 : (c.nframes || 49), done: false };
+}
+function vidExpect(j) {
+  const rec = vstats().filter((r) => r.q === j.q && r.px && r.frames && r.secs).slice(-3);
+  if (rec.length) { const v = rec.map((r) => r.secs * (j.w * j.h * j.frames) / (r.px * r.frames)).sort((a, b) => a - b); return { secs: v[Math.floor(v.length / 2)], est: false }; }
+  const rate = 4.7e-6 * ({ fast: 1, hq: 3, best: 4 }[j.q] || 1);
+  return { secs: 120 + rate * j.w * j.h * j.frames, est: true };
+}
+function vidSnap(j) {
+  const now = Date.now(), el = j.runStart ? (now - j.runStart) / 1000 : 0, ex = vidExpect(j);
+  let pct = j.parsed != null ? j.parsed : (j.runStart ? Math.min(95, el / ex.secs * 100) : 0);
+  j.pctMax = Math.max(j.pctMax || 0, Math.min(99, pct)); pct = j.pctMax;
+  let eta = null;
+  if (j.runStart) { const byTime = Math.max(0, ex.secs - el); if (j.parsed != null && pct >= 12) { const byPct = el * (100 - pct) / pct; eta = ex.est ? byPct : 0.6 * byPct + 0.4 * byTime; } else eta = el < ex.secs ? byTime : null; }
+  const ahead = j.runStart ? 0 : Math.max(0, VIDJOBS.indexOf(j));
+  return { stage: j.runStart ? j.stage : (ahead ? 'Waiting in line (' + ahead + ' ahead)' : 'Starting'), pct: Math.round(pct * 10) / 10, elapsed: Math.round((now - j.created) / 1000), run: Math.round(el), eta: eta == null ? null : Math.round(eta), etaEst: ex.est, step: j.step, steps: j.steps, sec: j.sec, w: j.w, h: j.h, frames: j.frames, fps: j.fps, q: j.q, up: j.up, memFreeGb: +(os.freemem() / 1e9).toFixed(1), ahead };
+}
+function vidStage(j, idx) { if (idx > j.stageIdx) { j.stageIdx = idx; j.stage = VSTAGES[idx][0]; j.step = j.steps = null; j.parsed = Math.max(j.parsed || 0, VSTAGES[idx][1]); } }
+function vidFeed(j, chunk) {
+  for (const raw of String(chunk).split(/[\r\n]+/)) {
+    const t = raw.toLowerCase(); if (!t.trim()) continue;
+    const rules = [[7, /(mux|ffmpeg|writing video|saving video|export|encoding video)/], [6, /(audio|vocoder|sound)/], [5, /(decod|\bvae\b)/], [4, /(stage ?2|second stage|refin|upsampl|upscal|distilled lora)/], [3, /(stage ?1|first stage|low.?res|half.?res|denois|sampler|sampling)/], [2, /(embedding|encoding (the )?(text|prompt)|prompt enc)/], [1, /(download|fetching|loading|load(ed)? (the )?(model|weights|checkpoint)|safetensors|text.?encoder)/]];
+    for (const [i, re] of rules) if (i > j.stageIdx && re.test(t)) { vidStage(j, i); break; }
+    let frac = null, m;
+    if ((m = /(\d{1,3})%\|/.exec(t))) frac = Math.min(1, +m[1] / 100);
+    const nm = /\b(\d+)\s*\/\s*(\d+)\s*\[/.exec(t) || /\bstep\s+(\d+)\s*(?:\/|of)\s*(\d+)/.exec(t);
+    if (nm && +nm[2] >= 2 && +nm[2] <= 5000 && +nm[1] <= +nm[2]) { frac = +nm[1] / +nm[2]; if (j.stageIdx !== 1 || !/(fetch|download|file)/.test(t)) { j.step = +nm[1]; j.steps = +nm[2]; } }
+    if (frac != null) { if (j.stageIdx === 0) vidStage(j, /(fetch|download|file)/.test(t) ? 1 : 3); else if (j.stageIdx < 3 && !/(fetch|download|file|load)/.test(t)) vidStage(j, 3); const [, base, width] = VSTAGES[j.stageIdx]; j.parsed = Math.max(j.parsed || 0, base + width * frac); }
+  }
+}
+function vidRec(j) {
+  try { const secs = (Date.now() - j.runStart) / 1000, a = vstats(); a.push({ q: j.q, px: j.w * j.h, frames: j.frames, secs: Math.round(secs) }); fs.writeFileSync(VSTATS, JSON.stringify(a.slice(-20)) + '\n'); } catch {}
+}
 // Local video with LTX-2.5 (MLX; 2.3 fallback). Text-to-video, or image-to-video when a start image is given.
-function genVid(prompt, imgBuf, w, hgt, sec, up, q) {
+function genVid(prompt, imgBuf, w, hgt, sec, up, q, job) {
   sec = Math.max(2, Math.min(60, Math.round(+sec || 2)));
   const c = vidCfg(); if (!c || !c.cmd) return Promise.reject(Object.assign(new Error('local video not installed'), { code: 501 }));
   if (VIDQ >= 2) return Promise.reject(Object.assign(new Error('video queue full'), { code: 429 }));
-  VIDQ++;
+  VIDQ++; job = job || vidJob(w, hgt, sec, q, up); VIDJOBS.push(job);
   const run = async () => {
-    await unloadLLM();
+    job.runStart = Date.now(); job.stage = 'Freeing memory (unloading the chat model)'; await unloadLLM(); job.stage = 'Starting the engine';
     const id = Date.now() + crypto.randomBytes(3).toString('hex'), out = path.join(IMGDIR, 'v' + id + '.mp4'), inp = path.join(IMGDIR, 'v' + id + '.png');
     const F = Object.assign({ prompt: '-p', out: '-o', h: '-H', w: '-W', img: '--image', frames: null, fps: null }, c.flags || {});
     const MODE = (c.modes && c.modes[q]) || null;   // quality tiers: fast = distilled; hq / best use the dev model with guidance (slower, cleaner)
@@ -235,14 +275,14 @@ function genVid(prompt, imgBuf, w, hgt, sec, up, q) {
     if (imgBuf && F.img) { fs.writeFileSync(inp, imgBuf); args = args.concat([F.img, inp]); }
     return await new Promise((resolve, reject) => {
       const cp = require('child_process').spawn(c.cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PATH: process.env.PATH + ':' + os.homedir() + '/.local/bin:/opt/homebrew/bin:/usr/local/bin' } });
-      let err = ''; cp.stderr.on('data', (d) => { err = (err + d).slice(-1500); }); cp.stdout.on('data', () => {});
+      let err = ''; cp.stderr.on('data', (d) => { err = (err + d).slice(-1500); vidFeed(job, d); }); cp.stdout.on('data', (d) => vidFeed(job, d));
       const to = setTimeout(() => { try { cp.kill('SIGKILL'); } catch {} }, Math.min(14400000, (1500000 + sec * 240000) * (MODE ? (q === 'best' ? 4 : 3) : 1)));
       const clean = () => { try { fs.unlinkSync(inp); } catch {} try { fs.unlinkSync(out); } catch {} };
       cp.on('error', (e) => { clearTimeout(to); clean(); reject(e); });
-      cp.on('close', (code) => { clearTimeout(to); try { const b = fs.readFileSync(out); clean(); if (b.length > 5000) { if (!up) { clean(); return resolve(b); } const o2 = out + '.hd.mp4'; const ff = require('child_process').spawn('ffmpeg', ['-y', '-i', out, '-vf', 'scale=-2:1080:flags=lanczos,unsharp=5:5:0.9:3:3:0.4', '-c:v', 'libx264', '-crf', '17', '-preset', 'medium', '-pix_fmt', 'yuv420p', '-c:a', 'copy', o2], { stdio: 'ignore', env: { ...process.env, PATH: process.env.PATH + ':/opt/homebrew/bin:/usr/local/bin' } }); ff.on('close', () => { let r = b; try { const hd = fs.readFileSync(o2); if (hd.length > 5000) r = hd; } catch {} try { fs.unlinkSync(o2); } catch {} clean(); resolve(r); }); ff.on('error', () => { clean(); resolve(b); }); return; } } catch {} clean(); reject(new Error('video run failed (' + code + '): ' + err.split('\n').slice(-3).join(' ').slice(0, 300))); });
+      cp.on('close', (code) => { clearTimeout(to); try { const b = fs.readFileSync(out); clean(); if (b.length > 5000) { vidRec(job); if (!up) { clean(); return resolve(b); } const o2 = out + '.hd.mp4'; vidStage(job, 8); const ff = require('child_process').spawn('ffmpeg', ['-y', '-i', out, '-vf', 'scale=-2:1080:flags=lanczos,unsharp=5:5:0.9:3:3:0.4', '-c:v', 'libx264', '-crf', '17', '-preset', 'medium', '-pix_fmt', 'yuv420p', '-c:a', 'copy', o2], { stdio: 'ignore', env: { ...process.env, PATH: process.env.PATH + ':/opt/homebrew/bin:/usr/local/bin' } }); ff.on('close', () => { let r = b; try { const hd = fs.readFileSync(o2); if (hd.length > 5000) r = hd; } catch {} try { fs.unlinkSync(o2); } catch {} clean(); resolve(r); }); ff.on('error', () => { clean(); resolve(b); }); return; } } catch {} clean(); reject(new Error('video run failed (' + code + '): ' + err.split('\n').slice(-3).join(' ').slice(0, 300))); });
     });
   };
-  const p = IMGBUSY.then(run, run); IMGBUSY = p.catch(() => {}); return p.finally(() => { VIDQ--; });
+  const p = IMGBUSY.then(run, run); IMGBUSY = p.catch(() => {}); return p.finally(() => { VIDQ--; job.done = true; const i = VIDJOBS.indexOf(job); if (i >= 0) VIDJOBS.splice(i, 1); });
 }
 function genImg(prompt, hq, w, hgt) {
   const c = imgCfg(); if (!c || !c.cmd) return Promise.reject(Object.assign(new Error('image model not installed'), { code: 501 }));
@@ -400,7 +440,7 @@ const SRV = http.createServer(async (req, res) => {
       }
       const ic = rd('.aix-image'), vc = rd('.aix-video'), run = (k) => !!(global.__INST[k] && global.__INST[k].exitCode === null);
       let freeGb = null; try { const d = require('child_process').execSync('df -k /', { encoding: 'utf8', timeout: 3000 }).trim().split('\n').pop().split(/\s+/); freeGb = Math.round(+d[3] / 1048576); } catch {}
-      return J(res, h, 200, { version: VERSION, freeGb, unload: process.env.AIX_UNLOAD !== '0', queue: { image: IMGQ, video: VIDQ },
+      return J(res, h, 200, { version: VERSION, freeGb, unload: process.env.AIX_UNLOAD !== '0', queue: { image: IMGQ, video: VIDQ }, job: VIDJOBS.length ? vidSnap(VIDJOBS[0]) : null,
         image: { ready: imgReady(), cmd: ic && ic.cmd, label: ic && (ic.label || ic.model) || null, steps: ic && ic.steps, stepsHq: ic && ic.stepsHq, installing: run('image'), log: tail('image-install.log') || tail('image-install-console.log') },
         video: { ready: vidReady(), label: vc && vc.label || null, modes: vc && vc.modes || {}, nframes: vc && vc.nframes, fps: vc && vc.fps, imageFlag: !!(vc && vc.flags && vc.flags.img), installing: run('video'), log: tail('video-install.log') || tail('video-install-console.log') } });
     }
@@ -429,8 +469,9 @@ const SRV = http.createServer(async (req, res) => {
       if (!vidReady()) return J(res, h, 501, { error: 'local video not installed' });
       const m = /^data:image\/[\w+.-]+;base64,(.+)$/.exec(String(b.image || '')), ib = m ? Buffer.from(m[1], 'base64') : null;
       const dm = (v, d) => Math.max(256, Math.min(1280, Math.round((+v || d) / 64) * 64));
-      res.writeHead(200, { ...h, 'content-type': 'application/json' }); const hb = setInterval(() => { try { res.write(' '); } catch {} }, 20000);
-      try { const mp4 = await genVid(pr, ib, dm(b.w, 768), dm(b.h, 512), b.sec, !!b.up, String(b.q || 'fast')); clearInterval(hb); res.end(JSON.stringify({ video: 'data:video/mp4;base64,' + mp4.toString('base64'), model: ((vidCfg() || {}).label || 'ltx').toLowerCase().replace(/\s+/g, '-') })); }
+      const VW = dm(b.w, 768), VH = dm(b.h, 512), VQ = String(b.q || 'fast'), job = vidJob(VW, VH, b.sec, VQ, !!b.up);
+      res.writeHead(200, { ...h, 'content-type': 'application/x-ndjson' }); const send = (o) => { try { res.write(JSON.stringify(o) + '\n'); } catch {} }; send({ p: vidSnap(job) }); const hb = setInterval(() => send({ p: vidSnap(job) }), 2000);
+      try { const mp4 = await genVid(pr, ib, VW, VH, b.sec, !!b.up, VQ, job); clearInterval(hb); send({ p: { ...vidSnap(job), pct: 100, stage: 'Done', eta: 0 } }); res.end(JSON.stringify({ video: 'data:video/mp4;base64,' + mp4.toString('base64'), model: ((vidCfg() || {}).label || 'ltx').toLowerCase().replace(/\s+/g, '-'), secs: Math.round((Date.now() - job.runStart) / 1000), frames: job.frames })); }
       catch (e) { clearInterval(hb); res.end(JSON.stringify({ error: String(e.message || e).slice(0, 300), code: e.code || 502 })); }
       return;
     }

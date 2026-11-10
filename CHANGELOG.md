@@ -1,5 +1,11 @@
 # AIX Alpha v3.0 - revision 8
 
+## Live video progress, time left and render data (node v39)
+- Video replies in chat now show a live card while the clip renders: stage (loading, reading prompt, drawing, refining, decoding, sound, writing, upscale), percent bar, time elapsed, time left and finish clock time, clip data (length, frames, fps, size, quality), step count and free Mac RAM.
+- The node learns real timings (`.aix-vidstats.json`): the first estimate is rough and labelled so, later ones get exact.
+- Finished clips say how long they took, credits used, balance and the prompt actually used; failures show a plain-language tip.
+- Old nodes or the artifact still work: the card just shows elapsed time.
+
 ## Node control Media tab, MASTER update, artifact sign-in note (node v38)
 - New **Media (image + video)** tab in the node control panel: status of Qwen-Image 2.1 and LTX-2.5, install/repair buttons with live log, turn on/off, quality tiers found, image-to-video support, clip frame count, queue, disk free, prices and limits. Backed by new `/admin/media` endpoints on the node. `node-control.html` is refreshed to the same panel.
 - `AIX MASTER.command` gains a media step: reports both engines, offers to install a missing one (checks free disk first), prints the failing log lines if a test does not pass.

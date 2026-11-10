@@ -1510,7 +1510,7 @@ function renderMsgs(){spVis();
   box.innerHTML=c.msgs.map((m,i)=>m.ask?askCardHtml(m,i):m.role==='user'?`<div class="msg u${m.pin?' pinned':''}" data-m="${i}">${mtools(i,'user')}<div class="who mono"><b>OPERATOR</b></div><div class="body">${md(m.content.replace(/\n*\[Attached file: ([^\]]+)\]\n```[\s\S]*?```/g,'\n📎 $1'))}</div></div>`:
    `<div class="msg${m.pin?' pinned':''}" data-m="${i}">${mtools(i,'assistant')}<div class="who mono"><b>${esc((personas().find(p=>p.id===m.pid)||PRESETS[0]).name)}</b><span class="chip">${m.kind==='video'?'VIDEO · BETA':m.aid||m.imgurl?'IMAGE':m.t&&!m.t.calls?'LOCAL · 0 TOKENS':'AIX ENGINE'}</span></div>
    ${m.t?`${actHtml(m.t.protocol,{dur:m.dur,open:!!m.t.app})}${chipsHtml(m.t)}${m.t.app?buildDetails(m):''}`:''}
-   <div class="body">${m.err?`<span style="color:var(--r)">${esc(m.content)}</span>`:md(m.content)}</div>${m.mesh?`<div class="mv" data-mesh="${i}"></div>`:''}${m.agent?agentCard(m,i):''}${m.doc?docCard(m.doc):''}${m.kind==='video'&&ASSET[m.aid]?`<div class="gimg"><video src="${ASSET[m.aid]}" controls autoplay loop muted playsinline style="max-width:100%;border-radius:12px;display:block;margin:8px 0"></video><a class="btn2" download="aix-video.mp4" href="${ASSET[m.aid]}">Save video</a></div>`:(m.aid&&ASSET[m.aid])||m.imgurl?`<div class="gimg"><img src="${m.imgurl||ASSET[m.aid]}" alt="generated image" onerror="imgFail(this)" style="max-width:100%;border-radius:12px;display:block;margin:8px 0"><a class="btn2" href="#" data-sj="${m.aid&&ASSET[m.aid]?m.aid:esc(m.imgurl||'')}" data-nm="aix-image">Save image (JPEG)</a></div>`:''}${m.ui==='connect'?'<div class="ccwrap">'+connectCardsHtml()+'</div>':''}${PVHTML(m,i)}</div>`).join('');
+   <div class="body">${m.err?`<span style="color:var(--r)">${esc(m.content)}</span>`:md(m.content)}</div>${m.vprog?vpHtml(m):''}${m.mesh?`<div class="mv" data-mesh="${i}"></div>`:''}${m.agent?agentCard(m,i):''}${m.doc?docCard(m.doc):''}${m.kind==='video'&&ASSET[m.aid]?`<div class="gimg"><video src="${ASSET[m.aid]}" controls autoplay loop muted playsinline style="max-width:100%;border-radius:12px;display:block;margin:8px 0"></video><a class="btn2" download="aix-video.mp4" href="${ASSET[m.aid]}">Save video</a></div>`:(m.aid&&ASSET[m.aid])||m.imgurl?`<div class="gimg"><img src="${m.imgurl||ASSET[m.aid]}" alt="generated image" onerror="imgFail(this)" style="max-width:100%;border-radius:12px;display:block;margin:8px 0"><a class="btn2" href="#" data-sj="${m.aid&&ASSET[m.aid]?m.aid:esc(m.imgurl||'')}" data-nm="aix-image">Save image (JPEG)</a></div>`:''}${m.ui==='connect'?'<div class="ccwrap">'+connectCardsHtml()+'</div>':''}${PVHTML(m,i)}</div>`).join('');
   {const pins=c.msgs.map((m,i)=>({m,i})).filter(x=>x.m.pin);if(pins.length)box.insertAdjacentHTML('afterbegin',`<div class="pinstrip"><b class="mono">📌 PINNED</b>${pins.map(x=>`<button data-pj="${x.i}">${esc(stripAtt(String(x.m.content||'')).replace(/\s+/g,' ').slice(0,42)||'message')}</button>`).join('')}</div>`)}
   box.querySelectorAll('[data-mesh]').forEach(el=>mountMesh(el,c.msgs[+el.dataset.mesh].mesh));
   box.querySelectorAll('[data-inpv]').forEach(el=>{el.srcdoc=extractHtml(c.msgs[+el.dataset.inpv].content)||''});
@@ -4638,11 +4638,37 @@ const vidAsp=()=>VID_ASP.find(a=>a.id===S.vasp)||VID_ASP[0];
 const vidSec=()=>VID_DURS.includes(+S.vdur)?+S.vdur:2;
 const vidLbl=sec=>sec>=60?(sec/60)+' min':sec+' s';
 function vidOpts(){const d=$('#vdur'),a=$('#vasp');if(!d||!a)return;if(!d.options.length){d.innerHTML=VID_DURS.map(x=>`<option value="${x}">${vidLbl(x)} · ${vidCost(x)} cr</option>`).join('');a.innerHTML=VID_ASP.map(x=>`<option value="${x.id}">${x.label}</option>`).join('');d.onchange=e=>{S.vdur=+e.target.value;setTimeout(vidOpts,0);store.set('aix3_vdur',S.vdur);toast('Video length: '+vidLbl(S.vdur)+' · '+vidCost(S.vdur)+' credits'+(S.vdur>10?' · long clips can take an hour or more and may run out of memory':''))};a.onchange=e=>{S.vasp=e.target.value;setTimeout(vidOpts,0);store.set('aix3_vasp',S.vasp);toast('Video shape: '+vidAsp().label)}}const vq=$('#vq');if(vq){vq.value=S.vq||'hq';vq.onchange=e=>{S.vq=e.target.value;store.set('aix3_vq',S.vq);toast({fast:'Fast: quick draft quality',hq:'Better: cleaner, more detailed, about 3x slower',best:'Best: highest quality, about 4x slower'}[S.vq])}}const ve=$('#venh');if(ve){ve.checked=S.venh!==false;ve.onchange=e=>{S.venh=e.target.checked;store.set('aix3_venh',S.venh)}}const u=$('#vup');if(u){u.checked=!!S.vup;u.onchange=e=>{S.vup=e.target.checked;store.set('aix3_vup',S.vup);toast(S.vup?'Clips are sharpened and upscaled to 1080p after rendering':'Upscale off: clips stay at the rendered size')}}d.value=String(vidSec());a.value=vidAsp().id;const on=!!S.vid,r=$('#vidrow');if(r)r.style.display=on?'flex':'none';const vc=$('#vcost');if(vc)vc.textContent=vidSec()+' s · '+vidCost(vidSec())+' credits'+(vidSec()>2?' · needs the Mac node':'')}
-async function videoCall(imgDataUrl,prompt){
+const fmtClk=s=>{s=Math.max(0,Math.round(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return h?h+':'+String(m).padStart(2,'0')+':'+String(x).padStart(2,'0'):m+':'+String(x).padStart(2,'0')};
+const fmtWords=s=>{s=Math.round(s);if(s<45)return s+' s';const m=Math.round(s/60);if(m<90)return m+' min';return (s/3600).toFixed(1)+' h'};
+function vpInner(m){const v=m.vprog,sn=v.snap,now=Date.now(),el=(now-v.t0)/1000,pl=v.plan;
+  const pct=sn&&sn.pct!=null?Math.min(99.9,sn.pct):null;
+  let left=null,est=false;if(sn&&sn.eta!=null){left=Math.max(0,sn.eta-(now-sn.at)/1000);est=!!sn.etaEst}
+  const stage=sn?sn.stage:(v.sent?'Waiting for the server…':'Sending your request…');
+  const chips=[];const q={fast:'Fast',hq:'Better',best:'Best'}[pl.q]||pl.q;
+  chips.push(pl.sec+' s'+(sn&&sn.frames?' · '+sn.frames+' frames @ '+(sn.fps||24)+' fps':''));chips.push(pl.w+'×'+pl.h+(pl.up?' → 1080p':''));chips.push(q+' quality');
+  if(sn&&sn.step)chips.push('step '+sn.step+'/'+sn.steps);if(sn&&sn.memFreeGb!=null)chips.push('Mac free RAM '+sn.memFreeGb+' GB');chips.push(pl.cost?pl.cost+' credits':'free (admin)');
+  const barW=pct==null?35:pct;
+  const tl=left!=null?('About '+fmtClk(left)+' left'+(est?' (first estimate, gets exact after your first render)':'')+' · done around '+new Date(now+left*1000).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})):(sn&&sn.run>0?'Taking longer than usual, still working…':'Estimating the time…');
+  return `<div style="display:flex;justify-content:space-between;gap:8px;font:600 12px var(--mono,monospace);color:#6ee7b7"><span>🎬 ${esc(stage)}</span><span>${pct==null?'':pct.toFixed(0)+'%'}</span></div>
+  <div style="height:10px;border-radius:99px;background:#0b1f17;border:1px solid #065f46;margin:8px 0;overflow:hidden"><div style="height:100%;width:${barW}%;background:linear-gradient(90deg,#059669,#34d399);border-radius:99px;transition:width .8s ease;${pct==null?'animation:vpp 1.4s ease-in-out infinite alternate;':''}"></div></div>
+  <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;font:11.5px var(--mono,monospace);color:var(--m)"><span>Elapsed ${fmtClk(el)}</span><span>${tl}</span></div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${chips.map(c=>`<span style="font:10.5px var(--mono,monospace);padding:2px 8px;border-radius:99px;border:1px solid var(--b);color:var(--m)">${esc(c)}</span>`).join('')}</div>`}
+function vpHtml(m){return `<div data-vp="${m.vprog.id}" style="margin:8px 0;padding:12px;border:1px solid #065f46;border-radius:12px;background:#06281d">${vpInner(m)}</div><style>@keyframes vpp{from{margin-left:0}to{margin-left:65%}}</style>`}
+function vpPaint(m){document.querySelectorAll('[data-vp="'+m.vprog.id+'"]').forEach(el=>{el.innerHTML=vpInner(m)})}
+function vidTip(msg){msg=String(msg||'');
+  if(/memory|oom|killed|sigkill|code 137|\(-9\)|\(137\)/i.test(msg))return 'The Mac probably ran out of memory. Try a shorter clip, Fast quality, or Landscape 768×512, and close other big apps.';
+  if(/timeout|timed out|abort/i.test(msg))return 'The render took longer than the allowed time. Try a shorter clip or Fast quality.';
+  if(/offline|not installed|busy|could not render|node answered/i.test(msg))return 'The AIX Mac node did not finish this clip. Open the node control panel, Media tab, to check the video engine, then try a shorter clip.';
+  if(/credit/i.test(msg))return 'Credits are charged first and refunded automatically when a render fails.';
+  return ''}
+async function videoCall(imgDataUrl,prompt,onP){
   if(!BACKEND())throw new Error('AI video needs the AIX server (use the GitHub site).');
   const tok=store.get(TOKK,'');if(!tok){setTimeout(()=>{try{openAccount('Sign in to generate video. A '+vidLbl(vidSec())+' clip costs '+vidCost(vidSec())+' credits.')}catch{}},200);throw new Error('Sign in to generate video ('+vidCost(vidSec())+' credits for this clip).')}
-  const r=await fetch(BACKEND()+'/api/video',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+tok},body:JSON.stringify({prompt,image:imgDataUrl,sec:vidSec(),w:vidAsp().w,h:vidAsp().h,up:!!S.vup,q:S.vq||'fast',enh:S.venh!==false})});
-  const j=await r.json().catch(()=>({}));
+  const r=await fetch(BACKEND()+'/api/video',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+tok},body:JSON.stringify({prompt,image:imgDataUrl,sec:vidSec(),w:vidAsp().w,h:vidAsp().h,up:!!S.vup,q:S.vq||'fast',enh:S.venh!==false,prog:true})});
+  let j;
+  if(r.ok&&r.body&&r.body.getReader){const rd=r.body.getReader(),dec=new TextDecoder();let buf='',last=null;const eat=ln=>{ln=ln.trim();if(!ln)return;try{const o=JSON.parse(ln);if(o&&o.p){if(onP)onP(o.p)}else last=o}catch{}};
+    for(;;){const {done,value}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;while((i=buf.indexOf('\n'))>=0){eat(buf.slice(0,i));buf=buf.slice(i+1)}}eat(buf);j=last||{}}
+  else j=await r.json().catch(()=>({}));
   if(r.status===402){BAL=0;try{setStatus()}catch{}setTimeout(()=>{try{openCredits('This clip costs '+vidCost(vidSec())+' credits. Add credits to continue.')}catch{}},200);throw new Error(j.error||'Out of credits.')}
   if(r.status===401){setTimeout(()=>{try{openAccount('Your session expired. Sign in again.')}catch{}},200);throw new Error('Please sign in again.')}
   if(!r.ok||!j.video){const e=new Error(j.error||('Video failed ('+r.status+')'));e.needImage=!!j.needImage;throw e}
@@ -4672,19 +4698,27 @@ function lastChatImage(c){for(let i=c.msgs.length-1,n=0;i>=0&&n<8;i--,n++){const
 const VIDREF=/\b(this|that|the|above|previous|last|same)\s+(picture|image|photo|pic|art|artwork|scene)\b|\banimate\b/i;
 async function chatVideo(c,text,blob){
   const subj=text.replace(VIDINTENT,'').replace(/^\s*(of|for|showing|with|that shows)\s+/i,'').trim()||text;
-  const t0=Date.now(),ph={role:'assistant',content:blob?'Animating your image with LTX-2.5 on the AIX node (or the free GPU queue if it is offline)… this can take several minutes.':'Step 1: making the start image, then Step 2: animating it on the free GPU queue. This can take a few minutes.',ts:Date.now()};
+  const t0=Date.now(),sec=vidSec(),asp=vidAsp(),ph={role:'assistant',content:'',ts:t0};
+  ph.vprog={id:'vp'+t0,t0,snap:null,sent:false,plan:{sec,w:asp.w,h:asp.h,q:S.vq||'fast',up:!!S.vup,cost:OWNF()?0:vidCost(sec)}};
   c.msgs.push(ph);renderMsgs();let spent=0;
+  const tick=setInterval(()=>{try{vpPaint(ph)}catch{}},1000);
+  const onP=p=>{ph.vprog.snap=Object.assign({},p,{at:Date.now()});vpPaint(ph)};
+  const say=t=>{ph.content=t;renderMsgs()};
   try{let start;
     let v=null;
     let prev=null;if(!blob&&VIDREF.test(text))prev=lastChatImage(c);
     if(blob)start=await readDU(blob);
-    else if(prev){start=prev.startsWith('data:')?prev:await readDU(await (await fetch(prev)).blob());ph.content='Animating the picture above with LTX-2.5 on the AIX node (or the free GPU queue if it is offline)… this can take several minutes.';renderMsgs()}
-    else{try{ph.content='Rendering your video (text-to-video with LTX-2.5 on the AIX node). This can take several minutes.';renderMsgs();v=await videoCall(null,subj)}catch(e){if(!e.needImage)throw e}
-      if(!v){ph.content='Step 1: making the start image, then Step 2: animating it. This can take a few minutes.';renderMsgs();const j=await imgCall(subj+', highly detailed, cinematic',S.imgm||'qwen');start=j.image;spent+=j.spentCredits||0}}
-    if(!v)v=await videoCall(await fitJpeg(start),subj);spent+=v.spentCredits||0;
+    else if(prev){start=prev.startsWith('data:')?prev:await readDU(await (await fetch(prev)).blob());say('Animating the picture above. I keep its look and add the motion you described.')}
+    else{try{say('No start picture, so this is text-to-video: LTX-2.5 draws every frame from your words.');ph.vprog.sent=true;v=await videoCall(null,subj,onP)}catch(e){if(!e.needImage)throw e}
+      if(!v){say('The Mac node is not available for text-to-video, so I am making a start image first, then animating it on the free cloud queue (about 2 s).');const j=await imgCall(subj+', highly detailed, cinematic',S.imgm||'qwen');start=j.image;spent+=j.spentCredits||0}}
+    if(!v){ph.vprog.sent=true;v=await videoCall(await fitJpeg(start),subj,onP)}spent+=v.spentCredits||0;
     const id='a'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);ASSET[id]=v.video;aput(id,v.video);
-    Object.assign(ph,{content:`Here's your video: **${subj}**\n\n${spent?spent+' credits used':'Admin: 0 credits'}${v.credits!=null?' · balance '+v.credits+' cr':''} · stored on this device`,aid:id,kind:'video',dur:Date.now()-t0})
-  }catch(e){Object.assign(ph,{content:(e.message||String(e))+(spent?' (the start image cost '+spent+' credit'+(spent>1?'s':'')+'; the video step was not charged)':''),err:1,dur:Date.now()-t0})}}
+    const took=(Date.now()-t0)/1000,pl=ph.vprog.plan,qn={fast:'Fast',hq:'Better',best:'Best'}[pl.q]||pl.q;
+    const used=v.prompt&&v.prompt.trim()!==subj.trim()?`\n\n*Prompt used: ${v.prompt.replace(/\*/g,'').slice(0,320)}${v.prompt.length>320?'…':''}*`:'';
+    delete ph.vprog;
+    Object.assign(ph,{content:`Here's your video: **${subj}**\n\n${pl.sec} s · ${pl.w}×${pl.h}${pl.up?' → 1080p':''} · ${qn} quality · made in ${fmtWords(took)} · ${spent?spent+' credits used':'Admin: 0 credits'}${v.credits!=null?' · balance '+v.credits+' cr':''} · stored on this device${used}`,aid:id,kind:'video',dur:Date.now()-t0})
+  }catch(e){const tip=vidTip(e.message);delete ph.vprog;Object.assign(ph,{content:(e.message||String(e))+(tip?'\n\n'+tip:'')+(spent?'\n\n(The start image cost '+spent+' credit'+(spent>1?'s':'')+'; the video step was not charged.)':''),err:1,dur:Date.now()-t0})}
+  finally{clearInterval(tick)}}
 /* ===== Studio assets: 3D (STL/OBJ/FBX) viewer with stylized materials, PDF + text export ===== */
 const BINX=/\.(stl|obj|fbx|pdf|png|jpe?g|webp|gif|webm|mp4)$/i;
 const readDU=f=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(f)});
