@@ -1084,6 +1084,19 @@ async function refCode(env, email) {
   throw new Error('could not make a referral code');
 }
 const devId = (req) => String(req.headers.get('x-device') || '').replace(/[^\w-]/g, '').slice(0, 64);
+const SIGNUP_FREE = 3;
+const BAD_MAIL = /@(mailinator|guerrillamail|10minutemail|tempmail|temp-mail|yopmail|trashmail|sharklasers|getnada|dispostable|maildrop|throwawaymail|fakeinbox|mintemail|emailondeck|moakt|mohmal|tempail|burnermail|spamgourmet|mailnesia)\./i;
+async function signupBonus(env, req, id) {
+  try {
+    await env.DB.prepare('CREATE TABLE IF NOT EXISTS signup_bonus(id TEXT PRIMARY KEY, dev TEXT, ip TEXT, at INTEGER)').run();
+    const dev = devId(req), ip = req.headers.get('cf-connecting-ip') || '', since = Date.now() - 30 * 864e5;
+    if (!dev && !ip) return 0;
+    if (dev && await env.DB.prepare('SELECT 1 AS x FROM signup_bonus WHERE dev=?').bind(dev).first()) return 0;
+    if (ip && await env.DB.prepare('SELECT 1 AS x FROM signup_bonus WHERE ip=? AND at>?').bind(ip, since).first()) return 0;
+    await env.DB.prepare('INSERT OR IGNORE INTO signup_bonus(id,dev,ip,at) VALUES(?,?,?,?)').bind(id, dev || null, ip || null, Date.now()).run();
+    return SIGNUP_FREE;
+  } catch (e) { return 0; }
+}
 async function logDev(env, req, email) {
   const dev = devId(req), ip = req.headers.get('cf-connecting-ip') || 'unknown';
   if (!dev && ip === 'unknown') return;
@@ -2062,23 +2075,24 @@ export default {
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json(env, req, { error: 'valid email required' }, 400);
       if (await getUser(env, email)) return json(env, req, { error: 'account exists; use your saved token' }, 409);
       const token = 'aix_' + [...crypto.getRandomValues(new Uint8Array(24))].map((x) => x.toString(16).padStart(2, '0')).join('');
-      const a = { email, credits: Number(env.SIGNUP_CREDITS || 0), tokens: 0, requests: 0 };
+      const a = { email, credits: await signupBonus(env, req, email), tokens: 0, requests: 0 };
       await env.DB.prepare('INSERT INTO users(email,token_hash,credits,tokens,requests,created,last) VALUES(?,?,?,?,0,?,?)').bind(email, await sha(token), a.credits, 0, new Date().toISOString(), '').run();
       return json(env, req, { token, account: vw(env, a) });
     }
     if (path === '/api/account/register' && req.method === 'POST') {
       { const pz = await pausedResp(env, req, null, 'signup'); if (pz) return pz; }
       const b = await req.json().catch(() => ({})); const un = normId(b.username), pw = String(b.password || '');
-      if (!validId(un)) return json(env, req, { error: 'Enter a valid email, or a username of 3-24 letters, numbers, _ . -' }, 400);
+      if (!un.includes('@') || !validId(un)) return json(env, req, { error: 'Enter a valid email address to create an account.' }, 400);
+      if (BAD_MAIL.test(un)) return json(env, req, { error: 'Temporary or disposable email addresses are not accepted. Use your real email.' }, 400);
       if (pw.length < 6) return json(env, req, { error: 'Password must be at least 6 characters' }, 400);
-      if (await env.DB.prepare('SELECT 1 AS x FROM users WHERE username=?').bind(un).first()) return json(env, req, { error: 'That email/username already has an account. Sign in instead.' }, 409);
+      if (await env.DB.prepare('SELECT 1 AS x FROM users WHERE username=? OR lower(email)=?').bind(un, un).first()) return json(env, req, { error: 'That email already has an account (Gmail dots and +tags count as the same address). Sign in instead.' }, 409);
       const salt = hex(crypto.getRandomValues(new Uint8Array(16))), ph = await pbk(pw, salt), cur = await authed(env, req);
-      let email;
+      let email, bonus = 0;
       if (cur && !cur.username) { email = cur.email; await env.DB.prepare('UPDATE users SET username=?,pw_hash=?,pw_salt=? WHERE email=?').bind(un, ph, salt, email).run(); }   // upgrade the guest in place: credits stay
-      else { email = un + '@user.aix'; await env.DB.prepare('INSERT INTO users(email,token_hash,credits,tokens,requests,created,last,username,pw_hash,pw_salt) VALUES(?,?,?,0,0,?,?,?,?,?)').bind(email, await sha(newToken()), Number(env.SIGNUP_CREDITS || 0), new Date().toISOString(), '', un, ph, salt).run(); }
+      else { email = un + '@user.aix'; bonus = await signupBonus(env, req, un); await env.DB.prepare('INSERT INTO users(email,token_hash,credits,tokens,requests,created,last,username,pw_hash,pw_salt) VALUES(?,?,?,0,0,?,?,?,?,?)').bind(email, await sha(newToken()), bonus, new Date().toISOString(), '', un, ph, salt).run(); }
       const token = await startSession(env, email);
       try { await ensureRef(env); await logDev(env, req, email); } catch (e) {}
-      return json(env, req, { token, account: vw(env, await getUser(env, email)) });
+      return json(env, req, { token, bonus, bonusNote: bonus ? '' : 'No free credits this time: a free signup bonus was already used from this device or network.', account: vw(env, await getUser(env, email)) });
     }
     if (path === '/api/account/login' && req.method === 'POST') {
       const b = await req.json().catch(() => ({})); const un = normId(b.username);

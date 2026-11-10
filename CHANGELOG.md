@@ -1,5 +1,11 @@
 # AIX Alpha v3.0 - revision 8
 
+## Sign-up: 3 free credits, real email required, no duplicates or piggybacking
+- Every new account gets 3 free credits (was 1, set by a server setting). Creating an account now requires a valid email address; usernames still work to sign in for existing accounts.
+- No duplicates: emails are compared in canonical form, so `Name+tag@gmail.com`, `n.a.m.e@gmail.com` and `googlemail.com` count as the same address as `name@gmail.com`; an email that already has an account is refused.
+- No piggybacking: the 3 free credits are given once per device and once per network (IP) per 30 days; further accounts from the same device or network can still be created but get 0 free credits, and the app says why. Disposable email domains (mailinator, yopmail and similar) are rejected. The sign-up form now sends the device id so the device check works.
+- Note: emails are not verified by a confirmation link yet (needs an email-sending service).
+
 ## Video limits: 8 s for everyone, longer needs Enterprise; one clip at a time
 - Lengths over 8 seconds (10 s up to 1 min) are shown greyed out with a lock and "Enterprise only" until the account has an active Enterprise membership (owner/admin always unlocked). A notice with a "Get Enterprise" button sits next to the Length menu; a saved longer length falls back to 8 s.
 - The server enforces it too (403 "needs an Enterprise membership"), so it cannot be bypassed from the console.
