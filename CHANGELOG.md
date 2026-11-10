@@ -1,5 +1,11 @@
 # AIX Alpha v3.0 - revision 8
 
+## Video queue fix: stuck "Waiting in line" (node v40)
+- Cause: an older engine process (left running after a node auto-restart, or a render whose app tab was closed) kept the queue and all the RAM, so new clips waited behind it forever.
+- The node now stops stray engines on start, cancels a render when the app disconnects (the worker passes that through), drops older queued clips from the same user, and restarts an engine that is silent for 20 minutes. Hard time limit cut from 3.3 h to 3 h max.
+- Real RAM reading (macOS vm_stat) instead of the misleading 0.1 GB; waiting card shows the progress of the render ahead.
+- Cancel render button on the card and "Cancel all video renders and stop stuck engines" in the Media tab.
+
 ## Live video progress, time left and render data (node v39)
 - Video replies in chat now show a live card while the clip renders: stage (loading, reading prompt, drawing, refining, decoding, sound, writing, upscale), percent bar, time elapsed, time left and finish clock time, clip data (length, frames, fps, size, quality), step count and free Mac RAM.
 - The node learns real timings (`.aix-vidstats.json`): the first estimate is rough and labelled so, later ones get exact.

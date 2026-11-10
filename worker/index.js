@@ -2319,8 +2319,8 @@ async function nodeVideo(env, prompt, image, w, h, sec, up, q, onP, info) {
       if (!r.ok) { if (info) info.err = 'node answered HTTP ' + r.status; continue; }
       // the node streams progress lines ({"p":{...}}) and then one final JSON object; an older node sends spaces and one JSON object
       const rd = r.body.getReader(), dec = new TextDecoder(); let buf = '', last = null;
-      const eat = (ln) => { ln = ln.trim(); if (!ln) return; try { const o = JSON.parse(ln); if (o && o.p) { if (onP) onP(o.p); } else last = o; } catch (e) { /* partial */ } };
-      for (;;) { const { done, value } = await rd.read(); if (done) break; buf += dec.decode(value, { stream: true }); let i; while ((i = buf.indexOf('\n')) >= 0) { eat(buf.slice(0, i)); buf = buf.slice(i + 1); } }
+      let left = false; const eat = (ln) => { ln = ln.trim(); if (!ln) return; try { const o = JSON.parse(ln); if (o && o.p) { if (onP && onP(o.p) === false) left = true; } else last = o; } catch (e) { /* partial */ } };
+      for (;;) { const { done, value } = await rd.read(); if (done) break; buf += dec.decode(value, { stream: true }); let i; while ((i = buf.indexOf('\n')) >= 0) { eat(buf.slice(0, i)); buf = buf.slice(i + 1); } if (left) { try { await rd.cancel(); } catch (e) { } break; } }   // the app closed: dropping the node connection makes the node stop the render
       eat(buf);
       if (last && last.video) { if (info) { info.secs = last.secs; info.frames = last.frames; info.model = last.model; } return last.video; }
       if (last && last.error && info) info.err = last.error;
@@ -2359,7 +2359,8 @@ async function video(env, req) {
   // local render can take minutes: answer at once and send a space every 15 s so no proxy times out; the JSON arrives at the end
   const { readable, writable } = new TransformStream(), w = writable.getWriter(), enc = new TextEncoder();
   const hb = setInterval(() => { w.write(enc.encode(' ')).catch(() => {}); }, 15000);
-  const emit = b.prog ? (p) => { w.write(enc.encode(JSON.stringify({ p }) + '\n')).catch(() => {}); } : null;   // progress lines only for apps that ask for them (b.prog)
+  let gone = false;
+  const emit = b.prog ? (p) => { if (gone) return false; w.write(enc.encode(JSON.stringify({ p }) + '\n')).catch(() => { gone = true; }); return true; } : null;   // progress lines only for apps that ask for them (b.prog)
   (async () => { let out; try { out = await finish(emit); } catch (e) { out = await fail(e); } clearInterval(hb); try { await w.write(enc.encode('\n' + JSON.stringify(out))); await w.close(); } catch {} })();
   const hd = json(env, req, {}).headers; return new Response(readable, { status: 200, headers: hd });
 }

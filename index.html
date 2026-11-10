@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head><meta http-equiv="Cache-Control" content="no-cache, must-revalidate"><script>/* freshness guard: if GitHub Pages / the browser served an old copy, reload the newest one once */
-window.APP_BUILD='2026-11-09-v38';
+window.APP_BUILD='2026-11-09-v39';
 (function(){try{if(!/^https?:$/.test(location.protocol)||/claude\.(ai|com)|claudeusercontent/.test(location.hostname))return;
 var K='aix_fresh_try',t=+sessionStorage.getItem(K)||0;if(t>1)return;
 fetch(location.pathname+'?_fresh='+Date.now(),{cache:'no-store'}).then(function(r){return r.text()}).then(function(x){var m=x.match(/APP_BUILD='([^']+)'/);if(m&&m[1]!==window.APP_BUILD&&m[1]>window.APP_BUILD){sessionStorage.setItem(K,String(t+1));location.replace(location.pathname+'?v='+encodeURIComponent(m[1])+'&t='+Date.now()+location.hash)}else sessionStorage.removeItem(K)}).catch(function(){})}catch(e){}})();
@@ -4646,28 +4646,29 @@ function vpInner(m){const v=m.vprog,sn=v.snap,now=Date.now(),el=(now-v.t0)/1000,
   const stage=sn?sn.stage:(v.sent?'Waiting for the server…':'Sending your request…');
   const chips=[];const q={fast:'Fast',hq:'Better',best:'Best'}[pl.q]||pl.q;
   chips.push(pl.sec+' s'+(sn&&sn.frames?' · '+sn.frames+' frames @ '+(sn.fps||24)+' fps':''));chips.push(pl.w+'×'+pl.h+(pl.up?' → 1080p':''));chips.push(q+' quality');
-  if(sn&&sn.step)chips.push('step '+sn.step+'/'+sn.steps);if(sn&&sn.memFreeGb!=null)chips.push('Mac free RAM '+sn.memFreeGb+' GB');chips.push(pl.cost?pl.cost+' credits':'free (admin)');
+  if(sn&&sn.step)chips.push('step '+sn.step+'/'+sn.steps);if(sn&&sn.memFreeGb!=null)chips.push('Mac RAM available '+sn.memFreeGb+' GB');chips.push(pl.cost?pl.cost+' credits':'free (admin)');
   const barW=pct==null?35:pct;
   const tl=left!=null?('About '+fmtClk(left)+' left'+(est?' (first estimate, gets exact after your first render)':'')+' · done around '+new Date(now+left*1000).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})):(sn&&sn.run>0?'Taking longer than usual, still working…':'Estimating the time…');
   return `<div style="display:flex;justify-content:space-between;gap:8px;font:600 12px var(--mono,monospace);color:#6ee7b7"><span>🎬 ${esc(stage)}</span><span>${pct==null?'':pct.toFixed(0)+'%'}</span></div>
   <div style="height:10px;border-radius:99px;background:#0b1f17;border:1px solid #065f46;margin:8px 0;overflow:hidden"><div style="height:100%;width:${barW}%;background:linear-gradient(90deg,#059669,#34d399);border-radius:99px;transition:width .8s ease;${pct==null?'animation:vpp 1.4s ease-in-out infinite alternate;':''}"></div></div>
   <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;font:11.5px var(--mono,monospace);color:var(--m)"><span>Elapsed ${fmtClk(el)}</span><span>${tl}</span></div>
-  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${chips.map(c=>`<span style="font:10.5px var(--mono,monospace);padding:2px 8px;border-radius:99px;border:1px solid var(--b);color:var(--m)">${esc(c)}</span>`).join('')}</div>`}
+  ${(sn&&/^Waiting/.test(sn.stage)&&el>150)?`<div style="margin-top:8px;font:11.5px var(--mono,monospace);color:#fbbf24">Another render is still using the Mac. Wait for it, or cancel and send again (the node now drops a render when you leave).</div>`:(sn&&sn.silent>300?`<div style="margin-top:8px;font:11.5px var(--mono,monospace);color:#fbbf24">No output from the engine for ${fmtClk(sn.silent)}. It is restarted automatically after 20 minutes of silence.</div>`:'')}<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center">${chips.map(c=>`<span style="font:10.5px var(--mono,monospace);padding:2px 8px;border-radius:99px;border:1px solid var(--b);color:var(--m)">${esc(c)}</span>`).join('')}<span style="flex:1"></span><button class="btn2" onclick="vpCancel()" style="font-size:11px;padding:3px 10px">Cancel render</button></div>`}
 function vpHtml(m){return `<div data-vp="${m.vprog.id}" style="margin:8px 0;padding:12px;border:1px solid #065f46;border-radius:12px;background:#06281d">${vpInner(m)}</div><style>@keyframes vpp{from{margin-left:0}to{margin-left:65%}}</style>`}
 function vpPaint(m){document.querySelectorAll('[data-vp="'+m.vprog.id+'"]').forEach(el=>{el.innerHTML=vpInner(m)})}
-function vidTip(msg){msg=String(msg||'');
+function vidTip(msg){msg=String(msg||'');if(/cancelled/i.test(msg))return '';
   if(/memory|oom|killed|sigkill|code 137|\(-9\)|\(137\)/i.test(msg))return 'The Mac probably ran out of memory. Try a shorter clip, Fast quality, or Landscape 768×512, and close other big apps.';
   if(/timeout|timed out|abort/i.test(msg))return 'The render took longer than the allowed time. Try a shorter clip or Fast quality.';
   if(/offline|not installed|busy|could not render|node answered/i.test(msg))return 'The AIX Mac node did not finish this clip. Open the node control panel, Media tab, to check the video engine, then try a shorter clip.';
   if(/credit/i.test(msg))return 'Credits are charged first and refunded automatically when a render fails.';
   return ''}
+let VIDAB=null;function vpCancel(){try{VIDAB&&VIDAB.abort()}catch{}}
 async function videoCall(imgDataUrl,prompt,onP){
   if(!BACKEND())throw new Error('AI video needs the AIX server (use the GitHub site).');
   const tok=store.get(TOKK,'');if(!tok){setTimeout(()=>{try{openAccount('Sign in to generate video. A '+vidLbl(vidSec())+' clip costs '+vidCost(vidSec())+' credits.')}catch{}},200);throw new Error('Sign in to generate video ('+vidCost(vidSec())+' credits for this clip).')}
-  const r=await fetch(BACKEND()+'/api/video',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+tok},body:JSON.stringify({prompt,image:imgDataUrl,sec:vidSec(),w:vidAsp().w,h:vidAsp().h,up:!!S.vup,q:S.vq||'fast',enh:S.venh!==false,prog:true})});
+  VIDAB=new AbortController();let r;try{r=await fetch(BACKEND()+'/api/video',{signal:VIDAB.signal,method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+tok},body:JSON.stringify({prompt,image:imgDataUrl,sec:vidSec(),w:vidAsp().w,h:vidAsp().h,up:!!S.vup,q:S.vq||'fast',enh:S.venh!==false,prog:true})})}catch(e){if(e&&e.name==='AbortError')throw new Error('Render cancelled');throw e}
   let j;
   if(r.ok&&r.body&&r.body.getReader){const rd=r.body.getReader(),dec=new TextDecoder();let buf='',last=null;const eat=ln=>{ln=ln.trim();if(!ln)return;try{const o=JSON.parse(ln);if(o&&o.p){if(onP)onP(o.p)}else last=o}catch{}};
-    for(;;){const {done,value}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;while((i=buf.indexOf('\n'))>=0){eat(buf.slice(0,i));buf=buf.slice(i+1)}}eat(buf);j=last||{}}
+    for(;;){let c;try{c=await rd.read()}catch(e){if(e&&e.name==='AbortError')throw new Error('Render cancelled');throw e}const {done,value}=c;if(done)break;buf+=dec.decode(value,{stream:true});let i;while((i=buf.indexOf('\n'))>=0){eat(buf.slice(0,i));buf=buf.slice(i+1)}}eat(buf);j=last||{}}
   else j=await r.json().catch(()=>({}));
   if(r.status===402){BAL=0;try{setStatus()}catch{}setTimeout(()=>{try{openCredits('This clip costs '+vidCost(vidSec())+' credits. Add credits to continue.')}catch{}},200);throw new Error(j.error||'Out of credits.')}
   if(r.status===401){setTimeout(()=>{try{openAccount('Your session expired. Sign in again.')}catch{}},200);throw new Error('Please sign in again.')}

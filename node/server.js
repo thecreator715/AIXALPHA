@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path'), crypto = require('crypto');
-const VERSION = 39;   // bump on every release: nodes auto-update when GitHub has a higher number
+const VERSION = 40;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -215,11 +215,18 @@ async function unloadLLM() {
 let IMGBUSY = Promise.resolve(), IMGQ = 0;
 const vidCfg = () => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, '.aix-video'), 'utf8')); } catch { return null; } };   // {cmd,args:[...],ok}
 const vidReady = () => { const c = vidCfg(); return !!(c && c.cmd && c.ok !== false); };
+const VIDJOBS = [];
 let VIDQ = 0;
+// real available memory: os.freemem() on macOS ignores cached/inactive pages and reads ~0 on a healthy Mac
+function availGb() { try { if (os.platform() === 'darwin') { const o = require('child_process').execSync('vm_stat', { encoding: 'utf8', timeout: 2000 }), pg = +(/page size of (\d+)/.exec(o) || [0, 16384])[1], g = (k) => +((new RegExp(k + ':\\s+(\\d+)')).exec(o) || [0, 0])[1]; return +(((g('Pages free') + g('Pages inactive') + g('Pages speculative') + g('Pages purgeable')) * pg) / 1e9).toFixed(1); } } catch {} return +(os.freemem() / 1e9).toFixed(1); }
+// cancel a video job: kills the engine if it is running, or drops it from the queue
+function cancelJob(j, why) { if (!j || j.done) return; j.cancelled = why || 'cancelled'; try { if (j.cp) j.cp.kill('SIGKILL'); } catch {} }
+function killStrays() { if (os.platform() !== 'win32') { try { require('child_process').execSync("pkill -9 -f 'ltx-2-mlx|ltx_2_mlx|ltx2_mlx' || true", { timeout: 4000 }); } catch {} } }
+if (!global.__STRAYKILLED) { global.__STRAYKILLED = 1; killStrays(); }   // an auto-update restart used to leave the old engine running, holding all the RAM and blocking the queue
+process.on('exit', () => { for (const j of VIDJOBS) { try { if (j.cp) j.cp.kill('SIGKILL'); } catch {} } });
 // ---- video render progress: parses the engine output, learns timings from past renders, streams snapshots to the app ----
 const VSTATS = path.join(__dirname, '.aix-vidstats.json');
 const vstats = () => { try { return JSON.parse(fs.readFileSync(VSTATS, 'utf8')); } catch { return []; } };
-const VIDJOBS = [];
 const VSTAGES = [['Waiting in line', 0, 0], ['Loading the model', 2, 10], ['Reading your prompt', 12, 3], ['Stage 1 · drawing the clip', 15, 40], ['Stage 2 · refining detail', 55, 28], ['Decoding frames', 83, 8], ['Making the sound', 91, 5], ['Writing the video', 96, 2], ['Sharpening + upscaling to 1080p', 98, 1]];
 function vidJob(w, hgt, sec, q, up) {
   sec = Math.max(2, Math.min(60, Math.round(+sec || 2))); const c = vidCfg() || {}, fps = c.fps || 24;
@@ -237,9 +244,10 @@ function vidSnap(j) {
   j.pctMax = Math.max(j.pctMax || 0, Math.min(99, pct)); pct = j.pctMax;
   let eta = null;
   if (j.runStart) { const byTime = Math.max(0, ex.secs - el); if (j.parsed != null && pct >= 12) { const byPct = el * (100 - pct) / pct; eta = ex.est ? byPct : 0.6 * byPct + 0.4 * byTime; } else eta = el < ex.secs ? byTime : null; }
-  const ahead = j.runStart ? 0 : Math.max(0, VIDJOBS.indexOf(j));
-  return { stage: j.runStart ? j.stage : (ahead ? 'Waiting in line (' + ahead + ' ahead)' : 'Starting'), pct: Math.round(pct * 10) / 10, elapsed: Math.round((now - j.created) / 1000), run: Math.round(el), eta: eta == null ? null : Math.round(eta), etaEst: ex.est, step: j.step, steps: j.steps, sec: j.sec, w: j.w, h: j.h, frames: j.frames, fps: j.fps, q: j.q, up: j.up, memFreeGb: +(os.freemem() / 1e9).toFixed(1), ahead };
+  const ahead = j.runStart ? 0 : Math.max(0, VIDJOBS.indexOf(j)), front = ahead ? VIDJOBS[0] : null, fs0 = front && front.runStart ? vidSnapLite(front) : null;
+  return { stage: j.runStart ? j.stage : (ahead ? 'Waiting in line (' + ahead + ' ahead' + (fs0 ? ', current render ' + Math.round(fs0.pct) + '%' + (fs0.eta ? ', about ' + Math.ceil(fs0.eta / 60) + ' min left' : '') : '') + ')' : 'Starting'), pct: Math.round(pct * 10) / 10, elapsed: Math.round((now - j.created) / 1000), run: Math.round(el), eta: eta == null ? null : Math.round(eta), etaEst: ex.est, step: j.step, steps: j.steps, sec: j.sec, w: j.w, h: j.h, frames: j.frames, fps: j.fps, q: j.q, up: j.up, memFreeGb: availGb(), ahead, silent: j.runStart && j.lastOut ? Math.round((now - j.lastOut) / 1000) : 0 };
 }
+function vidSnapLite(j) { const el = (Date.now() - j.runStart) / 1000, ex = vidExpect(j); const pct = Math.min(99, j.parsed != null ? j.parsed : el / ex.secs * 100); return { pct, eta: Math.max(0, ex.secs - el) }; }
 function vidStage(j, idx) { if (idx > j.stageIdx) { j.stageIdx = idx; j.stage = VSTAGES[idx][0]; j.step = j.steps = null; j.parsed = Math.max(j.parsed || 0, VSTAGES[idx][1]); } }
 function vidFeed(j, chunk) {
   for (const raw of String(chunk).split(/[\r\n]+/)) {
@@ -263,7 +271,8 @@ function genVid(prompt, imgBuf, w, hgt, sec, up, q, job) {
   if (VIDQ >= 2) return Promise.reject(Object.assign(new Error('video queue full'), { code: 429 }));
   VIDQ++; job = job || vidJob(w, hgt, sec, q, up); VIDJOBS.push(job);
   const run = async () => {
-    job.runStart = Date.now(); job.stage = 'Freeing memory (unloading the chat model)'; await unloadLLM(); job.stage = 'Starting the engine';
+    if (job.cancelled) throw Object.assign(new Error('video cancelled'), { code: 499 });
+    job.runStart = Date.now(); job.lastOut = Date.now(); job.stage = 'Freeing memory (unloading the chat model)'; await unloadLLM(); job.stage = 'Starting the engine';
     const id = Date.now() + crypto.randomBytes(3).toString('hex'), out = path.join(IMGDIR, 'v' + id + '.mp4'), inp = path.join(IMGDIR, 'v' + id + '.png');
     const F = Object.assign({ prompt: '-p', out: '-o', h: '-H', w: '-W', img: '--image', frames: null, fps: null }, c.flags || {});
     const MODE = (c.modes && c.modes[q]) || null;   // quality tiers: fast = distilled; hq / best use the dev model with guidance (slower, cleaner)
@@ -275,11 +284,13 @@ function genVid(prompt, imgBuf, w, hgt, sec, up, q, job) {
     if (imgBuf && F.img) { fs.writeFileSync(inp, imgBuf); args = args.concat([F.img, inp]); }
     return await new Promise((resolve, reject) => {
       const cp = require('child_process').spawn(c.cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PATH: process.env.PATH + ':' + os.homedir() + '/.local/bin:/opt/homebrew/bin:/usr/local/bin' } });
-      let err = ''; cp.stderr.on('data', (d) => { err = (err + d).slice(-1500); vidFeed(job, d); }); cp.stdout.on('data', (d) => vidFeed(job, d));
-      const to = setTimeout(() => { try { cp.kill('SIGKILL'); } catch {} }, Math.min(14400000, (1500000 + sec * 240000) * (MODE ? (q === 'best' ? 4 : 3) : 1)));
+      job.cp = cp; if (job.cancelled) { try { cp.kill('SIGKILL'); } catch {} }
+      let err = ''; cp.stderr.on('data', (d) => { job.lastOut = Date.now(); err = (err + d).slice(-1500); vidFeed(job, d); }); cp.stdout.on('data', (d) => { job.lastOut = Date.now(); vidFeed(job, d); });
+      const to = setTimeout(() => { job.timedOut = 1; try { cp.kill('SIGKILL'); } catch {} }, Math.min(10800000, (1500000 + sec * 240000) * (MODE ? (q === 'best' ? 3 : 2) : 1)));
+      const STALL = +process.env.AIX_VID_STALL || 1200000, wd = setInterval(() => { if (Date.now() - job.lastOut > STALL) { job.stalled = 1; try { cp.kill('SIGKILL'); } catch {} } }, 15000);   // no output for 20 min = stuck engine
       const clean = () => { try { fs.unlinkSync(inp); } catch {} try { fs.unlinkSync(out); } catch {} };
-      cp.on('error', (e) => { clearTimeout(to); clean(); reject(e); });
-      cp.on('close', (code) => { clearTimeout(to); try { const b = fs.readFileSync(out); clean(); if (b.length > 5000) { vidRec(job); if (!up) { clean(); return resolve(b); } const o2 = out + '.hd.mp4'; vidStage(job, 8); const ff = require('child_process').spawn('ffmpeg', ['-y', '-i', out, '-vf', 'scale=-2:1080:flags=lanczos,unsharp=5:5:0.9:3:3:0.4', '-c:v', 'libx264', '-crf', '17', '-preset', 'medium', '-pix_fmt', 'yuv420p', '-c:a', 'copy', o2], { stdio: 'ignore', env: { ...process.env, PATH: process.env.PATH + ':/opt/homebrew/bin:/usr/local/bin' } }); ff.on('close', () => { let r = b; try { const hd = fs.readFileSync(o2); if (hd.length > 5000) r = hd; } catch {} try { fs.unlinkSync(o2); } catch {} clean(); resolve(r); }); ff.on('error', () => { clean(); resolve(b); }); return; } } catch {} clean(); reject(new Error('video run failed (' + code + '): ' + err.split('\n').slice(-3).join(' ').slice(0, 300))); });
+      cp.on('error', (e) => { clearTimeout(to); clearInterval(wd); clean(); reject(e); });
+      cp.on('close', (code) => { clearTimeout(to); clearInterval(wd); if (job.cancelled) { clean(); return reject(Object.assign(new Error('video cancelled'), { code: 499 })); } try { const b = fs.readFileSync(out); clean(); if (b.length > 5000) { vidRec(job); if (!up) { clean(); return resolve(b); } const o2 = out + '.hd.mp4'; vidStage(job, 8); const ff = require('child_process').spawn('ffmpeg', ['-y', '-i', out, '-vf', 'scale=-2:1080:flags=lanczos,unsharp=5:5:0.9:3:3:0.4', '-c:v', 'libx264', '-crf', '17', '-preset', 'medium', '-pix_fmt', 'yuv420p', '-c:a', 'copy', o2], { stdio: 'ignore', env: { ...process.env, PATH: process.env.PATH + ':/opt/homebrew/bin:/usr/local/bin' } }); ff.on('close', () => { let r = b; try { const hd = fs.readFileSync(o2); if (hd.length > 5000) r = hd; } catch {} try { fs.unlinkSync(o2); } catch {} clean(); resolve(r); }); ff.on('error', () => { clean(); resolve(b); }); return; } } catch {} clean(); reject(new Error(job.stalled ? 'the video engine stopped responding for 20 minutes and was restarted (try a shorter clip, Fast quality, or free some RAM)' : job.timedOut ? 'the render took longer than the time limit and was stopped (try a shorter clip or lower quality)' : 'video run failed (' + code + '): ' + err.split('\n').slice(-3).join(' ').slice(0, 300))); });
     });
   };
   const p = IMGBUSY.then(run, run); IMGBUSY = p.catch(() => {}); return p.finally(() => { VIDQ--; job.done = true; const i = VIDJOBS.indexOf(job); if (i >= 0) VIDJOBS.splice(i, 1); });
@@ -434,13 +445,14 @@ const SRV = http.createServer(async (req, res) => {
           const cp = require('child_process').spawn('bash', [path.join(__dirname, file)], { cwd: __dirname, stdio: ['ignore', outf, outf], detached: true }); cp.unref(); global.__INST[b.what] = cp;
           return J(res, h, 200, { started: b.what });
         }
+        if (b.act === 'cancel') { let n = 0; for (const j of VIDJOBS.slice()) { cancelJob(j, 'cancelled from the panel'); n++; } if (b.strays !== false) killStrays(); return J(res, h, 200, { cancelled: n }); }
         if (b.act === 'toggle' && (b.what === 'image' || b.what === 'video')) { const f = b.what === 'image' ? '.aix-image' : '.aix-video', c = rd(f); if (!c) return J(res, h, 404, { error: 'not installed' }); c.ok = !!b.on; wr(f, c); return J(res, h, 200, { ok: c.ok }); }
         if (b.act === 'video') { const c = rd('.aix-video'); if (!c) return J(res, h, 404, { error: 'video not installed' }); const n = Math.round((+b.nframes || 49 - 1) / 8) * 8 + 1; c.nframes = Math.max(25, Math.min(241, n)); wr('.aix-video', c); return J(res, h, 200, { nframes: c.nframes }); }
         return J(res, h, 400, { error: 'unknown action' });
       }
       const ic = rd('.aix-image'), vc = rd('.aix-video'), run = (k) => !!(global.__INST[k] && global.__INST[k].exitCode === null);
       let freeGb = null; try { const d = require('child_process').execSync('df -k /', { encoding: 'utf8', timeout: 3000 }).trim().split('\n').pop().split(/\s+/); freeGb = Math.round(+d[3] / 1048576); } catch {}
-      return J(res, h, 200, { version: VERSION, freeGb, unload: process.env.AIX_UNLOAD !== '0', queue: { image: IMGQ, video: VIDQ }, job: VIDJOBS.length ? vidSnap(VIDJOBS[0]) : null,
+      return J(res, h, 200, { version: VERSION, freeGb, unload: process.env.AIX_UNLOAD !== '0', queue: { image: IMGQ, video: VIDQ }, job: VIDJOBS.length ? vidSnap(VIDJOBS[0]) : null, jobs: VIDJOBS.map(vidSnap), availGb: availGb(),
         image: { ready: imgReady(), cmd: ic && ic.cmd, label: ic && (ic.label || ic.model) || null, steps: ic && ic.steps, stepsHq: ic && ic.stepsHq, installing: run('image'), log: tail('image-install.log') || tail('image-install-console.log') },
         video: { ready: vidReady(), label: vc && vc.label || null, modes: vc && vc.modes || {}, nframes: vc && vc.nframes, fps: vc && vc.fps, imageFlag: !!(vc && vc.flags && vc.flags.img), installing: run('video'), log: tail('video-install.log') || tail('video-install-console.log') } });
     }
@@ -471,6 +483,8 @@ const SRV = http.createServer(async (req, res) => {
       const dm = (v, d) => Math.max(256, Math.min(1280, Math.round((+v || d) / 64) * 64));
       const VW = dm(b.w, 768), VH = dm(b.h, 512), VQ = String(b.q || 'fast'), job = vidJob(VW, VH, b.sec, VQ, !!b.up);
       res.writeHead(200, { ...h, 'content-type': 'application/x-ndjson' }); const send = (o) => { try { res.write(JSON.stringify(o) + '\n'); } catch {} }; send({ p: vidSnap(job) }); const hb = setInterval(() => send({ p: vidSnap(job) }), 2000);
+      job.user = clip(req.headers['x-aix-user'], 80); res.on('close', () => { clearInterval(hb); if (!res.writableEnded) cancelJob(job, 'client left'); });
+      if (job.user) for (const o of VIDJOBS) if (o !== job && o.user === job.user && !o.runStart) cancelJob(o, 'replaced by a newer request');
       try { const mp4 = await genVid(pr, ib, VW, VH, b.sec, !!b.up, VQ, job); clearInterval(hb); send({ p: { ...vidSnap(job), pct: 100, stage: 'Done', eta: 0 } }); res.end(JSON.stringify({ video: 'data:video/mp4;base64,' + mp4.toString('base64'), model: ((vidCfg() || {}).label || 'ltx').toLowerCase().replace(/\s+/g, '-'), secs: Math.round((Date.now() - job.runStart) / 1000), frames: job.frames })); }
       catch (e) { clearInterval(hb); res.end(JSON.stringify({ error: String(e.message || e).slice(0, 300), code: e.code || 502 })); }
       return;
