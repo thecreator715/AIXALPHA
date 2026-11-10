@@ -39,17 +39,18 @@ try(){
   FP=$(pickflag --prompt -p); FO=$(pickflag --output -o); FH=$(pickflag --height -H); FW=$(pickflag --width -W)
   FI=$(pickflag --image --image-path --start-image --input-image -i); FF=$(pickflag --frames --num-frames); FR=$(pickflag --frame-rate --fps)
   [ -n "$FP" ] && [ -n "$FO" ] && [ -n "$FH" ] && [ -n "$FW" ] || { echo "(flags not recognised for $NAME)" >>"$LOG"; return 1; }
+  local MHQ="" MBEST=""; hasflag --two-stage && MHQ="--two-stage"; hasflag --two-stages-hq && MBEST="--two-stages-hq"
   local EXTRA=(); [ -n "$FF" ] && EXTRA+=("$FF" "$NFR"); [ -n "$FR" ] && EXTRA+=("$FR" 24)
   local T="runtime/vid-test.mp4"; rm -f "$T"
   say "3/4 Test clip with $NAME (downloads the model once; this can take a long while)"
   "$UV" run --project "$ABS" ltx-2-mlx generate --distilled --model "$MODEL" --low-ram "$FP" "a red apple slowly rotating on a wooden table" "$FO" "$T" "$FH" 256 "$FW" 384 "${EXTRA[@]}" >>"$LOG" 2>&1
   [ -s "$T" ] || return 1
   rm -f "$T"
-  python3 - "$UV" "$ABS" "$MODEL" "$NAME" "$FP" "$FO" "$FH" "$FW" "$FI" "$FF" "$FR" "$NFR" <<'PY' 2>>"$LOG"
+  python3 - "$UV" "$ABS" "$MODEL" "$NAME" "$FP" "$FO" "$FH" "$FW" "$FI" "$FF" "$FR" "$NFR" "$MHQ" "$MBEST" <<'PY' 2>>"$LOG"
 import json,sys
-uv,abs_,model,name,fp,fo,fh,fw,fi,ff,fr,nfr=sys.argv[1:]
+uv,abs_,model,name,fp,fo,fh,fw,fi,ff,fr,nfr,mhq,mbest=sys.argv[1:]
 cfg={"cmd":uv,"args":["run","--project",abs_,"ltx-2-mlx","generate","--distilled","--model",model,"--low-ram"],"ok":True,"label":name,
-     "flags":{"prompt":fp,"out":fo,"h":fh,"w":fw,"img":fi or None,"frames":ff or None,"fps":fr or None},"nframes":int(nfr),"fps":24}
+     "flags":{"prompt":fp,"out":fo,"h":fh,"w":fw,"img":fi or None,"frames":ff or None,"fps":fr or None},"nframes":int(nfr),"fps":24,"modes":{k:v for k,v in (("hq",mhq),("best",mbest)) if v}}
 open(".aix-video","w").write(json.dumps(cfg)+"\n")
 PY
   [ -s .aix-video ] && { echo "  Image-to-video flag: ${FI:-none found (text-to-video only; the app makes a start image itself)}"; return 0; }

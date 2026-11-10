@@ -1,6 +1,6 @@
 // AIX Alpha Node v2 — Ollama proxy + monitor dashboard. Node 18+, no dependencies.
 const http = require('http'), os = require('os'), fs = require('fs'), path = require('path'), crypto = require('crypto');
-const VERSION = 35;   // bump on every release: nodes auto-update when GitHub has a higher number
+const VERSION = 36;   // bump on every release: nodes auto-update when GitHub has a higher number
 const TOKEN = process.env.AIX_TOKEN || '';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const PORT = +(process.env.PORT || 8787);
@@ -217,7 +217,7 @@ const vidCfg = () => { try { return JSON.parse(fs.readFileSync(path.join(__dirna
 const vidReady = () => { const c = vidCfg(); return !!(c && c.cmd && c.ok !== false); };
 let VIDQ = 0;
 // Local video with LTX-2.5 (MLX; 2.3 fallback). Text-to-video, or image-to-video when a start image is given.
-function genVid(prompt, imgBuf, w, hgt, sec, up) {
+function genVid(prompt, imgBuf, w, hgt, sec, up, q) {
   sec = Math.max(2, Math.min(60, Math.round(+sec || 2)));
   const c = vidCfg(); if (!c || !c.cmd) return Promise.reject(Object.assign(new Error('local video not installed'), { code: 501 }));
   if (VIDQ >= 2) return Promise.reject(Object.assign(new Error('video queue full'), { code: 429 }));
@@ -226,7 +226,9 @@ function genVid(prompt, imgBuf, w, hgt, sec, up) {
     await unloadLLM();
     const id = Date.now() + crypto.randomBytes(3).toString('hex'), out = path.join(IMGDIR, 'v' + id + '.mp4'), inp = path.join(IMGDIR, 'v' + id + '.png');
     const F = Object.assign({ prompt: '-p', out: '-o', h: '-H', w: '-W', img: '--image', frames: null, fps: null }, c.flags || {});
-    let args = (c.args || []).concat([F.prompt, prompt, F.out, out, F.h, String(hgt), F.w, String(w)]);
+    const MODE = (c.modes && c.modes[q]) || null;   // quality tiers: fast = distilled; hq / best use the dev model with guidance (slower, cleaner)
+    const base = (c.args || []).map((x) => (MODE && x === '--distilled') ? MODE : x);
+    let args = base.concat([F.prompt, prompt, F.out, out, F.h, String(hgt), F.w, String(w)]);
     const nfr = Math.round(sec * (c.fps || 24) / 8) * 8 + 1;   // frame counts must be 8n+1
     if (F.frames) args = args.concat([F.frames, String(sec > 2 ? nfr : (c.nframes || 49))]);
     if (F.fps && c.fps) args = args.concat([F.fps, String(c.fps)]);
@@ -234,7 +236,7 @@ function genVid(prompt, imgBuf, w, hgt, sec, up) {
     return await new Promise((resolve, reject) => {
       const cp = require('child_process').spawn(c.cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PATH: process.env.PATH + ':' + os.homedir() + '/.local/bin:/opt/homebrew/bin:/usr/local/bin' } });
       let err = ''; cp.stderr.on('data', (d) => { err = (err + d).slice(-1500); }); cp.stdout.on('data', () => {});
-      const to = setTimeout(() => { try { cp.kill('SIGKILL'); } catch {} }, Math.min(10800000, 1500000 + sec * 240000));
+      const to = setTimeout(() => { try { cp.kill('SIGKILL'); } catch {} }, Math.min(14400000, (1500000 + sec * 240000) * (MODE ? (q === 'best' ? 4 : 3) : 1)));
       const clean = () => { try { fs.unlinkSync(inp); } catch {} try { fs.unlinkSync(out); } catch {} };
       cp.on('error', (e) => { clearTimeout(to); clean(); reject(e); });
       cp.on('close', (code) => { clearTimeout(to); try { const b = fs.readFileSync(out); clean(); if (b.length > 5000) { if (!up) { clean(); return resolve(b); } const o2 = out + '.hd.mp4'; const ff = require('child_process').spawn('ffmpeg', ['-y', '-i', out, '-vf', 'scale=-2:1080:flags=lanczos,unsharp=5:5:0.9:3:3:0.4', '-c:v', 'libx264', '-crf', '17', '-preset', 'medium', '-pix_fmt', 'yuv420p', '-c:a', 'copy', o2], { stdio: 'ignore', env: { ...process.env, PATH: process.env.PATH + ':/opt/homebrew/bin:/usr/local/bin' } }); ff.on('close', () => { let r = b; try { const hd = fs.readFileSync(o2); if (hd.length > 5000) r = hd; } catch {} try { fs.unlinkSync(o2); } catch {} clean(); resolve(r); }); ff.on('error', () => { clean(); resolve(b); }); return; } } catch {} clean(); reject(new Error('video run failed (' + code + '): ' + err.split('\n').slice(-3).join(' ').slice(0, 300))); });
@@ -403,7 +405,7 @@ const SRV = http.createServer(async (req, res) => {
       const m = /^data:image\/[\w+.-]+;base64,(.+)$/.exec(String(b.image || '')), ib = m ? Buffer.from(m[1], 'base64') : null;
       const dm = (v, d) => Math.max(256, Math.min(1280, Math.round((+v || d) / 64) * 64));
       res.writeHead(200, { ...h, 'content-type': 'application/json' }); const hb = setInterval(() => { try { res.write(' '); } catch {} }, 20000);
-      try { const mp4 = await genVid(pr, ib, dm(b.w, 768), dm(b.h, 512), b.sec, !!b.up); clearInterval(hb); res.end(JSON.stringify({ video: 'data:video/mp4;base64,' + mp4.toString('base64'), model: ((vidCfg() || {}).label || 'ltx').toLowerCase().replace(/\s+/g, '-') })); }
+      try { const mp4 = await genVid(pr, ib, dm(b.w, 768), dm(b.h, 512), b.sec, !!b.up, String(b.q || 'fast')); clearInterval(hb); res.end(JSON.stringify({ video: 'data:video/mp4;base64,' + mp4.toString('base64'), model: ((vidCfg() || {}).label || 'ltx').toLowerCase().replace(/\s+/g, '-') })); }
       catch (e) { clearInterval(hb); res.end(JSON.stringify({ error: String(e.message || e).slice(0, 300), code: e.code || 502 })); }
       return;
     }

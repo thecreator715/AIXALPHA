@@ -6,6 +6,7 @@
 - Maximum is 1 minute per clip. Clips over 2 s need the Mac node (the free cloud queue only does about 2 s); the worker says so before charging. The node picks the frame count (8n+1 at 24 fps) and scales its timeout with length. Long clips can take an hour or more and may run out of memory on 32 GB; shorter lengths are the safe choice.
 - The start image is cropped to the chosen shape.
 - Pricing changed to 1 credit per second (5 minimum). Options now live in a green VIDEO row above the message box.
+- Node v36 (quality): (1) "Animate this picture" now uses the picture already in the chat as the start frame (before, it made a different image, so the clip did not match). (2) Quality menu: Fast (distilled), Better (full-guidance two-stage, about 3x slower, default) and Best (HQ sampler, about 4x slower); the installer records which tiers the engine supports. (3) AI-enhance prompt: the worker rewrites a short request into a detailed cinematic LTX prompt (Workers AI, free fallback to your own words). (4) Sharpen + upscale to 1080p and HD shapes.
 - Node v35: two HD shapes (1280x704 landscape, 704x1280 portrait; slow, memory heavy) and a 'Sharpen + upscale to 1080p' switch (on by default): after rendering, ffmpeg upscales with Lanczos and light sharpening. No extra credits.
 
 ## Local video upgraded to LTX-2.5 (node v33)

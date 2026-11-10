@@ -2301,11 +2301,21 @@ async function hfVideo(env, prompt, imageDataUrl) {
   return 'data:video/mp4;base64,' + b64(bytes);
 }
 // Local video on the Mac node (LTX-2.3 MLX): text-to-video or image-to-video. Same price as the cloud queue; the cloud queue is the backup.
-async function nodeVideo(env, prompt, image, w, h, sec, up) {
+// Rewrites a short request into a detailed LTX-style prompt (subject, motion, camera, light, sound). Falls back to the original on any problem.
+async function enhVideoPrompt(env, prompt, hasImage) {
+  try {
+    if (!env.AI || !prompt) return prompt;
+    const sys = 'You write prompts for the LTX video model. Rewrite the user request as ONE paragraph of 60-110 words in present tense: the main subject and its motion, how the camera moves (slow push-in, tracking, pan), lighting and atmosphere, fine textures, and natural ambient sound. ' + (hasImage ? 'A start image is supplied, so describe only the motion, camera move and sound that grow out of it; never change what is in the image. ' : '') + 'Photorealistic, cinematic, sharp detail, smooth natural motion. Keep every element the user asked for. Output only the prompt.';
+    const r = await Promise.race([env.AI.run('@cf/meta/llama-3.1-8b-instruct', { messages: [{ role: 'system', content: sys }, { role: 'user', content: String(prompt).slice(0, 400) }], max_tokens: 220 }), new Promise((_, no) => setTimeout(() => no(new Error('t')), 9000))]);
+    const t = String((r && (r.response || r.result)) || '').trim().replace(/^["']|["']$/g, '');
+    return t.length > 30 ? t.slice(0, 900) : prompt;
+  } catch (e) { return prompt; }
+}
+async function nodeVideo(env, prompt, image, w, h, sec, up, q) {
   const nd = await nodeGet(env); const cands = nd ? [nd, ...(nd.alts || [])].filter((n) => n && n.vid) : [];
   for (const n of cands) {
     try {
-      const r = await nfetch(n.url.replace(/\/+$/, '') + '/v1/videos/generate', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + n.token }, body: JSON.stringify({ prompt, image: image || null, w: w || 768, h: h || 512, sec: sec || 2, up: !!up }) }, Math.min(7200000, 1500000 + (sec || 2) * 240000));
+      const r = await nfetch(n.url.replace(/\/+$/, '') + '/v1/videos/generate', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + n.token }, body: JSON.stringify({ prompt, image: image || null, w: w || 768, h: h || 512, sec: sec || 2, up: !!up, q: q || 'fast' }) }, Math.min(7200000, 1500000 + (sec || 2) * 240000));
       const t = r.ok ? (await r.text()).trim() : ''; const j = t ? JSON.parse(t) : null; if (j && j.video) return j.video;
     } catch (e) { /* next node, then the cloud queue */ }
   }
@@ -2328,7 +2338,8 @@ async function video(env, req) {
     if (!(up.meta && up.meta.changes > 0)) return json(env, req, { error: 'Out of credits. This clip costs ' + COST + ' credits.' }, 402);
   }
   const finish = async () => {
-    let vid = hasNode ? await nodeVideo(env, prompt || 'Cinematic motion, smooth camera', b.image, VW, VH, sec, b.up) : null;
+    const vp = (b.enh === false || !prompt) ? (prompt || 'Cinematic motion, smooth camera') : await enhVideoPrompt(env, prompt, !!b.image);
+    let vid = hasNode ? await nodeVideo(env, vp, b.image, VW, VH, sec, b.up, b.q) : null;
     if (!vid) { if (sec > 2) throw new Error('The Mac node could not render this clip (busy, offline or ran out of memory). Try a shorter duration.'); if (!b.image) throw new Error('Local video is busy or offline. Add a start image to use the cloud queue.'); vid = await hfVideo(env, prompt, b.image); }
     if (!owner) await env.DB.prepare('INSERT INTO usage(email,at,input,output,credits) VALUES(?,?,0,0,?)').bind(a.email, new Date().toISOString(), COST).run();
     const f = await getUser(env, a.email);
