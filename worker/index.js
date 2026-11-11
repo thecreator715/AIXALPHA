@@ -375,14 +375,16 @@ async function syncApi(env, req) {
   if (!a) return json(env, req, { error: 'Sign in to sync.' }, 401);
   await ensureSync(env);
   if (req.method === 'GET') {
-    const rows = (await env.DB.prepare('SELECT k,v,updated FROM sync WHERE email=?').bind(a.email).all()).results || [];
+    const one = new URL(req.url).searchParams.get('k');
+    if (one) { if (!/^a:[a-z0-9]{6,24}$/.test(one)) return json(env, req, { error: 'key' }, 400); const r = await env.DB.prepare('SELECT v FROM sync WHERE email=? AND k=?').bind(a.email, one).first(); return json(env, req, r ? { v: r.v } : { error: 'none' }, r ? 200 : 404); }
+    const rows = (await env.DB.prepare("SELECT k,v,updated FROM sync WHERE email=? AND k NOT LIKE 'a:%'").bind(a.email).all()).results || [];
     const items = {}; rows.forEach((r) => { items[r.k] = { v: r.v, updated: r.updated }; });
     return json(env, req, { items });
   }
   if (req.method === 'PUT') {
     const b = await req.json().catch(() => ({})); const items = b.items || {}; const saved = [];
     for (const k of Object.keys(items)) {
-      if (!SYNC_KEYS.includes(k)) continue;
+      if (!SYNC_KEYS.includes(k) && !/^a:[a-z0-9]{6,24}$/.test(k)) continue;
       const v = String(items[k].v == null ? '' : items[k].v); if (v.length > 1500000) continue;
       const upd = Math.min(+items[k].updated || Date.now(), Date.now() + 60000);
       await env.DB.prepare('INSERT INTO sync(email,k,v,updated) VALUES(?,?,?,?) ON CONFLICT(email,k) DO UPDATE SET v=excluded.v, updated=excluded.updated WHERE excluded.updated>=sync.updated').bind(a.email, k, v, upd).run();

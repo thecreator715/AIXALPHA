@@ -313,3 +313,7 @@
 
 ## v49
 - "Save image (JPEG)" link styled as a proper button (was default blue underlined link).
+
+## v50 — Multi-device fixes
+- Chat replies no longer vanish: the cloud sync could swap the current chat for an older copy mid-reply (another machine/tab). It now skips the active chat while a reply is running, updates chats in place, and the live reply window survives re-renders.
+- Gallery on other machines: images now sync through your account (worker keys `a:<id>`); older local images are backfilled automatically. Items not yet synced show a clear note instead of "loading…" forever.
