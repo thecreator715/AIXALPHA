@@ -58,7 +58,7 @@ FREEGB=$(df -g / 2>/dev/null | awk 'NR==2{print $4}'); [ -n "$FREEGB" ] && [ "$F
 chmod +x ./*.command 2>/dev/null; xattr -dr com.apple.quarantine . 2>/dev/null
 command -v node >/dev/null 2>&1 && ok "Node.js $(node -v)" || warn "Node.js will be set up automatically"
 
-step "4a  Latest node from GitHub (image progress meter, video fixes)"
+step "4a  Latest node and control panel from GitHub (Insights tab, Enterprise switch, Qwen Fast)"
 RAWU="https://raw.githubusercontent.com/thecreator715/AIXALPHA/main/node"
 CUR=$(grep -o 'VERSION = [0-9]*' server.js | head -1 | grep -o '[0-9]*$')
 if curl -fs -m 25 -o /tmp/aix-server-new.js "$RAWU/server.js" 2>/dev/null && [ -s /tmp/aix-server-new.js ]; then
