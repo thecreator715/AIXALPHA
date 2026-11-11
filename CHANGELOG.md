@@ -317,3 +317,7 @@
 ## v50 — Multi-device fixes
 - Chat replies no longer vanish: the cloud sync could swap the current chat for an older copy mid-reply (another machine/tab). It now skips the active chat while a reply is running, updates chats in place, and the live reply window survives re-renders.
 - Gallery on other machines: images now sync through your account (worker keys `a:<id>`); older local images are backfilled automatically. Items not yet synced show a clear note instead of "loading…" forever.
+
+## v51
+- Reply activity ("Worked for Ns" steps) is now saved with each answer and kept collapsed for recall, instead of vanishing.
+- Streaming text is rendered at most ~7 times a second (was every chunk), which removes chat lag and typing lag while a reply is being written.
