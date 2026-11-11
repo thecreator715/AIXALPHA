@@ -1640,7 +1640,7 @@ async function admin2(env, req, what, url, H) {
   const safe = async (sql, ...p) => { try { return await q(sql, ...p); } catch (e) { return []; } };
   const body = async () => (post ? await req.json().catch(() => ({})) : {});
   const bad = (m, s) => json(env, req, { error: m }, s || 400);
-  const NAMES = ['ent_set', 'live', 'fleet', 'host_restart', 'timeline', 'sla', 'slow', 'cohorts', 'funnel', 'segments', 'segment_preview', 'segment_save', 'segment_delete', 'segment_act', 'impersonate', 'forecast', 'margin', 'margin_set', 'refunds', 'refund_create', 'codes', 'code_save', 'code_toggle', 'code_delete', 'payouts', 'payout_add', 'payout_status', 'modstats', 'ratelimits', 'ratelimits_set', 'blocklist', 'block_add', 'block_del', 'logins', 'ann', 'ann_save', 'ann_delete', 'flags', 'flag_set', 'flag_delete', 'sched', 'sched_add', 'sched_cancel', 'approvals', 'approval_cfg', 'approval_decide', 'export_all', 'restore_test', 'a2status'];
+  const NAMES = ['insights', 'ent_set', 'live', 'fleet', 'host_restart', 'timeline', 'sla', 'slow', 'cohorts', 'funnel', 'segments', 'segment_preview', 'segment_save', 'segment_delete', 'segment_act', 'impersonate', 'forecast', 'margin', 'margin_set', 'refunds', 'refund_create', 'codes', 'code_save', 'code_toggle', 'code_delete', 'payouts', 'payout_add', 'payout_status', 'modstats', 'ratelimits', 'ratelimits_set', 'blocklist', 'block_add', 'block_del', 'logins', 'ann', 'ann_save', 'ann_delete', 'flags', 'flag_set', 'flag_delete', 'sched', 'sched_add', 'sched_cancel', 'approvals', 'approval_cfg', 'approval_decide', 'export_all', 'restore_test', 'a2status'];
   const risky = what === 'grant' && post;
   if (!NAMES.includes(what) && !risky) return null;
   await ensureA2(env);
@@ -1784,6 +1784,56 @@ async function admin2(env, req, what, url, H) {
     const mu = Math.max(0, Math.floor(Number(b.maxUses) || 0)), exp = b.expires ? Date.parse(b.expires) : 0; if (b.expires && !isFinite(exp)) return bad('Bad expiry date');
     await env.DB.prepare('INSERT INTO promo_codes(code,credits,max_uses,expires,active,note,at,actor) VALUES(?,?,?,?,1,?,?,?) ON CONFLICT(code) DO UPDATE SET credits=excluded.credits, max_uses=excluded.max_uses, expires=excluded.expires, note=excluded.note').bind(code, cr, mu, exp || 0, String(b.note || '').slice(0, 100), new Date().toISOString(), a2Actor(req)).run();
     return R({ ok: true, code });
+  }
+  if (what === 'insights') {   // 25 extra admin analytics in one call; each query is isolated so a missing table never breaks the rest
+    const d30 = iso(30 * 864e5), d14 = iso(14 * 864e5), d7 = iso(7 * 864e5), d60 = iso(60 * 864e5), d1 = iso(864e5), ms7 = now - 7 * 864e5, ms30 = now - 30 * 864e5, ms14 = now - 14 * 864e5, ms15m = now - 15 * 60e3;
+    const first = async (sql, ...p) => (await safe(sql, ...p))[0] || {};
+    const own = [...owners(env)]; const notOwn = own.length ? ' AND email NOT IN (' + own.map(() => '?').join(',') + ')' : '';
+    const o = {};
+    o.revDay = await safe('SELECT substr(at,1,10) AS d, ROUND(SUM(usd),2) AS usd, COUNT(*) AS n FROM purchases WHERE usd>0 AND at>=? GROUP BY d ORDER BY d', d30);
+    o.revPack = await safe('SELECT ROUND(usd,2) AS usd, COUNT(*) AS n, ROUND(SUM(usd),2) AS tot FROM purchases WHERE usd>0 GROUP BY ROUND(usd,2) ORDER BY tot DESC LIMIT 10');
+    o.topBuyers = await safe('SELECT email, ROUND(SUM(usd),2) AS usd, COUNT(*) AS n, MAX(at) AS last FROM purchases WHERE usd>0 GROUP BY email ORDER BY SUM(usd) DESC LIMIT 10');
+    o.firstBuy = await first('SELECT ROUND(AVG(julianday(p.f)-julianday(u.created)),1) AS days, COUNT(*) AS n FROM (SELECT email, MIN(at) AS f FROM purchases WHERE usd>0 GROUP BY email) p JOIN users u ON u.email=p.email');
+    o.firstUse = await first('SELECT ROUND(AVG((julianday(x.f)-julianday(u.created))*24),1) AS hrs, COUNT(*) AS n FROM (SELECT email, MIN(at) AS f FROM usage GROUP BY email) x JOIN users u ON u.email=x.email WHERE u.created>=?', d60);
+    o.signups = await safe('SELECT substr(created,1,10) AS d, COUNT(*) AS n FROM users WHERE created>=? GROUP BY d ORDER BY d', d30);
+    const su30 = (await first('SELECT COUNT(*) AS n FROM users WHERE created>=?', d30)).n || 0;
+    const refN = (await first('SELECT COUNT(*) AS n FROM ref_uses WHERE at>=?', d30)).n || 0, promoN = (await first('SELECT COUNT(*) AS n FROM promo_redeems WHERE at>=?', ms30)).n || 0;
+    o.source = { signups: su30, referral: refN, promoCode: promoN, direct: Math.max(0, su30 - refN) };
+    const wk = async (sql, a, b) => ({ now: (await first(sql, a)).n || 0, prev: (await first(sql, b, a)).n || 0 });
+    o.wow = {
+      signups: { now: (await first('SELECT COUNT(*) AS n FROM users WHERE created>=?', d7)).n || 0, prev: (await first('SELECT COUNT(*) AS n FROM users WHERE created>=? AND created<?', d14, d7)).n || 0 },
+      active: { now: (await first('SELECT COUNT(DISTINCT email) AS n FROM usage WHERE at>=?', d7)).n || 0, prev: (await first('SELECT COUNT(DISTINCT email) AS n FROM usage WHERE at>=? AND at<?', d14, d7)).n || 0 },
+      requests: { now: (await first('SELECT COUNT(*) AS n FROM usage WHERE at>=?', d7)).n || 0, prev: (await first('SELECT COUNT(*) AS n FROM usage WHERE at>=? AND at<?', d14, d7)).n || 0 },
+      revenue: { now: +((await first('SELECT COALESCE(SUM(usd),0) AS n FROM purchases WHERE usd>0 AND at>=?', d7)).n || 0).toFixed(2), prev: +((await first('SELECT COALESCE(SUM(usd),0) AS n FROM purchases WHERE usd>0 AND at>=? AND at<?', d14, d7)).n || 0).toFixed(2) },
+    };
+    const rf = await first('SELECT COALESCE(SUM(usd),0) AS usd, COUNT(*) AS n FROM refunds WHERE at>=?', ms30), rv = (await first('SELECT COALESCE(SUM(usd),0) AS n FROM purchases WHERE usd>0 AND at>=?', d30)).n || 0;
+    o.refunds = { usd: +Number(rf.usd || 0).toFixed(2), n: rf.n || 0, revenue: +Number(rv).toFixed(2), pct: rv ? +((rf.usd || 0) / rv * 100).toFixed(1) : 0 };
+    const lia = await first('SELECT COALESCE(SUM(credits),0) AS c, COUNT(*) AS n FROM users WHERE credits>0' + notOwn, ...own);
+    o.liability = { credits: +Number(lia.c || 0).toFixed(1), holders: lia.n || 0, costUsd: +((lia.c || 0) * 0.0014).toFixed(2), valueUsd: +((lia.c || 0) * 0.1).toFixed(2) };
+    const bought = await safe('SELECT substr(at,1,10) AS d, SUM(credits) AS c FROM purchases WHERE at>=? GROUP BY d', d14), granted = await safe("SELECT strftime('%Y-%m-%d', at/1000,'unixepoch') AS d, SUM(credits) AS c FROM grants WHERE at>=? GROUP BY d", ms14), spent = await safe('SELECT substr(at,1,10) AS d, SUM(credits) AS c FROM usage WHERE at>=? GROUP BY d', d14);
+    const days = []; for (let i = 13; i >= 0; i--) days.push(new Date(now - i * 864e5).toISOString().slice(0, 10));
+    const mp = (a) => new Map(a.map((r) => [r.d, +Number(r.c || 0).toFixed(1)]));
+    const bm = mp(bought), gm = mp(granted), sm = mp(spent);
+    o.creditFlow = days.map((d) => ({ d, bought: bm.get(d) || 0, granted: gm.get(d) || 0, spent: sm.get(d) || 0 }));
+    const fo = await first('SELECT COUNT(*) AS n, COALESCE(SUM(requests),0) AS r FROM users WHERE requests>0 AND email NOT IN (SELECT email FROM purchases WHERE usd>0)' + notOwn, ...own), allr = await first('SELECT COUNT(*) AS n, COALESCE(SUM(requests),0) AS r FROM users WHERE requests>0' + notOwn, ...own);
+    o.freeOnly = { users: fo.n || 0, requests: fo.r || 0, allUsers: allr.n || 0, allRequests: allr.r || 0 };
+    o.churnRisk = await safe('SELECT u.email, u.last, ROUND(p.usd,2) AS usd, ROUND(u.credits,1) AS credits FROM users u JOIN (SELECT email, SUM(usd) AS usd FROM purchases WHERE usd>0 GROUP BY email) p ON p.email=u.email WHERE u.last<? ORDER BY p.usd DESC LIMIT 10', d14);
+    o.dormant = { total: (await first('SELECT COUNT(*) AS n FROM users WHERE created<? AND COALESCE(requests,0)=0', d7)).n || 0, recent: await safe('SELECT email, created FROM users WHERE created<? AND COALESCE(requests,0)=0 ORDER BY created DESC LIMIT 8', d7) };
+    o.power7 = await safe('SELECT email, COUNT(*) AS n, ROUND(SUM(credits),2) AS c, SUM(input+output) AS t FROM usage WHERE at>=? GROUP BY email ORDER BY n DESC LIMIT 10', d7);
+    const sp = await safe('SELECT email, SUM(credits) AS c FROM usage WHERE at>=? GROUP BY email ORDER BY c DESC', d30), tot = sp.reduce((a, r) => a + (r.c || 0), 0), top = Math.max(1, Math.ceil(sp.length * 0.1)), topSum = sp.slice(0, top).reduce((a, r) => a + (r.c || 0), 0);
+    o.concentration = { payingUsers: sp.length, top10pctUsers: top, top10pctShare: tot ? +(topSum / tot * 100).toFixed(1) : 0, top1Share: tot && sp[0] ? +(sp[0].c / tot * 100).toFixed(1) : 0 };
+    const act = await safe('SELECT DISTINCT u.email, u.created FROM usage g JOIN users u ON u.email=g.email WHERE g.at>=?', d7);
+    o.newVsReturning = { fresh: act.filter((r) => r.created >= d7).length, returning: act.filter((r) => r.created < d7).length };
+    o.live = { people: (await first("SELECT COUNT(DISTINCT email) AS n FROM reqlog WHERE at>=? AND email IS NOT NULL AND email<>''", ms15m)).n || 0, requests: (await first('SELECT COUNT(*) AS n FROM reqlog WHERE at>=?', ms15m)).n || 0 };
+    o.sizes = await safe("SELECT CASE WHEN input+output<500 THEN '1 · under 500' WHEN input+output<2000 THEN '2 · 500–2k' WHEN input+output<8000 THEN '3 · 2k–8k' WHEN input+output<20000 THEN '4 · 8k–20k' ELSE '5 · 20k+' END AS b, COUNT(*) AS n FROM usage WHERE at>=? GROUP BY b ORDER BY b", d30);
+    o.hours = await safe("SELECT CAST(strftime('%H',at) AS INTEGER) AS h, COUNT(*) AS n FROM usage WHERE at>=? GROUP BY h ORDER BY h", d30);
+    o.modes = await safe('SELECT mode, SUM(n) AS n, SUM(tokens) AS t, ROUND(SUM(credits),2) AS c FROM mode_usage WHERE day>=? GROUP BY mode ORDER BY n DESC', d30.slice(0, 10));
+    o.errors = await safe("SELECT strftime('%Y-%m-%d', at/1000,'unixepoch') AS d, COUNT(*) AS n, SUM(CASE WHEN status>=500 THEN 1 ELSE 0 END) AS e5, SUM(CASE WHEN status>=400 AND status<500 THEN 1 ELSE 0 END) AS e4 FROM reqlog WHERE at>=? GROUP BY d ORDER BY d", ms14);
+    o.endpoints = await safe('SELECT path, COUNT(*) AS n, ROUND(AVG(ms)) AS avg, MAX(ms) AS mx, SUM(CASE WHEN status>=500 THEN 1 ELSE 0 END) AS e FROM reqlog WHERE at>=? GROUP BY path ORDER BY n DESC LIMIT 12', ms7);
+    o.devices = await safe("SELECT CASE WHEN ua LIKE '%iPhone%' OR ua LIKE '%iPad%' THEN 'iPhone / iPad' WHEN ua LIKE '%Android%' THEN 'Android' WHEN ua LIKE '%Macintosh%' THEN 'Mac' WHEN ua LIKE '%Windows%' THEN 'Windows' WHEN ua LIKE '%Linux%' THEN 'Linux' ELSE 'API / other' END AS os, COUNT(DISTINCT COALESCE(NULLIF(email,''), ip)) AS n FROM reqlog WHERE at>=? GROUP BY os ORDER BY n DESC", ms7);
+    o.apiTop = await safe('SELECT k.name, k.prefix, k.email, COUNT(*) AS n, ROUND(SUM(a.credits),2) AS c FROM api_usage a JOIN api_keys k ON k.key_hash=a.key_hash WHERE a.at>=? GROUP BY a.key_hash ORDER BY SUM(a.credits) DESC LIMIT 10', ms30);
+    o.pages = await safe('SELECT c.name, c.slug, COUNT(*) AS n, COUNT(DISTINCT h.ip) AS u FROM page_hits h JOIN chat_pages c ON c.slug=h.slug WHERE h.at>=? GROUP BY h.slug ORDER BY n DESC LIMIT 10', ms30);
+    return R(o);
   }
   if (what === 'ent_set') {   // owner switch: Enterprise on (grant N days) or off (revoke + block) for one user
     if (!post) return bad('POST required', 405); const b = await body(), email = String(b.email || '').toLowerCase().trim(); if (!email) return bad('email required');
