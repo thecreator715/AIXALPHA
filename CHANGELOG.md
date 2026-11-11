@@ -324,3 +324,7 @@
 
 ## Node v51
 - Node version aligned with app v51 so AIX MASTER pulls the latest node (Qwen Fast 8 steps, aspect-correct sizing).
+
+## v52 — Enterprise switch
+- Users page (app admin console + node control panel): per-user Enterprise ON/OFF button. ON grants 30 days; OFF revokes and blocks re-activation until turned on again. Owner always on.
+- Control panel: Enterprise subscribers panel (status, expiry, source, last paid, toggle); user detail shows Enterprise state.

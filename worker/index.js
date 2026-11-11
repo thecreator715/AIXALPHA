@@ -632,7 +632,8 @@ async function nodeAdmin(env, req, url) {
   }
   if (what === 'users') {
     const rows = await q('SELECT email, username, credits, tokens, requests, created, last, free_claimed FROM users ORDER BY last DESC, created DESC LIMIT 300');
-    return R({ users: rows.map((r) => ({ email: r.email, username: r.username, credits: +Number(r.credits).toFixed(2), tokens: r.tokens, requests: r.requests, created: r.created, last: r.last, owner: owners(env).includes(r.email) })) });
+    await ensureEnt(env); const entm = new Map(((await q('SELECT email, until, off FROM enterprise')) || []).map((e) => [e.email, e])), nowE = Date.now();
+    return R({ users: rows.map((r) => ({ ent: !((entm.get(r.email) || {}).off) && (owners(env).includes(r.email) || ((entm.get(r.email) || {}).until || 0) > nowE), entOff: !!((entm.get(r.email) || {}).off), entUntil: (entm.get(r.email) || {}).until || 0, email: r.email, username: r.username, credits: +Number(r.credits).toFixed(2), tokens: r.tokens, requests: r.requests, created: r.created, last: r.last, owner: owners(env).includes(r.email) })) });
   }
   if (what === 'usage') {
     const daily = await q("SELECT substr(at,1,10) AS d, COUNT(*) AS n, COALESCE(SUM(input+output),0) AS t, COALESCE(SUM(credits),0) AS c FROM usage WHERE at>=? GROUP BY d ORDER BY d", iso(14 * 86400e3));
@@ -708,7 +709,7 @@ async function nodeAdmin(env, req, url) {
     if (!u.email) return json(env, req, { error: 'No such user' }, 404);
     await env.DB.prepare('CREATE TABLE IF NOT EXISTS grants(id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, at INTEGER, credits REAL, note TEXT)').run();
     return R({
-      user: { ...u, credits: +Number(u.credits).toFixed(2), owner: owners(env).includes(u.email) },
+      user: { ...u, credits: +Number(u.credits).toFixed(2), owner: owners(env).includes(u.email), ent: await entStatus(env, { email: u.email }) },
       usage: await q('SELECT at, input, output, credits FROM usage WHERE email=? ORDER BY rowid DESC LIMIT 25', email),
       purchases: await q('SELECT at, usd, credits FROM purchases WHERE email=? ORDER BY id DESC LIMIT 20', email),
       grants: await q('SELECT at, credits, note FROM grants WHERE email=? ORDER BY id DESC LIMIT 20', email),
@@ -1028,15 +1029,16 @@ async function hostGet(env, req, path) {   // public image URLs for sites: /h/<u
 // ---- Enterprise: $99.99 per 30 days through Stripe = 1000 credits (they carry over, never expire) + Company page access; or unlock 30 days with 1000 credits from the balance ----
 const ENT_USD = 99.99, ENT_CREDITS = 1000, ENT_DAYS = 30;
 let ENT_READY = false;
-async function ensureEnt(env) { if (ENT_READY) return; await env.DB.prepare('CREATE TABLE IF NOT EXISTS enterprise(email TEXT PRIMARY KEY, until INTEGER DEFAULT 0, started INTEGER, last_pay TEXT, via TEXT)').run(); ENT_READY = true; }
+async function ensureEnt(env) { if (ENT_READY) return; await env.DB.prepare('CREATE TABLE IF NOT EXISTS enterprise(email TEXT PRIMARY KEY, until INTEGER DEFAULT 0, started INTEGER, last_pay TEXT, via TEXT)').run(); try { await env.DB.prepare('ALTER TABLE enterprise ADD COLUMN off INTEGER DEFAULT 0').run(); } catch (e) {} ENT_READY = true; }
 async function entExtend(env, email, via) { await ensureEnt(env); const now = Date.now(), r = await env.DB.prepare('SELECT until FROM enterprise WHERE email=?').bind(email).first(), until = Math.max(now, (r && r.until) || 0) + ENT_DAYS * 864e5; await env.DB.prepare('INSERT INTO enterprise(email,until,started,last_pay,via) VALUES(?,?,?,?,?) ON CONFLICT(email) DO UPDATE SET until=excluded.until, last_pay=excluded.last_pay, via=excluded.via').bind(email, until, now, new Date().toISOString(), via).run(); return until; }
-async function entStatus(env, a) { await ensureEnt(env); const r = await env.DB.prepare('SELECT until, via FROM enterprise WHERE email=?').bind(a.email).first(), owner = owners(env).includes(a.email) && !a.meter, until = (r && r.until) || 0; return { active: owner || until > Date.now(), until, via: (r && r.via) || '', owner, priceUsd: ENT_USD, credits: ENT_CREDITS, days: ENT_DAYS }; }
+async function entStatus(env, a) { await ensureEnt(env); const r = await env.DB.prepare('SELECT until, via, off FROM enterprise WHERE email=?').bind(a.email).first(), owner = owners(env).includes(a.email) && !a.meter, until = (r && r.until) || 0, off = !!(r && r.off) && !owner; return { active: !off && (owner || until > Date.now()), off, until, via: (r && r.via) || '', owner, priceUsd: ENT_USD, credits: ENT_CREDITS, days: ENT_DAYS }; }
 async function entApi(env, req, path) {
   const a = await authed(env, req); if (!a) return json(env, req, { error: 'Sign in first.' }, 401);
   if (path === '/api/enterprise/status') return json(env, req, { ...(await entStatus(env, a)), balance: +Number((await getUser(env, a.email)).credits).toFixed(2) });
   if (path === '/api/enterprise/activate' && req.method === 'POST') {
     { const pz = await pausedResp(env, req, a, 'enterprise'); if (pz) return pz; }   // pay with credits: 1000 credits unlock 30 days (no new grant)
     const owner = owners(env).includes(a.email) && !a.meter;
+    { const es0 = await entStatus(env, a); if (es0.off) return json(env, req, { error: 'Enterprise is turned off for your account. Contact the admin.' }, 403); }
     if (!owner) {
       const up = await env.DB.prepare('UPDATE users SET credits=credits-? WHERE email=? AND credits>=?').bind(ENT_CREDITS, a.email, ENT_CREDITS).run();
       if (!(up.meta && up.meta.changes > 0)) { const f = await getUser(env, a.email), have = Number(f.credits); return json(env, req, { error: 'Enterprise needs ' + ENT_CREDITS + ' credits. You have ' + have.toFixed(1) + '.', code: 'credits', need: Math.ceil(ENT_CREDITS - have), packs: Math.ceil((ENT_CREDITS - have) / 100) }, 402); }
@@ -1638,7 +1640,7 @@ async function admin2(env, req, what, url, H) {
   const safe = async (sql, ...p) => { try { return await q(sql, ...p); } catch (e) { return []; } };
   const body = async () => (post ? await req.json().catch(() => ({})) : {});
   const bad = (m, s) => json(env, req, { error: m }, s || 400);
-  const NAMES = ['live', 'fleet', 'host_restart', 'timeline', 'sla', 'slow', 'cohorts', 'funnel', 'segments', 'segment_preview', 'segment_save', 'segment_delete', 'segment_act', 'impersonate', 'forecast', 'margin', 'margin_set', 'refunds', 'refund_create', 'codes', 'code_save', 'code_toggle', 'code_delete', 'payouts', 'payout_add', 'payout_status', 'modstats', 'ratelimits', 'ratelimits_set', 'blocklist', 'block_add', 'block_del', 'logins', 'ann', 'ann_save', 'ann_delete', 'flags', 'flag_set', 'flag_delete', 'sched', 'sched_add', 'sched_cancel', 'approvals', 'approval_cfg', 'approval_decide', 'export_all', 'restore_test', 'a2status'];
+  const NAMES = ['ent_set', 'live', 'fleet', 'host_restart', 'timeline', 'sla', 'slow', 'cohorts', 'funnel', 'segments', 'segment_preview', 'segment_save', 'segment_delete', 'segment_act', 'impersonate', 'forecast', 'margin', 'margin_set', 'refunds', 'refund_create', 'codes', 'code_save', 'code_toggle', 'code_delete', 'payouts', 'payout_add', 'payout_status', 'modstats', 'ratelimits', 'ratelimits_set', 'blocklist', 'block_add', 'block_del', 'logins', 'ann', 'ann_save', 'ann_delete', 'flags', 'flag_set', 'flag_delete', 'sched', 'sched_add', 'sched_cancel', 'approvals', 'approval_cfg', 'approval_decide', 'export_all', 'restore_test', 'a2status'];
   const risky = what === 'grant' && post;
   if (!NAMES.includes(what) && !risky) return null;
   await ensureA2(env);
@@ -1782,6 +1784,17 @@ async function admin2(env, req, what, url, H) {
     const mu = Math.max(0, Math.floor(Number(b.maxUses) || 0)), exp = b.expires ? Date.parse(b.expires) : 0; if (b.expires && !isFinite(exp)) return bad('Bad expiry date');
     await env.DB.prepare('INSERT INTO promo_codes(code,credits,max_uses,expires,active,note,at,actor) VALUES(?,?,?,?,1,?,?,?) ON CONFLICT(code) DO UPDATE SET credits=excluded.credits, max_uses=excluded.max_uses, expires=excluded.expires, note=excluded.note').bind(code, cr, mu, exp || 0, String(b.note || '').slice(0, 100), new Date().toISOString(), a2Actor(req)).run();
     return R({ ok: true, code });
+  }
+  if (what === 'ent_set') {   // owner switch: Enterprise on (grant N days) or off (revoke + block) for one user
+    if (!post) return bad('POST required', 405); const b = await body(), email = String(b.email || '').toLowerCase().trim(); if (!email) return bad('email required');
+    await ensureEnt(env); const nowT = Date.now();
+    if (b.on) { const days = Math.max(1, Math.min(365, +b.days || 30)), cur = await env.DB.prepare('SELECT until FROM enterprise WHERE email=?').bind(email).first(), until = Math.max(nowT, (cur && cur.until) || 0) + days * 864e5;
+      await env.DB.prepare("INSERT INTO enterprise(email,until,started,last_pay,via,off) VALUES(?,?,?,?,'admin',0) ON CONFLICT(email) DO UPDATE SET until=excluded.until, via='admin', off=0").bind(email, until, nowT, new Date().toISOString()).run();
+      try { await audit(env, req, 'enterprise_on', email, days + ' days'); } catch (e) {}
+      return R({ ok: true, email, active: true, until }); }
+    await env.DB.prepare("INSERT INTO enterprise(email,until,started,via,off) VALUES(?,0,?, 'admin',1) ON CONFLICT(email) DO UPDATE SET until=0, off=1").bind(email, nowT).run();
+    try { await audit(env, req, 'enterprise_off', email, ''); } catch (e) {}
+    return R({ ok: true, email, active: false });
   }
   if (what === 'code_toggle') { if (!post) return bad('POST required', 405); const b = await body(); await env.DB.prepare('UPDATE promo_codes SET active=? WHERE code=?').bind(b.active ? 1 : 0, String(b.code || '')).run(); return R({ ok: true }); }
   if (what === 'code_delete') { if (!post) return bad('POST required', 405); const b = await body(); await env.DB.prepare('DELETE FROM promo_codes WHERE code=?').bind(String(b.code || '')).run(); return R({ ok: true }); }
@@ -2177,6 +2190,13 @@ export default {
         if (!row || !(n > 0)) return json(env, req, { error: 'email + credits required' }, 400);
         await env.DB.batch([env.DB.prepare('UPDATE users SET credits=credits+? WHERE email=?').bind(n, email), env.DB.prepare('INSERT INTO purchases(email,at,usd,credits,ref) VALUES(?,?,0,?,?)').bind(email, new Date().toISOString(), n, 'admin-grant-' + Date.now())]);
         return json(env, req, vw(env, await getUser(env, email)));
+      }
+      if (path === '/api/admin/enterprise' && req.method === 'POST') {   // turn Enterprise on/off for a user
+        const b = await req.json().catch(() => ({})), email = String(b.email || '').toLowerCase().trim(); if (!email) return json(env, req, { error: 'email required' }, 400);
+        await ensureEnt(env); const nowT = Date.now();
+        if (b.on) { const days = Math.max(1, Math.min(365, +b.days || 30)), cur = await env.DB.prepare('SELECT until FROM enterprise WHERE email=?').bind(email).first(), until = Math.max(nowT, (cur && cur.until) || 0) + days * 864e5;
+          await env.DB.prepare("INSERT INTO enterprise(email,until,started,last_pay,via,off) VALUES(?,?,?,?,'admin',0) ON CONFLICT(email) DO UPDATE SET until=excluded.until, via='admin', off=0").bind(email, until, nowT, new Date().toISOString()).run(); return json(env, req, { ok: true, active: true, until }); }
+        await env.DB.prepare("INSERT INTO enterprise(email,until,started,via,off) VALUES(?,0,?,'admin',1) ON CONFLICT(email) DO UPDATE SET until=0, off=1").bind(email, nowT).run(); return json(env, req, { ok: true, active: false });
       }
       if (path === '/api/admin/config' && req.method === 'POST') {
         const b = await req.json().catch(() => ({})); const L = {};
