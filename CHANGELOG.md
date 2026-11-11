@@ -321,3 +321,6 @@
 ## v51
 - Reply activity ("Worked for Ns" steps) is now saved with each answer and kept collapsed for recall, instead of vanishing.
 - Streaming text is rendered at most ~7 times a second (was every chunk), which removes chat lag and typing lag while a reply is being written.
+
+## Node v51
+- Node version aligned with app v51 so AIX MASTER pulls the latest node (Qwen Fast 8 steps, aspect-correct sizing).
