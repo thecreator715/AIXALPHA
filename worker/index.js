@@ -432,7 +432,7 @@ async function jobsApi(env, req, path) {
 
 // ---- Public API: user-created keys, OpenAI-compatible endpoint, credits billed per request ----
 async function nfetch(url, init, ms) {
-  const ac = new AbortController(); const t = setTimeout(() => ac.abort(), ms);
+  const ac = new AbortController(); const t = setTimeout(() => ac.abort(), +ms > 0 ? +ms : 30000);
   try { return await fetch(url, { ...init, signal: ac.signal }); } finally { clearTimeout(t); }
 }
 let KEYS_READY = true;

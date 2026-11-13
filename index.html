@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head><meta http-equiv="Cache-Control" content="no-cache, must-revalidate"><script>/* freshness guard: if GitHub Pages / the browser served an old copy, reload the newest one once */
-window.APP_BUILD='2026-11-10-v52';
+window.APP_BUILD='2026-11-13-v54';
 (function(){try{if(!/^https?:$/.test(location.protocol)||/claude\.(ai|com)|claudeusercontent/.test(location.hostname))return;
 var K='aix_fresh_try',t=+sessionStorage.getItem(K)||0;if(t>1)return;
 fetch(location.pathname+'?_fresh='+Date.now(),{cache:'no-store'}).then(function(r){return r.text()}).then(function(x){var m=x.match(/APP_BUILD='([^']+)'/);if(m&&m[1]!==window.APP_BUILD&&m[1]>window.APP_BUILD){sessionStorage.setItem(K,String(t+1));location.replace(location.pathname+'?v='+encodeURIComponent(m[1])+'&t='+Date.now()+location.hash)}else sessionStorage.removeItem(K)}).catch(function(){})}catch(e){}})();
@@ -2676,7 +2676,7 @@ async function hostSyncSite(o){if(o.type!=='app')return true;
    if(Math.floor(b64.length*0.75)>4*MBY){toast(f.name+' is over 4 MB and was skipped. Use a smaller file.');return false}
    await hostCall('/api/host/put',{kind:'site',name:o.slug+'/'+f.name,type:m?m[1]:'text/plain',data:b64});o.sync[f.name]=sig;n++}
   await hostCall('/api/host/prune',{slug:o.slug,keep});HS=null;hostRefresh();return true}
- catch(e){if(e.status===413&&e.info&&e.info.code==='quota'){hostQuotaDialog(e.info,()=>toast('Storage added. Tap Save again to deploy.'));return false}toast('Could not store site files: '+(e.message||e));return false}}
+ catch(e){if(e.status===413&&e.info&&e.info.code==='quota'){hostQuotaDialog(e.info,()=>toast('Storage added. Tap Save again to deploy.'));return false}toast('Site saved. Backup copy to your storage node failed ('+(e.message||e)+'); it will retry on next save.');return true}}
 const hostH=(s)=>{const d={};(s.files||[]).forEach(f=>{const k=new Date(f.created).toISOString().slice(0,10);d[k]=(d[k]||0)+f.bytes});return d};
 async function hostPaint(){const el=$('#hstor');if(!el)return;
  if(!hostTok()){el.innerHTML=`<div class="card2" style="margin-bottom:12px"><b>Storage</b><div class="mono" style="font-size:11px;color:var(--m);margin-top:4px">Each account includes ${STOR_FREE} MB for app files and images. Sign in to host images on the node and to see your storage.</div></div>`;return}

@@ -332,3 +332,7 @@
 ## v53 — Insights tab (25 new admin analytics)
 - Control panel: new Insights tab with 25 panels (week-over-week, live now, revenue/day, revenue by pack, top buyers, time to first purchase/request, sign-ups/day, sign-up sources, refunds, credit liability, credit flow, free-only users, churn risk, dormant sign-ups, power users, spend concentration, new vs returning, request size, busiest hours, mode mix, errors/day, top endpoints, devices, API keys, chat pages).
 - Worker: admin `insights` endpoint (each query isolated).
+
+## v54 — Deploy fix
+- Fixed "Could not store site files … operation was aborted": node storage calls had no timeout set, so they were cancelled instantly. Now 30 s.
+- Hosting deploy no longer fails if the node backup copy fails; the site still saves (marketplace publish is a separate flow and unaffected).
